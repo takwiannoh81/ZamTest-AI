@@ -158,7 +158,7 @@ public static class ZtTypes {
     { "ListBox", "list" }, { "SysListView32", "list" }, { "SysTreeView32", "tree" }, { "Static", "text" },
     { "msctls_statusbar32", "statusbar" }, { "SysTabControl32", "tab" }, { "ToolbarWindow32", "toolbar" },
     { "msctls_progress32", "progressbar" }, { "msctls_trackbar32", "slider" }, { "SysLink", "hyperlink" },
-    { "SysHeader32", "header" }, { "ScrollBar", "scrollbar" }
+    { "SysHeader32", "header" }, { "ScrollBar", "scrollbar" }, { "#32770", "window" }
   };
 
   public static string FromClass(string cls) {
@@ -429,7 +429,7 @@ function Initialize-Uia {
     $script:ControlTypes[$field.Name.ToLowerInvariant()] = $field.GetValue($null)
   }
   $script:MappedTypes = New-Object 'System.Collections.Generic.HashSet[string]'
-  foreach ($t in @('edit', 'button', 'combobox', 'list', 'tree', 'text', 'statusbar', 'tab', 'toolbar', 'progressbar', 'slider', 'hyperlink', 'header', 'scrollbar')) { [void]$script:MappedTypes.Add($t) }
+  foreach ($t in @('window', 'edit', 'button', 'combobox', 'list', 'tree', 'text', 'statusbar', 'tab', 'toolbar', 'progressbar', 'slider', 'hyperlink', 'header', 'scrollbar')) { [void]$script:MappedTypes.Add($t) }
   $script:UiaReady = $true
 }
 

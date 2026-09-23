@@ -168,7 +168,9 @@ export async function desktopSelfTest(): Promise<boolean> {
           }
           await sleep(400);
         }
-        throw new Error(`Notepad is still open (${win})`);
+        const open = await driver.call<Array<{ type: string; name: string; class: string; process: string }>>("windows").catch(() => []);
+        const mine = open.filter((w) => w.process.toLowerCase() === "notepad").map((w) => `${w.type} "${w.name}" [${w.class}]`);
+        throw new Error(`Notepad is still open (${win}); Notepad windows: ${mine.join(", ") || "none"}`);
       });
     }
 
