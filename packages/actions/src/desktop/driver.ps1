@@ -17,6 +17,7 @@ try {
 } catch { }
 
 $script:UiaReady = $false
+$script:ProviderStatus = 'not loaded' 
 $script:ProcessNames = @{}
 $script:ControlTypes = @{}
 
@@ -147,6 +148,41 @@ public static class ZtNative {
       mouse_event(up, 0, 0, 0, UIntPtr.Zero);
       Thread.Sleep(60);
     }
+  }
+}
+
+/// Control type names as used in selectors. Classic Win32 and WinForms controls that
+/// UI Automation only exposes as "pane" get their real type from the window class.
+public static class ZtTypes {
+  static readonly Dictionary<string, string> Win32 = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+    { "Edit", "edit" }, { "Button", "button" }, { "ComboBox", "combobox" }, { "ComboBoxEx32", "combobox" },
+    { "ListBox", "list" }, { "SysListView32", "list" }, { "SysTreeView32", "tree" }, { "Static", "text" },
+    { "msctls_statusbar32", "statusbar" }, { "SysTabControl32", "tab" }, { "ToolbarWindow32", "toolbar" },
+    { "msctls_progress32", "progressbar" }, { "msctls_trackbar32", "slider" }, { "SysLink", "hyperlink" },
+    { "SysHeader32", "header" }, { "ScrollBar", "scrollbar" }
+  };
+
+  public static string FromClass(string cls) {
+    if (string.IsNullOrEmpty(cls)) return null;
+    string mapped;
+    if (Win32.TryGetValue(cls, out mapped)) return mapped;
+    if (cls.StartsWith("RichEdit", StringComparison.OrdinalIgnoreCase)) return "edit";
+    // WinForms: WindowsForms10.EDIT.app.0.141b42a_r6_ad1
+    if (cls.StartsWith("WindowsForms10.", StringComparison.OrdinalIgnoreCase)) {
+      var parts = cls.Split('.');
+      if (parts.Length > 1 && Win32.TryGetValue(parts[1], out mapped)) return mapped;
+    }
+    return null;
+  }
+
+  public static string Of(AutomationElement el) {
+    var c = el.Current;
+    string type = c.ControlType.ProgrammaticName.Replace("ControlType.", "").ToLowerInvariant();
+    if (type == "pane") {
+      string mapped = FromClass(c.ClassName);
+      if (mapped != null) return mapped;
+    }
+    return type;
   }
 }
 
@@ -300,7 +336,7 @@ public static class ZtRecorder {
 
   static bool IsField(AutomationElement el) {
     var type = el.Current.ControlType;
-    if (type == ControlType.Edit || type == ControlType.Document) return true;
+    if (type == ControlType.Edit || type == ControlType.Document || ZtTypes.Of(el) == "edit") return true;
     object p;
     if (el.TryGetCurrentPattern(ValuePattern.Pattern, out p)) return !((ValuePattern)p).Current.IsReadOnly && type != ControlType.ComboBox;
     return false;
@@ -310,7 +346,8 @@ public static class ZtRecorder {
     object p;
     if (el.TryGetCurrentPattern(ValuePattern.Pattern, out p)) return ((ValuePattern)p).Current.Value ?? "";
     if (el.TryGetCurrentPattern(TextPattern.Pattern, out p)) return ((TextPattern)p).DocumentRange.GetText(100000) ?? "";
-    return "";
+    // A Win32 edit seen as a plain pane exposes its text as the Name.
+    return ZtTypes.Of(el) == "edit" ? (el.Current.Name ?? "") : "";
   }
 
   public static string Chain(AutomationElement el) {
@@ -332,7 +369,7 @@ public static class ZtRecorder {
 
   static string Describe(AutomationElement el, bool top) {
     var c = el.Current;
-    string type = c.ControlType.ProgrammaticName.Replace("ControlType.", "").ToLowerInvariant();
+    string type = ZtTypes.Of(el);
     var sb = new StringBuilder("{\"type\":" + Json(type) + ",\"name\":" + Json(c.Name) + ",\"id\":" + Json(c.AutomationId) + ",\"class\":" + Json(c.ClassName));
     if (c.IsPassword) sb.Append(",\"isPassword\":true");
     if (top) {
@@ -376,12 +413,17 @@ function Initialize-Uia {
   try {
     Add-Type -AssemblyName UIAutomationClientsideProviders
     $providers = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq 'UIAutomationClientsideProviders' } | Select-Object -First 1
-    if ($providers) { [System.Windows.Automation.ClientSettings]::RegisterClientSideProviderAssembly($providers.GetName()) }
-  } catch { }
+    if ($providers) {
+      [System.Windows.Automation.ClientSettings]::RegisterClientSideProviderAssembly($providers.GetName())
+      $script:ProviderStatus = 'registered'
+    } else { $script:ProviderStatus = 'assembly not found' }
+  } catch { $script:ProviderStatus = "failed: $($_.Exception.Message)" }
   [ZtNative]::Init()
   foreach ($field in [System.Windows.Automation.ControlType].GetFields([System.Reflection.BindingFlags]'Public,Static')) {
     $script:ControlTypes[$field.Name.ToLowerInvariant()] = $field.GetValue($null)
   }
+  $script:MappedTypes = New-Object 'System.Collections.Generic.HashSet[string]'
+  foreach ($t in @('edit', 'button', 'combobox', 'list', 'tree', 'text', 'statusbar', 'tab', 'toolbar', 'progressbar', 'slider', 'hyperlink', 'header', 'scrollbar')) { [void]$script:MappedTypes.Add($t) }
   $script:UiaReady = $true
 }
 
@@ -419,14 +461,22 @@ function Test-Condition($element, $condition) {
 function Find-Segment($parents, $segment, [bool]$topLevel) {
   $scope = if ($topLevel) { [System.Windows.Automation.TreeScope]::Children } else { [System.Windows.Automation.TreeScope]::Descendants }
   $condition = [System.Windows.Automation.Condition]::TrueCondition
-  if ($segment.type -ne '*') {
-    $ct = $script:ControlTypes[[string]$segment.type]
-    if ($null -eq $ct) { throw "Unknown control type '$($segment.type)'" }
-    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, $ct)
+  $wanted = [string]$segment.type
+  if ($wanted -ne '*') {
+    $ct = $script:ControlTypes[$wanted]
+    if ($null -eq $ct) { throw "Unknown control type '$wanted'" }
+    $property = [System.Windows.Automation.AutomationElement]::ControlTypeProperty
+    $condition = New-Object System.Windows.Automation.PropertyCondition($property, $ct)
+    if ($script:MappedTypes.Contains($wanted)) {
+      # Also look at panes: classic Win32 controls may only be exposed as panes (see ZtTypes).
+      $pane = New-Object System.Windows.Automation.PropertyCondition($property, [System.Windows.Automation.ControlType]::Pane)
+      $condition = New-Object System.Windows.Automation.OrCondition($condition, $pane)
+    }
   }
   $found = New-Object System.Collections.Generic.List[object]
   foreach ($parent in $parents) {
     foreach ($el in $parent.FindAll($scope, $condition)) {
+      if ($wanted -ne '*' -and [ZtTypes]::Of($el) -ne $wanted) { continue }
       $ok = $true
       foreach ($c in $segment.conditions) { if (-not (Test-Condition $el $c)) { $ok = $false; break } }
       if ($ok) { $found.Add($el) }
@@ -470,11 +520,13 @@ function Get-Pattern($element, $pattern) {
 function Get-Info($element) {
   $c = $element.Current
   $r = $c.BoundingRectangle
+  # Minimised and off-screen elements have an empty (infinite) rectangle.
+  $rect = if ($r.IsEmpty -or [double]::IsInfinity($r.X) -or [double]::IsInfinity($r.Width)) { $null } else { @{ x = [int]$r.X; y = [int]$r.Y; width = [int]$r.Width; height = [int]$r.Height } }
   return @{
-    type = $c.ControlType.ProgrammaticName.Replace('ControlType.', '').ToLowerInvariant()
+    type = [ZtTypes]::Of($element)
     name = $c.Name; id = $c.AutomationId; class = $c.ClassName
     process = (Get-ProcessName $c.ProcessId); enabled = $c.IsEnabled
-    rect = @{ x = [int]$r.X; y = [int]$r.Y; width = [int]$r.Width; height = [int]$r.Height }
+    rect = $rect
   }
 }
 
@@ -532,8 +584,7 @@ function Get-Tree($element, [int]$depth, [int]$maxNodes) {
     param($node, $level)
     if ($lines.Count -ge $maxNodes -or $level -gt $depth) { return }
     $c = $node.Current
-    $type = $c.ControlType.ProgrammaticName.Replace('ControlType.', '').ToLowerInvariant()
-    $line = ('  ' * $level) + $type
+    $line = ('  ' * $level) + [ZtTypes]::Of($node)
     if ($c.Name) { $line += ' name="' + ($c.Name -replace '"', '\"' -replace "`r?`n", ' ') + '"' }
     if ($c.AutomationId) { $line += ' id="' + $c.AutomationId + '"' }
     if ($c.ClassName) { $line += ' class="' + $c.ClassName + '"' }
@@ -560,6 +611,7 @@ function Invoke-Op([string]$op, $a) {
       try { [void]$proc.WaitForInputIdle(10000) } catch { }
       return @{ pid = $proc.Id }
     }
+    'info' { return @{ providers = $script:ProviderStatus; powershell = $PSVersionTable.PSVersion.ToString(); clr = [Environment]::Version.ToString() } }
     'windows' {
       $list = New-Object System.Collections.Generic.List[object]
       $root = [System.Windows.Automation.AutomationElement]::RootElement

@@ -167,9 +167,17 @@ function windowSegment(win: ElementInfo): Segment {
   return { type: "window", conditions };
 }
 
+/** Classic Win32 controls: their numeric AutomationId is the dialog control ID, which is fixed in the program. */
+const WIN32_CLASS = /^(Edit|Button|ComboBox|ComboBoxEx32|ListBox|SysListView32|SysTreeView32|Static|SysTabControl32|ToolbarWindow32|msctls_\w+|RichEdit\w*)$/i;
+
+function usableId(el: ElementInfo): el is ElementInfo & { id: string } {
+  if (stableId(el.id)) return true;
+  return Boolean(el.id) && /^\d{1,6}$/.test(el.id!) && WIN32_CLASS.test(el.class ?? "");
+}
+
 function targetSegment(el: ElementInfo): Segment {
   const type = (CONTROL_TYPES as readonly string[]).includes(el.type) ? el.type : "*";
-  if (stableId(el.id)) return { type, conditions: [{ attr: "id", op: "=", value: el.id }] };
+  if (usableId(el)) return { type, conditions: [{ attr: "id", op: "=", value: el.id }] };
   if (stableName(el.name)) return { type, conditions: [{ attr: "name", op: "=", value: el.name }] };
   if (el.class) return { type, conditions: [{ attr: "class", op: "=", value: el.class }] };
   return { type, conditions: [] };
@@ -185,7 +193,7 @@ export function selectorFromChain(chain: ElementInfo[]): string {
     const t = targetSegment(target);
     // A target without id or name is ambiguous; anchor it on the closest ancestor that has an id.
     if (!t.conditions.some((c) => c.attr === "id" || c.attr === "name")) {
-      const anchor = [...rest.slice(0, -1)].reverse().find((a) => stableId(a.id));
+      const anchor = [...rest.slice(0, -1)].reverse().find((a) => usableId(a));
       if (anchor) segments.push(targetSegment(anchor));
     }
     if (t.type === "*" && t.conditions.length === 0) t.type = "custom";

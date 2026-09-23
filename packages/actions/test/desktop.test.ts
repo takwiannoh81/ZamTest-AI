@@ -54,6 +54,13 @@ describe("desktop selectors", () => {
         { type: "edit", id: "12345", class: "WindowsForms10.EDIT" },
       ]),
     ).toBe('window[process="erp"] > pane[id="OrderGrid"] > edit[class="WindowsForms10.EDIT"]');
+    // Numeric ids are kept for classic Win32 controls (dialog control IDs) but not for others.
+    expect(selectorFromChain([{ type: "window", name: "Calculator", process: "win32calc" }, { type: "button", id: "137", class: "Button" }])).toBe(
+      'window[process="win32calc"] > button[id="137"]',
+    );
+    expect(selectorFromChain([{ type: "window", name: "App", process: "app" }, { type: "button", id: "137", name: "OK", class: "Xaml" }])).toBe(
+      'window[process="app"] > button[name="OK"]',
+    );
     expect(describeChain([notepad, { type: "menuitem", name: "File" }])).toBe('The "File" menu item in Notepad');
   });
 });
