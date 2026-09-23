@@ -1,9 +1,9 @@
-import type { ActivityMeta, PropDef } from "./schema.js";
+import type { ActionMeta, PropDef } from "./schema.js";
 
 /**
- * Built-in activity metadata. This file must stay free of runtime
+ * Built-in action metadata. This file must stay free of runtime
  * dependencies (no Node APIs) so the Designer can use it in the browser.
- * Runtime implementations live in @zamtest/activities, except the control
+ * Runtime implementations live in @zamtest/actions, except the control
  * flow containers which are executed by the engine itself.
  */
 
@@ -40,13 +40,13 @@ export const CONTROL_FLOW_TYPES = new Set([
   "core.break",
 ]);
 
-export const BUILTIN_ACTIVITIES: ActivityMeta[] = [
+export const BUILTIN_ACTIONS: ActionMeta[] = [
   /* ----------------------------- Control flow ----------------------------- */
   {
     type: "core.sequence",
     displayName: "Sequence",
     category: "Control Flow",
-    description: "Runs child activities in order.",
+    description: "Runs child actions in order.",
     icon: "list",
     props: [],
     slots: ["body"],
@@ -334,15 +334,15 @@ export const BUILTIN_ACTIVITIES: ActivityMeta[] = [
     displayName: "AI Agent",
     category: "AI",
     description:
-      "Gives Claude a goal and lets it decide which activities to run (browser, HTTP, files) until the goal is met.",
+      "Gives Claude a goal and lets it decide which actions to run (browser, HTTP, files) until the goal is met.",
     icon: "robot",
     props: [
       { name: "goal", label: "Goal", type: "text", required: true },
       {
         name: "tools",
-        label: "Allowed activities",
+        label: "Allowed actions",
         type: "json",
-        description: "Array of activity types the agent may use. Defaults to every agent-capable activity.",
+        description: "Array of action types the agent may use. Defaults to every agent-capable action.",
       },
       { name: "maxSteps", label: "Max steps", type: "number", default: 20 },
       output("Save final answer to"),
@@ -350,6 +350,6 @@ export const BUILTIN_ACTIVITIES: ActivityMeta[] = [
   },
 ];
 
-export function findActivity(type: string, catalog: ActivityMeta[] = BUILTIN_ACTIVITIES): ActivityMeta | undefined {
+export function findAction(type: string, catalog: ActionMeta[] = BUILTIN_ACTIONS): ActionMeta | undefined {
   return catalog.find((a) => a.type === type);
 }

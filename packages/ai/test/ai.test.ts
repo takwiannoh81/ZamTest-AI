@@ -71,7 +71,7 @@ describe("ZamAI", () => {
     expect(result.workflow.root.slots?.body?.[0]?.type).toBe("core.log");
     expect(result.notes).toBe("- fixed");
     const retry = requests[1]!.messages as Array<{ role: string; content: unknown }>;
-    expect(JSON.stringify(retry.at(-1))).toContain('Unknown activity type \\"made.up\\"');
+    expect(JSON.stringify(retry.at(-1))).toContain('Unknown action type \\"made.up\\"');
   });
 
   it("runs an agent loop, executing tools and returning the final answer", async () => {

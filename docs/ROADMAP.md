@@ -13,7 +13,7 @@ v0.1 is a working vertical slice: Designer → Orchestrator → Bot Agent, with 
 ## v0.3: Richer automation
 - **Queues and work items**: transactions, retries, SLAs and dispatcher/performer patterns.
 - **Invoke Workflow**: reusable libraries and sub-workflows with arguments.
-- **Activity packages**: install them on agents, give them versions and dependencies, and publish them to a feed. Planned packages:
+- **Action packages**: install them on agents, give them versions and dependencies, and publish them to a feed. Planned packages:
   - Excel/CSV
   - Email (IMAP/SMTP, Microsoft Graph, Gmail)
   - PDF and OCR

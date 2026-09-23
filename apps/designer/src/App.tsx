@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ActivityMeta, Step, Workflow } from "@zamtest/core";
+import type { ActionMeta, Step, Workflow } from "@zamtest/core";
 import { api } from "./api";
 import type { Job, WorkflowDraft, WorkflowSummary } from "./api";
 import { AiGenerateModal, JsonModal, SelectorAssistModal } from "./components/AiModals";
@@ -26,13 +26,13 @@ function useHashId(): [string | undefined, (id?: string) => void] {
 }
 
 export function App() {
-  const [catalog, setCatalog] = useState<ActivityMeta[]>([]);
+  const [catalog, setCatalog] = useState<ActionMeta[]>([]);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [error, setError] = useState<string>();
   const [workflowId, openWorkflow] = useHashId();
 
   useEffect(() => {
-    api<ActivityMeta[]>("/api/activities").then(setCatalog).catch((e: Error) => setError(`Cannot reach the orchestrator: ${e.message}`));
+    api<ActionMeta[]>("/api/actions").then(setCatalog).catch((e: Error) => setError(`Cannot reach the orchestrator: ${e.message}`));
     api<{ configured: boolean }>("/api/ai/status").then((s) => setAiEnabled(s.configured)).catch(() => undefined);
   }, []);
 
@@ -117,7 +117,7 @@ function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
   );
 }
 
-function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: ActivityMeta[]; aiEnabled: boolean; onExit: () => void }) {
+function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: ActionMeta[]; aiEnabled: boolean; onExit: () => void }) {
   const metas = useMemo(() => new Map(catalog.map((m) => [m.type, m])), [catalog]);
   const [workflow, setWorkflow] = useState<Workflow>();
   const [history, setHistory] = useState<{ past: Workflow[]; future: Workflow[] }>({ past: [], future: [] });
@@ -219,7 +219,7 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Activ
     return { parentId: root.id, slot: "body", index: root.slots?.body?.length ?? 0 };
   };
 
-  const addStep = (meta: ActivityMeta, loc: Location = insertionPoint()) => {
+  const addStep = (meta: ActionMeta, loc: Location = insertionPoint()) => {
     const step = createStep(meta);
     setRoot(insertStep(root, loc, step));
     setSelectedId(step.id);
@@ -315,7 +315,7 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Activ
             selectedId={selectedId}
             runStatus={runStatus}
             onSelect={setSelectedId}
-            onDropActivity={(type, loc) => {
+            onDropAction={(type, loc) => {
               const meta = metas.get(type);
               if (meta) addStep(meta, loc);
             }}

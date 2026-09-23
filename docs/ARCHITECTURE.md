@@ -18,8 +18,8 @@
         ▼                       ▼
  ┌──────────────┐        ┌──────────────┐
  │  Bot Agent   │  ...   │  Bot Agent   │    Node process on each robot machine
- │ core engine  │        │              │──── Claude (self-healing, AI activities, AI agents)
- │ + activities │        │              │──── Playwright browsers, HTTP, files
+ │ core engine  │        │              │──── Claude (self-healing, AI actions, AI agents)
+ │ + actions │        │              │──── Playwright browsers, HTTP, files
  └──────────────┘        └──────────────┘
 ```
 
@@ -48,35 +48,35 @@ A workflow is JSON, validated with zod (`WorkflowSchema`):
 }
 ```
 
-- **Steps** have a `type` that points at an activity, some `props`, and named child `slots` for containers. A step can also carry the execution policies `retry`, `timeoutMs`, `continueOnError` and `disabled`.
+- **Steps** have a `type` that points at an action, some `props`, and named child `slots` for containers. A step can also carry the execution policies `retry`, `timeoutMs`, `continueOnError` and `disabled`.
 - **Props** are resolved using the prop type from the catalog:
   - `expression` props are JavaScript expressions over variables.
   - String props support `{{ template }}` interpolation. A string that is exactly one `{{ x }}` keeps its type.
   - `variable` props name a variable.
-- **Activity metadata** (`BUILTIN_ACTIVITIES`) is pure data. The Designer uses it to render the palette and the properties panel, the AI uses it to plan workflows, and the engine uses it to resolve props and assign `output` variables.
+- **Action metadata** (`BUILTIN_ACTIONS`) is pure data. The Designer uses it to render the palette and the properties panel, the AI uses it to plan workflows, and the engine uses it to resolve props and assign `output` variables.
 - **The engine** (`runWorkflow`):
   - Executes control flow itself: sequence, if, forEach, while, tryCatch and break.
-  - Delegates every leaf activity to handlers.
+  - Delegates every leaf action to handlers.
   - Emits `stepStart`, `stepEnd`, `log` and `custom` events.
   - Honours an `AbortSignal` for cancellation.
   - Runs registered disposers at the end, for example to close a browser.
 
-## Activities (`packages/activities`)
+## Actions (`packages/actions`)
 
 The handlers are grouped as follows:
 
-| Group | Activities |
+| Group | Actions |
 |---|---|
 | `system` | `core.log`, `core.assign`, `core.delay`, `core.getAsset`, `core.runScript`, `core.throw` |
 | `data` | HTTP, JSON, files |
 | `browser` | Playwright (loaded lazily, so agents without browsers still work) |
 | `ai` | AI Prompt, AI Extract Data, AI Agent |
 
-An `ActivityPackage` bundles metadata and handlers. This is the extension point for custom activity packages (Excel, SAP, email, desktop UI...).
+An `ActionPackage` bundles metadata and handlers. This is the extension point for custom action packages (Excel, SAP, email, desktop UI...).
 
 ### AI self-healing
 
-`browser.*` activities run through `withSelector()`. If the selector fails and AI is available (`aiHeal` defaults to true):
+`browser.*` actions run through `withSelector()`. If the selector fails and AI is available (`aiHeal` defaults to true):
 
 1. Capture a condensed DOM snapshot. Scripts, styles and SVG internals are dropped, and only semantic attributes are kept. The snapshot is capped at 150k characters, and Claude is told when it has been truncated.
 2. Ask Claude for ranked replacement selectors, using structured JSON output. The request includes the step's plain-language `description`.
@@ -86,7 +86,7 @@ An `ActivityPackage` bundles metadata and handlers. This is the extension point 
 
 ### AI agents
 
-`ai.agent` turns every catalog activity marked `agentTool: true` into a Claude tool. The input schemas are derived from the activities' prop definitions. It also adds a `browser_snapshot` tool.
+`ai.agent` turns every catalog action marked `agentTool: true` into a Claude tool. The input schemas are derived from the actions' prop definitions. It also adds a `browser_snapshot` tool.
 
 A manual agent loop in `packages/ai/src/agent.ts` runs tool calls one at a time, because UI actions must not race each other. The loop enforces `maxSteps`, supports cancellation, and logs every tool call to the job log.
 
@@ -112,6 +112,6 @@ Persistence is a debounced, atomic JSON file (`ZAMTEST_DATA_DIR/db.json`) behind
 | `POST /api/agent/jobs/next` | Pull model, FIFO. Respects `targetAgentId`. Returns 204 when there is no work |
 | `POST /api/agent/jobs/:id/events` | Batched engine events (about 1 s). The response can request cancellation |
 | `POST /api/agent/jobs/:id/complete` | Final status and outputs |
-| `GET /api/agent/assets/:name` | Used by the Get Asset activity |
+| `GET /api/agent/assets/:name` | Used by the Get Asset action |
 
 Agents use a pull model, so they only need outbound HTTPS to the orchestrator and work behind NAT and firewalls.

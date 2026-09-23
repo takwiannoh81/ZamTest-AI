@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@zamtest/activities": "workspace:*",
+    "@zamtest/actions": "workspace:*",
     "@zamtest/ai": "workspace:*",
     "@zamtest/core": "workspace:*"
   },

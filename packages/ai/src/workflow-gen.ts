@@ -1,5 +1,5 @@
-import { BUILTIN_ACTIVITIES, newStepId, safeParseWorkflow, walkSteps } from "@zamtest/core";
-import type { ActivityMeta, Workflow } from "@zamtest/core";
+import { BUILTIN_ACTIONS, newStepId, safeParseWorkflow, walkSteps } from "@zamtest/core";
+import type { ActionMeta, Workflow } from "@zamtest/core";
 import type { AiClient, BetaMessageParam } from "./client.js";
 import { extractJson, textOf } from "./client.js";
 
@@ -12,8 +12,8 @@ const FORMAT = `A workflow is JSON:
   "variables": [ { "name": "invoiceTotal", "type": "number", "default": 0, "direction": "local", "description": "..." } ],
   "root": { "id": "root", "type": "core.sequence", "props": {}, "slots": { "body": [ <steps> ] } }
 }
-A step is { "id": "<unique>", "type": "<activity type>", "label": "<short label>", "props": { ... }, "slots": { "<slot>": [ <steps> ] } }.
-Only container activities have "slots", using exactly the slot names listed for them.
+A step is { "id": "<unique>", "type": "<action type>", "label": "<short label>", "props": { ... }, "slots": { "<slot>": [ <steps> ] } }.
+Only container actions have "slots", using exactly the slot names listed for them.
 Optional per-step fields: "continueOnError": true, "retry": { "count": 2, "delayMs": 1000 }, "timeoutMs": 30000.
 
 Property value rules:
@@ -25,7 +25,7 @@ Property value rules:
   When you cannot see the page, write your best guess and ALWAYS fill the "description" prop so selectors can be healed at run time.
 - Use "core.getAsset" for credentials and configuration; never hard-code secrets.`;
 
-function catalogPrompt(catalog: ActivityMeta[]): string {
+function catalogPrompt(catalog: ActionMeta[]): string {
   return catalog
     .map((a) => {
       const props = a.props
@@ -41,7 +41,7 @@ export interface GenerateWorkflowInput {
   prompt: string;
   /** When present, the model edits this workflow instead of starting from scratch. */
   existing?: Workflow;
-  catalog?: ActivityMeta[];
+  catalog?: ActionMeta[];
 }
 
 export interface GenerateWorkflowResult {
@@ -52,17 +52,17 @@ export interface GenerateWorkflowResult {
 /**
  * Builds (or edits) a whole automation project from a natural-language
  * description. The result is validated against the workflow schema and the
- * activity catalog; validation errors are sent back to Claude once to fix.
+ * action catalog; validation errors are sent back to Claude once to fix.
  */
 export async function generateWorkflow(ai: AiClient, input: GenerateWorkflowInput): Promise<GenerateWorkflowResult> {
-  const catalog = input.catalog ?? BUILTIN_ACTIVITIES;
+  const catalog = input.catalog ?? BUILTIN_ACTIONS;
   const system = `You are the automation architect inside ZamTest AI, a low-code RPA platform.
 You design workflows that are reliable in production: validate inputs, wrap fragile UI work in Try/Catch,
 log progress with meaningful messages, add retries on flaky network or UI steps, and close browsers you open.
 
 ${FORMAT}
 
-Available activities (* = required prop):
+Available actions (* = required prop):
 ${catalogPrompt(catalog)}
 
 Reply with a short explanation of the design (max 5 bullet points), then the complete workflow JSON in a single \`\`\`json block.`;
@@ -96,7 +96,7 @@ Reply with a short explanation of the design (max 5 bullet points), then the com
   throw new Error(`AI could not produce a valid workflow: ${lastErrors.join("; ")}`);
 }
 
-function validateGenerated(text: string, catalog: ActivityMeta[]): { workflow?: Workflow; errors: string[] } {
+function validateGenerated(text: string, catalog: ActionMeta[]): { workflow?: Workflow; errors: string[] } {
   let raw: unknown;
   try {
     raw = extractJson(text);
@@ -116,7 +116,7 @@ function validateGenerated(text: string, catalog: ActivityMeta[]): { workflow?: 
     seen.add(step.id);
     const meta = types.get(step.type);
     if (!meta) {
-      errors.push(`Unknown activity type "${step.type}" (step ${step.id})`);
+      errors.push(`Unknown action type "${step.type}" (step ${step.id})`);
       return;
     }
     for (const slot of Object.keys(step.slots ?? {})) {

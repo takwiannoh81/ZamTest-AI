@@ -41,7 +41,7 @@ function toResultContent(value: unknown): string {
 }
 
 /**
- * Agentic loop: Claude chooses which platform activities to run until the
+ * Agentic loop: Claude chooses which platform actions to run until the
  * goal is met. A manual loop (rather than the SDK tool runner) lets the bot
  * agent enforce step limits, cancellation and per-call logging.
  */

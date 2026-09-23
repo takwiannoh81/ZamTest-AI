@@ -1,6 +1,6 @@
-import { builtinHandlers } from "@zamtest/activities";
+import { builtinHandlers } from "@zamtest/actions";
 import { AiClient, ZamAI } from "@zamtest/ai";
-import { BUILTIN_ACTIVITIES, runWorkflow } from "@zamtest/core";
+import { BUILTIN_ACTIONS, runWorkflow } from "@zamtest/core";
 import type { EngineEvent, EngineServices, RunResult, Workflow } from "@zamtest/core";
 
 export interface ExecuteOptions {
@@ -16,14 +16,14 @@ function sharedAi(): ZamAI | null {
   return ai;
 }
 
-/** Runs a workflow with every built-in activity and (when configured) AI services. */
+/** Runs a workflow with every built-in action and (when configured) AI services. */
 export function execute(workflow: Workflow, options: ExecuteOptions = {}): Promise<RunResult> {
   const services: EngineServices = { getAsset: options.getAsset };
   const aiService = sharedAi();
   if (aiService) services.ai = aiService;
   return runWorkflow(workflow, {
     handlers: builtinHandlers,
-    catalog: BUILTIN_ACTIVITIES,
+    catalog: BUILTIN_ACTIONS,
     inputs: options.inputs,
     signal: options.signal,
     services,

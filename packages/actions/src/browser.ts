@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import type { Browser, Page } from "playwright";
-import type { ActivityContext, ActivityHandler } from "@zamtest/core";
+import type { ActionContext, ActionHandler } from "@zamtest/core";
 import { errorMessage } from "@zamtest/core";
 import { getAi } from "./ai.js";
 
@@ -18,17 +18,17 @@ async function loadPlaywright() {
   try {
     return await import("playwright");
   } catch {
-    throw new Error("Browser activities need Playwright on the agent machine: `pnpm add playwright && npx playwright install`");
+    throw new Error("Browser actions need Playwright on the agent machine: `pnpm add playwright && npx playwright install`");
   }
 }
 
-export function getPage(ctx: ActivityContext): Page {
+export function getPage(ctx: ActionContext): Page {
   const session = ctx.resources.get(SESSION) as BrowserSession | undefined;
-  if (!session) throw new Error("No browser is open. Add an 'Open Browser' activity first.");
+  if (!session) throw new Error("No browser is open. Add an 'Open Browser' action first.");
   return session.page;
 }
 
-export function hasPage(ctx: ActivityContext): boolean {
+export function hasPage(ctx: ActionContext): boolean {
   return ctx.resources.has(SESSION);
 }
 
@@ -83,7 +83,7 @@ export async function snapshotDom(page: Page, maxChars = MAX_DOM_CHARS): Promise
  * the Portal/Designer can offer to update the workflow.
  */
 async function withSelector<T>(
-  ctx: ActivityContext,
+  ctx: ActionContext,
   props: Record<string, unknown>,
   action: (selector: string, timeout: number) => Promise<T>,
 ): Promise<T> {
@@ -119,7 +119,7 @@ async function withSelector<T>(
   }
 }
 
-export const browserHandlers: Record<string, ActivityHandler> = {
+export const browserHandlers: Record<string, ActionHandler> = {
   "browser.open": async (props, ctx) => {
     const pw = await loadPlaywright();
     const existing = ctx.resources.get(SESSION) as BrowserSession | undefined;

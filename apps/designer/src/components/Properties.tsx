@@ -1,9 +1,9 @@
-import type { ActivityMeta, PropDef, Step, VariableDef, Workflow } from "@zamtest/core";
+import type { ActionMeta, PropDef, Step, VariableDef, Workflow } from "@zamtest/core";
 import { Field } from "./ui";
 
 interface Props {
   step: Step;
-  meta?: ActivityMeta;
+  meta?: ActionMeta;
   variables: VariableDef[];
   aiEnabled: boolean;
   onChange: (step: Step) => void;
@@ -116,7 +116,7 @@ export function Properties({ step, meta, variables, aiEnabled, onChange, onSelec
           </div>
         </Field>
       ))}
-      {!meta && <p className="warn-text">Unknown activity type. It may come from a package that is not installed.</p>}
+      {!meta && <p className="warn-text">Unknown action type. It may come from a package that is not installed.</p>}
       {meta && !meta.slots?.length && step.type !== "core.comment" && (
         <details className="advanced">
           <summary>Error handling & timeouts</summary>

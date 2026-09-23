@@ -23,9 +23,9 @@ importers:
 
   apps/agent:
     dependencies:
-      '@zamtest/activities':
+      '@zamtest/actions':
         specifier: workspace:*
-        version: link:../../packages/activities
+        version: link:../../packages/actions
       '@zamtest/ai':
         specifier: workspace:*
         version: link:../../packages/ai
@@ -85,9 +85,6 @@ importers:
 
   apps/portal:
     dependencies:
-      '@zamtest/core':
-        specifier: workspace:*
-        version: link:../../packages/core
       react:
         specifier: ^19.0.0
         version: 19.3.0
@@ -108,7 +105,7 @@ importers:
         specifier: ^6.0.0
         version: 6.4.3(@types/node@22.20.4)(tsx@4.23.15)
 
-  packages/activities:
+  packages/actions:
     dependencies:
       '@zamtest/ai':
         specifier: workspace:*
@@ -124,7 +121,7 @@ importers:
   packages/ai:
     dependencies:
       '@anthropic-ai/sdk':
-        specifier: latest
+        specifier: ^0.128.0
         version: 0.128.0(zod@3.25.76)
       '@zamtest/core':
         specifier: workspace:*

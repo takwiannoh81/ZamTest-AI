@@ -1,5 +1,5 @@
 import { newStepId } from "@zamtest/core";
-import type { ActivityMeta, Step } from "@zamtest/core";
+import type { ActionMeta, Step } from "@zamtest/core";
 
 export interface Location {
   parentId: string;
@@ -88,7 +88,7 @@ export function cloneWithNewIds(step: Step): Step {
   };
 }
 
-export function createStep(meta: ActivityMeta): Step {
+export function createStep(meta: ActionMeta): Step {
   const props: Record<string, unknown> = {};
   for (const p of meta.props) {
     if (p.required && p.default !== undefined) props[p.name] = p.default;

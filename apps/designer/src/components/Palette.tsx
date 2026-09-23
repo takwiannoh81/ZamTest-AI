@@ -1,17 +1,17 @@
 import { useMemo, useState } from "react";
-import type { ActivityMeta } from "@zamtest/core";
+import type { ActionMeta } from "@zamtest/core";
 import { CATEGORY_COLORS, iconFor } from "./icons";
 
-export const DRAG_ACTIVITY = "application/x-zamtest-activity";
+export const DRAG_ACTION = "application/x-zamtest-action";
 export const DRAG_STEP = "application/x-zamtest-step";
 
-export function Palette({ catalog, onAdd }: { catalog: ActivityMeta[]; onAdd: (meta: ActivityMeta) => void }) {
+export function Palette({ catalog, onAdd }: { catalog: ActionMeta[]; onAdd: (meta: ActionMeta) => void }) {
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const map = new Map<string, ActivityMeta[]>();
+    const map = new Map<string, ActionMeta[]>();
     for (const a of catalog) {
       if (q && !`${a.displayName} ${a.description} ${a.type}`.toLowerCase().includes(q)) continue;
       map.set(a.category, [...(map.get(a.category) ?? []), a]);
@@ -21,7 +21,7 @@ export function Palette({ catalog, onAdd }: { catalog: ActivityMeta[]; onAdd: (m
 
   return (
     <aside className="palette">
-      <input className="palette-search" placeholder="Search activities..." value={query} onChange={(e) => setQuery(e.target.value)} />
+      <input className="palette-search" placeholder="Search actions..." value={query} onChange={(e) => setQuery(e.target.value)} />
       <div className="palette-list">
         {groups.map(([category, items]) => (
           <div key={category} className="palette-group">
@@ -38,7 +38,7 @@ export function Palette({ catalog, onAdd }: { catalog: ActivityMeta[]; onAdd: (m
                   draggable
                   title={a.description}
                   onDragStart={(e) => {
-                    e.dataTransfer.setData(DRAG_ACTIVITY, a.type);
+                    e.dataTransfer.setData(DRAG_ACTION, a.type);
                     e.dataTransfer.effectAllowed = "copy";
                   }}
                   onDoubleClick={() => onAdd(a)}

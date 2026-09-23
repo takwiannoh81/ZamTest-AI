@@ -1,5 +1,5 @@
 import { walkSteps } from "@zamtest/core";
-import type { ActivityMeta, Workflow } from "@zamtest/core";
+import type { ActionMeta, Workflow } from "@zamtest/core";
 
 export interface Issue {
   stepId: string;
@@ -7,7 +7,7 @@ export interface Issue {
 }
 
 /** Design-time checks shown in the toolbar before publishing. */
-export function validate(workflow: Workflow, metas: Map<string, ActivityMeta>): Issue[] {
+export function validate(workflow: Workflow, metas: Map<string, ActionMeta>): Issue[] {
   const issues: Issue[] = [];
   const declared = new Set(workflow.variables.map((v) => v.name));
   const names = new Set<string>();
@@ -20,7 +20,7 @@ export function validate(workflow: Workflow, metas: Map<string, ActivityMeta>): 
     if (step.disabled) return;
     const meta = metas.get(step.type);
     if (!meta) {
-      issues.push({ stepId: step.id, message: `Unknown activity ${step.type}` });
+      issues.push({ stepId: step.id, message: `Unknown action ${step.type}` });
       return;
     }
     for (const p of meta.props) {

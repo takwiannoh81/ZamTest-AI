@@ -1,9 +1,9 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { stringify } from "@zamtest/core";
-import type { ActivityHandler } from "@zamtest/core";
+import type { ActionHandler } from "@zamtest/core";
 
-export const dataHandlers: Record<string, ActivityHandler> = {
+export const dataHandlers: Record<string, ActionHandler> = {
   "data.httpRequest": async (props, ctx) => {
     const method = String(props.method ?? "GET").toUpperCase();
     const headers: Record<string, string> = {};

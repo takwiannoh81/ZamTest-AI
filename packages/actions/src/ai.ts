@@ -1,11 +1,11 @@
 import { AiNotConfiguredError } from "@zamtest/ai";
 import type { AgentTool, ZamAI } from "@zamtest/ai";
-import type { ActivityContext, ActivityHandler, ActivityMeta, PropDef } from "@zamtest/core";
+import type { ActionContext, ActionHandler, ActionMeta, PropDef } from "@zamtest/core";
 import { stringify } from "@zamtest/core";
 import { hasPage, getPage, MAX_DOM_CHARS, snapshotDom } from "./browser.js";
 
 /** The host puts a ZamAI instance in `services.ai` when AI is configured. */
-export function getAi(ctx: ActivityContext, required = true): ZamAI | undefined {
+export function getAi(ctx: ActionContext, required = true): ZamAI | undefined {
   const ai = ctx.services.ai as ZamAI | undefined;
   if (!ai && required) throw new AiNotConfiguredError();
   return ai;
@@ -31,9 +31,9 @@ function propSchema(p: PropDef): Record<string, unknown> {
   }
 }
 
-/** Turns catalog activities into tools an AI agent can call. */
-export function activityTools(ctx: ActivityContext, allowed?: string[]): AgentTool[] {
-  const metas = ctx.catalog.filter((a: ActivityMeta) => a.agentTool && (!allowed?.length || allowed.includes(a.type)));
+/** Turns catalog actions into tools an AI agent can call. */
+export function actionTools(ctx: ActionContext, allowed?: string[]): AgentTool[] {
+  const metas = ctx.catalog.filter((a: ActionMeta) => a.agentTool && (!allowed?.length || allowed.includes(a.type)));
   const tools: AgentTool[] = metas.map((meta) => {
     const props = meta.props.filter((p) => !HIDDEN_FROM_AGENT.has(p.name));
     const defaults = Object.fromEntries(meta.props.filter((p) => p.default !== undefined).map((p) => [p.name, p.default]));
@@ -67,7 +67,7 @@ export function activityTools(ctx: ActivityContext, allowed?: string[]): AgentTo
   return tools;
 }
 
-export const aiHandlers: Record<string, ActivityHandler> = {
+export const aiHandlers: Record<string, ActionHandler> = {
   "ai.prompt": (props, ctx) =>
     getAi(ctx)!.prompt({ prompt: stringify(props.prompt), system: props.system ? stringify(props.system) : undefined }),
 
@@ -83,7 +83,7 @@ export const aiHandlers: Record<string, ActivityHandler> = {
 
   "ai.agent": async (props, ctx) => {
     const allowed = Array.isArray(props.tools) ? props.tools.map(String) : undefined;
-    const tools = activityTools(ctx, allowed);
+    const tools = actionTools(ctx, allowed);
     ctx.log("info", `AI agent started with ${tools.length} tools (DOM limit ${MAX_DOM_CHARS} chars)`);
     const result = await getAi(ctx)!.runAgent({
       goal: stringify(props.goal),

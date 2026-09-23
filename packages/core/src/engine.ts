@@ -1,6 +1,6 @@
-import { BUILTIN_ACTIVITIES, CONTROL_FLOW_TYPES } from "./catalog.js";
+import { BUILTIN_ACTIONS, CONTROL_FLOW_TYPES } from "./catalog.js";
 import { evaluate, interpolate, interpolateDeep } from "./expressions.js";
-import type { ActivityMeta, PropDef, Step, Workflow } from "./schema.js";
+import type { ActionMeta, PropDef, Step, Workflow } from "./schema.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -18,34 +18,34 @@ export type EngineEvent =
     }
   | { type: "custom"; time: string; name: string; stepId?: string; data?: unknown };
 
-/** Services the host (bot agent, test harness...) makes available to activities. */
+/** Services the host (bot agent, test harness...) makes available to actions. */
 export interface EngineServices {
   getAsset?: (name: string) => Promise<unknown>;
   [key: string]: unknown;
 }
 
-export interface ActivityContext {
+export interface ActionContext {
   readonly step: Step;
   readonly vars: Record<string, unknown>;
   readonly signal: AbortSignal;
   readonly services: EngineServices;
   /** Shared per-run resources, e.g. the open browser page. */
   readonly resources: Map<string, unknown>;
-  readonly catalog: ActivityMeta[];
+  readonly catalog: ActionMeta[];
   setVar(name: string, value: unknown): void;
   log(level: LogLevel, message: string, data?: unknown): void;
   emit(name: string, data?: unknown): void;
   /** Register cleanup that runs when the job ends (success or failure). */
   onDispose(fn: () => unknown | Promise<unknown>): void;
-  /** Runs another leaf activity with already-resolved props (used by AI agents). */
+  /** Runs another leaf action with already-resolved props (used by AI agents). */
   invoke(type: string, props: Record<string, unknown>): Promise<unknown>;
 }
 
-export type ActivityHandler = (props: Record<string, unknown>, ctx: ActivityContext) => unknown | Promise<unknown>;
+export type ActionHandler = (props: Record<string, unknown>, ctx: ActionContext) => unknown | Promise<unknown>;
 
 export interface RunOptions {
-  handlers: Record<string, ActivityHandler>;
-  catalog?: ActivityMeta[];
+  handlers: Record<string, ActionHandler>;
+  catalog?: ActionMeta[];
   inputs?: Record<string, unknown>;
   services?: EngineServices;
   signal?: AbortSignal;
@@ -98,7 +98,7 @@ export function errorMessage(err: unknown): string {
 
 export async function runWorkflow(workflow: Workflow, options: RunOptions): Promise<RunResult> {
   const started = Date.now();
-  const catalog = options.catalog ?? BUILTIN_ACTIVITIES;
+  const catalog = options.catalog ?? BUILTIN_ACTIONS;
   const metaByType = new Map(catalog.map((a) => [a.type, a]));
   const signal = options.signal ?? new AbortController().signal;
   const services = options.services ?? {};
@@ -122,7 +122,7 @@ export async function runWorkflow(workflow: Workflow, options: RunOptions): Prom
     }
   }
 
-  const makeContext = (step: Step): ActivityContext => ({
+  const makeContext = (step: Step): ActionContext => ({
     step,
     vars,
     signal,
@@ -138,7 +138,7 @@ export async function runWorkflow(workflow: Workflow, options: RunOptions): Prom
     onDispose: (fn) => disposers.push(fn),
     invoke: async (type, props) => {
       const handler = options.handlers[type];
-      if (!handler) throw new Error(`No handler registered for activity "${type}"`);
+      if (!handler) throw new Error(`No handler registered for action "${type}"`);
       return handler(props, makeContext({ ...step, type, props }));
     },
   });
@@ -265,7 +265,7 @@ export async function runWorkflow(workflow: Workflow, options: RunOptions): Prom
 
   const runLeaf = async (step: Step): Promise<void> => {
     const handler = options.handlers[step.type];
-    if (!handler) throw new Error(`No handler registered for activity "${step.type}"`);
+    if (!handler) throw new Error(`No handler registered for action "${step.type}"`);
     const props = resolveProps(step);
     const result = await handler(props, makeContext(step));
     const meta = metaByType.get(step.type);

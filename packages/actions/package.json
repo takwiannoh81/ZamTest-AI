@@ -1,9 +1,9 @@
 {
-  "name": "@zamtest/activities",
+  "name": "@zamtest/actions",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Runtime implementations of the built-in activities (system, data, files, browser, AI)",
+  "description": "Runtime implementations of the built-in actions (system, data, files, browser, AI)",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

@@ -4,7 +4,7 @@ import Fastify from "fastify";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { AiClient, AiNotConfiguredError, AiRefusalError, ZamAI } from "@zamtest/ai";
-import { BUILTIN_ACTIVITIES, WorkflowSchema } from "@zamtest/core";
+import { BUILTIN_ACTIONS, WorkflowSchema } from "@zamtest/core";
 import type { EngineEvent } from "@zamtest/core";
 import type { OrchestratorConfig } from "./config.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
@@ -122,7 +122,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   /* ----------------------------- general ---------------------------- */
   app.get("/api/health", async () => ({ ok: true, time: nowIso() }));
-  app.get("/api/activities", async () => BUILTIN_ACTIVITIES);
+  app.get("/api/actions", async () => BUILTIN_ACTIONS);
   app.get("/api/stats", async () => {
     const jobs = Object.values(store.data.jobs);
     const agents = Object.values(store.data.agents);
@@ -351,7 +351,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   app.post("/api/ai/generate-workflow", async (req) => {
     const body = parse(z.object({ prompt: z.string().min(3), existing: WorkflowSchema.optional() }), req.body);
-    return getAi().generateWorkflow({ prompt: body.prompt, existing: body.existing, catalog: BUILTIN_ACTIVITIES });
+    return getAi().generateWorkflow({ prompt: body.prompt, existing: body.existing, catalog: BUILTIN_ACTIONS });
   });
 
   app.post("/api/ai/suggest-selectors", async (req) => {

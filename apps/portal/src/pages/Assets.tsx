@@ -23,7 +23,7 @@ export function Assets() {
     <>
       <PageHeader
         title="Assets"
-        subtitle="Shared configuration and credentials used by automations (read with the Get Asset activity)"
+        subtitle="Shared configuration and credentials used by automations (read with the Get Asset action)"
         actions={
           <button className="btn" onClick={() => setEditing({ type: "text", value: "" })}>
             + New asset

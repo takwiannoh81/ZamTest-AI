@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { interpolate, parseWorkflow, runWorkflow } from "../src/index.js";
-import type { ActivityHandler, EngineEvent, Step } from "../src/index.js";
+import type { ActionHandler, EngineEvent, Step } from "../src/index.js";
 
 const logs: string[] = [];
-const handlers: Record<string, ActivityHandler> = {
+const handlers: Record<string, ActionHandler> = {
   "core.log": (p) => {
     logs.push(String(p.message));
   },
@@ -78,7 +78,7 @@ describe("engine", () => {
 
   it("retries failing steps and reports failure", async () => {
     let calls = 0;
-    const failing: ActivityHandler = () => {
+    const failing: ActionHandler = () => {
       calls++;
       throw new Error("flaky");
     };
@@ -101,7 +101,7 @@ describe("engine", () => {
     expect(logs).toEqual(["after"]);
   });
 
-  it("stores activity results in the output variable", async () => {
+  it("stores action results in the output variable", async () => {
     const result = await runWorkflow(
       wf([step("core.getAsset", { name: "apiUrl", output: "url" })], [{ name: "url", direction: "out" }]),
       { handlers: { "core.getAsset": (p) => `https://${p.name}` } },

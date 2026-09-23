@@ -2,8 +2,8 @@ import { z } from "zod";
 
 /**
  * A workflow is a tree of steps. Every step has a `type` that points at an
- * activity in the catalog (e.g. "core.log", "browser.click"). Container
- * activities (sequence, if, forEach, tryCatch...) hold child steps in named
+ * action in the catalog (e.g. "core.log", "browser.click"). Container
+ * actions (sequence, if, forEach, tryCatch...) hold child steps in named
  * slots, e.g. `{ then: [...], else: [...] }`.
  *
  * Property values are plain JSON. Strings may contain `{{ expression }}`
@@ -63,7 +63,7 @@ export const WorkflowSchema = z.object({
 export type Workflow = z.infer<typeof WorkflowSchema>;
 
 /* ------------------------------------------------------------------ */
-/* Activity metadata (what the Designer needs to render the palette    */
+/* Action metadata (what the Designer needs to render the palette    */
 /* and the properties panel). Implementations live elsewhere.          */
 /* ------------------------------------------------------------------ */
 
@@ -89,24 +89,24 @@ export const PropDefSchema = z.object({
   default: z.unknown().optional(),
   options: z.array(z.string()).optional(),
   description: z.string().optional(),
-  /** Output props name the variable the activity writes its result into. */
+  /** Output props name the variable the action writes its result into. */
   output: z.boolean().optional(),
 });
 export type PropDef = z.infer<typeof PropDefSchema>;
 
-export const ActivityMetaSchema = z.object({
+export const ActionMetaSchema = z.object({
   type: z.string(),
   displayName: z.string(),
   category: z.string(),
   description: z.string(),
   icon: z.string().optional(),
   props: z.array(PropDefSchema),
-  /** Named child slots for container activities. */
+  /** Named child slots for container actions. */
   slots: z.array(z.string()).optional(),
-  /** Whether an AI agent may call this activity as a tool. */
+  /** Whether an AI agent may call this action as a tool. */
   agentTool: z.boolean().optional(),
 });
-export type ActivityMeta = z.infer<typeof ActivityMetaSchema>;
+export type ActionMeta = z.infer<typeof ActionMetaSchema>;
 
 export function parseWorkflow(input: unknown): Workflow {
   return WorkflowSchema.parse(input);

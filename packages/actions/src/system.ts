@@ -1,11 +1,11 @@
 import { sleep, stringify } from "@zamtest/core";
-import type { ActivityHandler, LogLevel } from "@zamtest/core";
+import type { ActionHandler, LogLevel } from "@zamtest/core";
 
 const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
   ...args: string[]
 ) => (...args: unknown[]) => Promise<unknown>;
 
-export const systemHandlers: Record<string, ActivityHandler> = {
+export const systemHandlers: Record<string, ActionHandler> = {
   "core.log": (props, ctx) => {
     const level = (["debug", "info", "warn", "error"].includes(String(props.level)) ? props.level : "info") as LogLevel;
     ctx.log(level, stringify(props.message));

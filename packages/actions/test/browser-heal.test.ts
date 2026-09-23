@@ -10,7 +10,7 @@ const executable = process.env.ZAMTEST_BROWSER_EXECUTABLE;
 const canRun = Boolean(executable && existsSync(executable));
 const page = fileURLToPath(new URL("../../../examples/site/login.html", import.meta.url));
 
-describe.skipIf(!canRun)("browser activities", () => {
+describe.skipIf(!canRun)("browser actions", () => {
   it("self-heals a broken selector using the AI service", async () => {
     const healRequests: Array<{ failedSelector: string; description?: string; html: string }> = [];
     const fakeAi = {

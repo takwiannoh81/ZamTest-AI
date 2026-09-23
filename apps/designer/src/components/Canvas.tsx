@@ -1,17 +1,17 @@
 import { useState } from "react";
-import type { ActivityMeta, Step } from "@zamtest/core";
+import type { ActionMeta, Step } from "@zamtest/core";
 import type { Location } from "../tree";
 import { summarize } from "../tree";
 import { CATEGORY_COLORS, iconFor } from "./icons";
-import { DRAG_ACTIVITY, DRAG_STEP } from "./Palette";
+import { DRAG_ACTION, DRAG_STEP } from "./Palette";
 
 interface CanvasProps {
   root: Step;
-  metas: Map<string, ActivityMeta>;
+  metas: Map<string, ActionMeta>;
   selectedId?: string;
   runStatus: Record<string, "running" | "ok" | "error">;
   onSelect: (id: string) => void;
-  onDropActivity: (type: string, loc: Location) => void;
+  onDropAction: (type: string, loc: Location) => void;
   onMoveStep: (id: string, loc: Location) => void;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -44,13 +44,13 @@ function StepList({ steps, loc, ...props }: CanvasProps & { steps: Step[]; loc: 
   );
 }
 
-function DropZone({ loc, empty, onDropActivity, onMoveStep }: CanvasProps & { loc: Location; empty?: boolean }) {
+function DropZone({ loc, empty, onDropAction, onMoveStep }: CanvasProps & { loc: Location; empty?: boolean }) {
   const [over, setOver] = useState(false);
   return (
     <div
       className={`drop-zone${over ? " over" : ""}${empty ? " empty" : ""}`}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes(DRAG_ACTIVITY) || e.dataTransfer.types.includes(DRAG_STEP)) {
+        if (e.dataTransfer.types.includes(DRAG_ACTION) || e.dataTransfer.types.includes(DRAG_STEP)) {
           e.preventDefault();
           setOver(true);
         }
@@ -60,13 +60,13 @@ function DropZone({ loc, empty, onDropActivity, onMoveStep }: CanvasProps & { lo
         e.preventDefault();
         e.stopPropagation();
         setOver(false);
-        const type = e.dataTransfer.getData(DRAG_ACTIVITY);
+        const type = e.dataTransfer.getData(DRAG_ACTION);
         const stepId = e.dataTransfer.getData(DRAG_STEP);
-        if (type) onDropActivity(type, loc);
+        if (type) onDropAction(type, loc);
         else if (stepId) onMoveStep(stepId, loc);
       }}
     >
-      {empty ? "Drop activities here" : null}
+      {empty ? "Drop actions here" : null}
     </div>
   );
 }

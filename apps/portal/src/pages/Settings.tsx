@@ -35,7 +35,7 @@ export function Settings() {
             AI is enabled on the orchestrator (model <code>{ai.data.model}</code>).
           </p>
         ) : (
-          <p className="muted">AI is not configured. Set ANTHROPIC_API_KEY for the orchestrator (Designer AI) and for each bot agent (self-healing, AI activities).</p>
+          <p className="muted">AI is not configured. Set ANTHROPIC_API_KEY for the orchestrator (Designer AI) and for each bot agent (self-healing, AI actions).</p>
         )}
       </section>
     </>
