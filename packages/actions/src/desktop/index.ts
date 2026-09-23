@@ -16,7 +16,7 @@ const MAX_TREE_NODES = 1500;
 /** Returns the job's desktop driver, starting it on first use. */
 export function getDesktop(ctx: ActionContext): DesktopDriver {
   let driver = ctx.resources.get(DRIVER) as DesktopDriver | undefined;
-  if (!driver) {
+  if (!driver || !driver.running) {
     driver = DesktopDriver.start();
     ctx.resources.set(DRIVER, driver);
     const started = driver;

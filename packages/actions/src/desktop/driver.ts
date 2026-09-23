@@ -9,6 +9,9 @@ import type { Segment } from "./selector.js";
 /** Path of the PowerShell script that talks to Microsoft UI Automation. */
 export const DRIVER_SCRIPT = fileURLToPath(new URL("./driver.ps1", import.meta.url));
 
+/** Extra time a driver call may take beyond its own timeout before the driver is considered stuck. */
+const CALL_GRACE_MS = 60_000;
+
 export class DesktopUnsupportedError extends Error {
   constructor() {
     super("Desktop actions run on Windows bot agents only. Start this job on a Windows machine that has a signed-in desktop session.");
@@ -93,10 +96,32 @@ export class DesktopDriver {
       return Promise.reject(err);
     }
     const id = this.nextId++;
+    // A UI call that never returns (e.g. a modal dialog blocking the app) must not hang the job:
+    // after the step's own timeout plus a grace period the driver is stopped and the step fails.
+    const limit = (Number(args.timeoutMs) || 10_000) + CALL_GRACE_MS;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`The desktop driver did not answer "${op}" within ${Math.round(limit / 1000)} s and was restarted`));
+        this.proc.kill();
+      }, limit);
+      this.pending.set(id, {
+        resolve: (v) => {
+          clearTimeout(timer);
+          (resolve as (v: unknown) => void)(v);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
       this.proc.stdin.write(`${JSON.stringify({ id, op, args: payload })}\n`);
     });
+  }
+
+  /** False once the PowerShell process has stopped (crashed, killed after a hang, or closed). */
+  get running(): boolean {
+    return !this.exited;
   }
 
   async close(): Promise<void> {

@@ -134,6 +134,7 @@ public static class ZtNative {
   [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
 
   public static void Init() { try { SetProcessDPIAware(); } catch { } }
 
@@ -683,8 +684,13 @@ function Invoke-Op([string]$op, $a) {
     }
     'close' {
       $el = Wait-Element $a.selector $timeout
+      # Post WM_CLOSE instead of WindowPattern.Close(): Close() waits until the window has
+      # handled the message, which never happens while it shows a "Save changes?" prompt.
+      $hwnd = $el.Current.NativeWindowHandle
       $window = Get-Pattern $el ([System.Windows.Automation.WindowPattern]::Pattern)
-      if ($window) { $window.Close() } else { Focus-Element $el; [System.Windows.Forms.SendKeys]::SendWait('%{F4}') }
+      if ($hwnd -ne 0) { [void][ZtNative]::PostMessage([IntPtr]$hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) }
+      elseif ($window) { $window.Close() }
+      else { Focus-Element $el; [System.Windows.Forms.SendKeys]::SendWait('%{F4}') }
       return @{ ok = $true }
     }
     'tree' {

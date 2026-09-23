@@ -133,10 +133,19 @@ export async function desktopSelfTest(): Promise<boolean> {
       await check("Close Notepad without saving", async () => {
         if (field) await driver.call("type", { selector: field, text: "" }).catch(() => undefined);
         await driver.call("close", { selector: win });
-        await sleep(800);
-        const { count } = await driver.call<{ count: number }>("count", { selector: `${win} > button[name^="Don"]` });
-        if (count > 0) await driver.call("click", { selector: `${win} > button[name^="Don"][index=1]` });
-        await driver.call("waitFor", { selector: win, state: "gone", timeoutMs: 5000 });
+        // Notepad may ask "Save changes?": answer "Don't save" when the prompt appears.
+        const dontSave = `${win} > button[name^="Don"]`;
+        const deadline = Date.now() + 10_000;
+        let answered = false;
+        while (Date.now() < deadline) {
+          if (!(await driver.call<{ count: number }>("count", { selector: win })).count) return answered ? "answered the save prompt" : undefined;
+          if ((await driver.call<{ count: number }>("count", { selector: dontSave })).count) {
+            await driver.call("click", { selector: `${dontSave}[index=1]` });
+            answered = true;
+          }
+          await sleep(400);
+        }
+        throw new Error("Notepad is still open (was another Notepad window already open?)");
       });
     }
 
