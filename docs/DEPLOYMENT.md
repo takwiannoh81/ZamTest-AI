@@ -119,7 +119,20 @@ After that, keep the master token for emergencies only, for example if every adm
 
 The orchestrator writes a compressed, encrypted (SSE-S3) copy of the database to S3 every night at 03:00 server time, and deletes copies older than 30 days. Admins see the status under **Settings**, where there is also a **Back up now** button.
 
-**One-time setup in the AWS console:**
+**Automatic setup (recommended):**
+1. In the AWS console, click the **CloudShell** icon (`>_`) in the top bar and wait for the prompt.
+2. Paste:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/takwiannoh81/ZamTest-AI/claude/low-code-automation-platform-13z01c/deploy/aws-setup-backups.sh | bash
+   ```
+   The script:
+   - creates a private, versioned, encrypted bucket
+   - creates the `zamtech-backups` policy, limited to that bucket's `zamtest/` folder
+   - creates the `zamtech-backup` user with an access key
+   - prints one block of commands
+3. Paste that block into the Lightsail terminal. It stores the settings, updates the server, and runs a test backup that should end with **Backup OK**.
+
+**Manual setup in the AWS console** (the same steps, done by hand):
 1. **Create a bucket.** In S3, click **Create bucket**, for example `zamtechai-backups`, in your region (for example us-east-2). Keep **Block all public access** turned on and turn **Bucket versioning** on.
 2. **Create a policy.** In IAM, go to **Policies**, then **Create policy**, then the **JSON** tab. Paste [`deploy/backup-iam-policy.json`](../deploy/backup-iam-policy.json), replacing `YOUR-BUCKET-NAME` with your bucket name. Name the policy `zamtech-backups`.
 3. **Create a user.** In IAM, go to **Users**, then **Create user**, for example `zamtech-backup`. Choose **Attach policies directly**, select `zamtech-backups`, and create the user. This user can only reach this one bucket folder.
