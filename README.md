@@ -36,6 +36,10 @@ English, 日本語 (Japanese), 简体中文 (Simplified Chinese), Français (Fre
 - **AI answers in the selected language:** Build with AI writes its notes, step labels and log messages in that language, and the selector assistant explains its suggestions in it. Code identifiers (action types, variable names, selectors) stay in ASCII.
 - **Adding a language:** see [packages/i18n/README.md](packages/i18n/README.md).
 
+## Production
+
+The platform is set up to run on **zamtechai.com**: the website on the main domain, plus the `portal.`, `designer.` and `api.` subdomains, with automatic HTTPS. Deploying it takes one Docker Compose command. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 ## Quick start
 
 Requires Node 20+ and pnpm 9+.
@@ -53,6 +57,7 @@ pnpm dev:agent
 # 3. The web apps
 pnpm dev:portal                   # http://localhost:5173
 pnpm dev:designer                 # http://localhost:5174
+pnpm --filter @zamtest/website dev # public website, http://localhost:5175
 ```
 
 Next, open the Designer and create a workflow. Click **Run** to test it on your agent, then **Publish** it. In the Portal, go to **Processes** and click **Start**, or add a schedule.
@@ -92,6 +97,8 @@ apps/
   agent/        Bot agent CLI (connect | run)
   portal/       React admin console
   designer/     React visual workflow designer
+  website/      Public marketing website (zamtechai.com)
+deploy/         Dockerfile, Caddyfile and Docker Compose stack for production
 examples/       Sample workflows and a demo login page
 docs/           Architecture and roadmap
 ```

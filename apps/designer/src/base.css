@@ -160,3 +160,5 @@ code, pre, .mono, .log, .log-line { direction: ltr; unicode-bidi: isolate; }
 .log { text-align: left; }
 [dir="rtl"] .flip-rtl { display: inline-block; transform: scaleX(-1); }
 :root[dir="rtl"] { font-family: "Segoe UI", "Noto Sans Arabic", "Noto Kufi Arabic", Tahoma, system-ui, sans-serif; }
+.auth-backdrop { background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(4px); z-index: 100; }
+.auth-modal { width: min(420px, 100%); }

@@ -91,3 +91,13 @@ describe("orchestrator API", () => {
     expect(res.statusCode).toBe(503);
   });
 });
+
+describe("production safety", () => {
+  it("refuses weak or default secrets in production", async () => {
+    const { productionProblems } = await import("../src/config.js");
+    expect(productionProblems(loadConfig({ NODE_ENV: "production" }))).toHaveLength(2);
+    const strong = "x".repeat(32);
+    expect(productionProblems(loadConfig({ NODE_ENV: "production", ZAMTEST_ADMIN_TOKEN: strong, ZAMTEST_AGENT_KEY: strong }))).toEqual([]);
+    expect(productionProblems(loadConfig({}))).toEqual([]);
+  });
+});

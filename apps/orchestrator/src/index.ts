@@ -1,7 +1,12 @@
 import { buildApp } from "./app.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, productionProblems } from "./config.js";
 
 const config = loadConfig();
+const problems = productionProblems(config);
+if (problems.length) {
+  console.error(`Refusing to start in production:\n- ${problems.join("\n- ")}\nGenerate values with: openssl rand -hex 32`);
+  process.exit(1);
+}
 const { app } = await buildApp({ config, logger: true });
 
 if (config.agentKey === "dev-agent-key") {

@@ -1,0 +1,62 @@
+# Production stack for ZamTest AI.
+#   cd deploy && ./init-env.sh && docker compose up -d --build
+# Optional cloud bot agent:  docker compose --profile agent up -d --build
+name: zamtest
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+      args:
+        SITE_DOMAIN: ${SITE_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - orchestrator
+    restart: unless-stopped
+
+  orchestrator:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: orchestrator
+    environment:
+      ZAMTEST_ADMIN_TOKEN: ${ZAMTEST_ADMIN_TOKEN}
+      ZAMTEST_AGENT_KEY: ${ZAMTEST_AGENT_KEY}
+      ZAMTEST_CORS_ORIGINS: https://portal.${SITE_DOMAIN},https://designer.${SITE_DOMAIN}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ZAMTEST_AI_MODEL: ${ZAMTEST_AI_MODEL:-}
+    volumes:
+      - zamtest_data:/data
+    restart: unless-stopped
+
+  agent:
+    profiles: ["agent"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: agent
+    environment:
+      ZAMTEST_SERVER: http://orchestrator:4000
+      ZAMTEST_AGENT_KEY: ${ZAMTEST_AGENT_KEY}
+      ZAMTEST_AGENT_NAME: ${ZAMTEST_AGENT_NAME:-cloud-bot-1}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    shm_size: 1gb
+    depends_on:
+      - orchestrator
+    restart: unless-stopped
+
+volumes:
+  zamtest_data:
+  caddy_data:
+  caddy_config:

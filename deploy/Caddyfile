@@ -1,0 +1,64 @@
+# Caddy obtains and renews HTTPS certificates automatically (Let's Encrypt).
+# SITE_DOMAIN and ACME_EMAIL come from deploy/.env via docker compose.
+{
+	email {$ACME_EMAIL}
+}
+
+(security) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+(spa) {
+	encode zstd gzip
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	try_files {path} /index.html
+	file_server
+}
+
+# Public website
+{$SITE_DOMAIN} {
+	import security
+	root * /srv/website
+	import spa
+}
+
+www.{$SITE_DOMAIN} {
+	redir https://{$SITE_DOMAIN}{uri} permanent
+}
+
+# Portal and Designer: static apps; /api goes to the orchestrator (same origin, no CORS needed)
+portal.{$SITE_DOMAIN} {
+	import security
+	header X-Frame-Options "DENY"
+	handle /api/* {
+		reverse_proxy orchestrator:4000
+	}
+	handle {
+		root * /srv/portal
+		import spa
+	}
+}
+
+designer.{$SITE_DOMAIN} {
+	import security
+	header X-Frame-Options "DENY"
+	handle /api/* {
+		reverse_proxy orchestrator:4000
+	}
+	handle {
+		root * /srv/designer
+		import spa
+	}
+}
+
+# API endpoint for bot agents on your own machines (and API clients)
+api.{$SITE_DOMAIN} {
+	import security
+	reverse_proxy orchestrator:4000
+}

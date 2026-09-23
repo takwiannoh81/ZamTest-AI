@@ -34,6 +34,18 @@ export function Settings() {
           {t("common.save")}
         </button>
         {saved && <span className="muted"> {t("settings.saved")}</span>}
+        {getToken() && (
+          <button
+            className="btn-ghost"
+            style={{ marginInlineStart: 8 }}
+            onClick={() => {
+              setToken("");
+              window.location.reload();
+            }}
+          >
+            {t("auth.signOut")}
+          </button>
+        )}
       </section>
       <section className="card">
         <h2>{t("settings.ai")}</h2>

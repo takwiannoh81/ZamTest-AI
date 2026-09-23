@@ -80,7 +80,7 @@ const AssetBody = z.object({
 export async function buildApp(options: AppOptions): Promise<{ app: FastifyInstance; store: Store; scheduler: Scheduler }> {
   const { config } = options;
   const store = options.store ?? new Store(config.dataDir);
-  const app = Fastify({ logger: options.logger ?? false, bodyLimit: 10 * 1024 * 1024 });
+  const app = Fastify({ logger: options.logger ?? false, bodyLimit: 10 * 1024 * 1024, trustProxy: config.production });
   const scheduler = new Scheduler(store, (msg) => app.log.info(msg));
   let ai: ZamAI | null | undefined = options.ai;
   const getAi = () => {
@@ -89,7 +89,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     return ai;
   };
 
-  await app.register(cors, { origin: true });
+  await app.register(cors, { origin: config.corsOrigins });
 
   app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
     if (err instanceof HttpError) return reply.status(err.statusCode).send({ error: err.message });
