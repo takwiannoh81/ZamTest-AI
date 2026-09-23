@@ -4,6 +4,12 @@ import type { Agent } from "../api";
 import { usePoll } from "../hooks";
 import { Badge, Empty, ErrorBanner, PageHeader } from "../ui";
 
+/** The Windows agent installer: the latest GitHub release unless the deployment hosts its own copy. */
+const AGENT_DOWNLOAD_URL =
+  import.meta.env.VITE_AGENT_DOWNLOAD_URL ?? "https://github.com/takwiannoh81/ZamTest-AI/releases/latest/download/ZamTechAI-Agent-Setup.exe";
+/** The address agents connect to: the API server, which is this site unless VITE_API_URL points elsewhere. */
+const SERVER_URL = import.meta.env.VITE_API_URL || window.location.origin;
+
 export function Agents() {
   const { t, timeAgo } = useI18n();
   const { data, error, reload } = usePoll<Agent[]>("/api/agents");
@@ -16,7 +22,15 @@ export function Agents() {
 
   return (
     <>
-      <PageHeader title={t("agents.title")} subtitle={t("agents.subtitle")} />
+      <PageHeader
+        title={t("agents.title")}
+        subtitle={t("agents.subtitle")}
+        actions={
+          <a className="btn" href={AGENT_DOWNLOAD_URL}>
+            {t("agents.downloadWindows")}
+          </a>
+        }
+      />
       <ErrorBanner error={error} />
       {data?.length ? (
         <table>
@@ -61,6 +75,13 @@ export function Agents() {
       ) : (
         <Empty>
           <p>{t("agents.empty")}</p>
+          <p>{t("agents.installHint", { server: SERVER_URL })}</p>
+          <p>
+            <a className="btn" href={AGENT_DOWNLOAD_URL}>
+              {t("agents.downloadWindows")}
+            </a>
+          </p>
+          <p className="muted">{t("agents.fromSource")}</p>
           <pre>pnpm dev:agent{"\n"}# ZAMTEST_SERVER=http://host:4000 ZAMTEST_AGENT_KEY=... pnpm --filter @zamtest/agent start</pre>
         </Empty>
       )}

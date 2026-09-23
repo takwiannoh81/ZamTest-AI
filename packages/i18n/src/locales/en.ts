@@ -89,6 +89,9 @@ export const en = {
   "agents.currentJob": "current job",
   "agents.confirmRemove": "Remove agent {name}? It will re-register the next time it connects.",
   "agents.empty": "No agents connected yet. Start one on any machine:",
+  "agents.downloadWindows": "⬇ Download for Windows",
+  "agents.installHint": "On Windows, install the agent on each PC that should run automations. Setup asks for the server address ({server}) and the agent key from your administrator.",
+  "agents.fromSource": "On Linux or macOS, or from source code:",
 
   /* processes */
   "processes.title": "Processes",

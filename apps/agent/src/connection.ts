@@ -22,6 +22,9 @@ interface JobPayload {
 
 const VERSION = "0.1.0";
 
+/** A timer that does not keep the process alive. */
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref());
+
 /**
  * Unattended bot agent: registers with the orchestrator, sends heartbeats,
  * pulls one job at a time, streams execution events and reports the result.
@@ -30,6 +33,9 @@ export class AgentConnection {
   private agentId?: string;
   private current?: { id: string; controller: AbortController };
   private stopped = false;
+  /** Set while shutting down: the running job may finish, but no new jobs are taken. */
+  private draining = false;
+  private loop?: Promise<void>;
   private readonly log: (message: string) => void;
 
   constructor(private readonly options: AgentOptions) {
@@ -60,10 +66,16 @@ export class AgentConnection {
     this.log(`Registered as ${this.options.name} (${this.agentId}) with ${this.options.server}`);
   }
 
-  async start(): Promise<void> {
-    await this.retryForever(() => this.register());
+  start(): Promise<void> {
+    this.loop ??= this.run();
+    return this.loop;
+  }
+
+  private async run(): Promise<void> {
+    await this.retryForever(() => this.register(), () => this.draining);
+    if (this.draining || this.stopped) return;
     void this.heartbeatLoop();
-    while (!this.stopped) {
+    while (!this.stopped && !this.draining) {
       try {
         const job = await this.call<JobPayload>("POST", "/api/agent/jobs/next", { agentId: this.agentId });
         if (job) {
@@ -82,14 +94,38 @@ export class AgentConnection {
     this.current?.controller.abort();
   }
 
+  /**
+   * Graceful shutdown: takes no new jobs and lets the running one finish,
+   * cancelling it after timeoutMs (0 cancels at once). Either way the job's
+   * result is still reported. Resolves once the agent is idle.
+   */
+  async drain(timeoutMs: number): Promise<void> {
+    this.draining = true;
+    const loop = this.loop ?? Promise.resolve();
+    if (this.current) {
+      this.log(timeoutMs > 0
+        ? `Finishing job ${this.current.id} before stopping (at most ${Math.round(timeoutMs / 1000)} s)`
+        : `Cancelling job ${this.current.id} to stop`);
+    }
+    const finished = await Promise.race([loop.then(() => true), delay(timeoutMs).then(() => false)]);
+    if (!finished) {
+      if (this.current) {
+        if (timeoutMs > 0) this.log(`Time limit reached; cancelling job ${this.current.id}`);
+        this.current.controller.abort();
+      }
+      await Promise.race([loop, delay(15_000)]);
+    }
+    this.stopped = true;
+  }
+
   private async handleError(err: unknown) {
     const status = (err as { status?: number }).status;
     this.log(`Orchestrator error: ${err instanceof Error ? err.message : err}`);
     if (status === 404) await this.retryForever(() => this.register());
   }
 
-  private async retryForever(fn: () => Promise<void>) {
-    for (let delay = 1000; !this.stopped; delay = Math.min(delay * 2, 30_000)) {
+  private async retryForever(fn: () => Promise<void>, giveUp: () => boolean = () => false) {
+    for (let delay = 1000; !this.stopped && !giveUp(); delay = Math.min(delay * 2, 30_000)) {
       try {
         return await fn();
       } catch (err) {

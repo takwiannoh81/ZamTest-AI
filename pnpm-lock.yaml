@@ -32,6 +32,10 @@ importers:
       '@zamtest/core':
         specifier: workspace:*
         version: link:../../packages/core
+    devDependencies:
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
     optionalDependencies:
       playwright:
         specifier: ^1.50.0

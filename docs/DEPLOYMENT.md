@@ -117,6 +117,50 @@ pnpm --filter @zamtest/agent exec tsx src/cli.ts record https://erp.example.com 
 
 Desktop actions (**Desktop** category in the Designer) drive Windows applications through Microsoft UI Automation. They use the Windows PowerShell and UI Automation that come with every Windows 10/11 PC, so there is nothing extra to install. They only run on a Windows bot agent, and the agent must run **inside a signed-in desktop session**: start it from a normal user session, not as a Windows service, and keep the session unlocked. With RDP, keep the session open rather than minimised, or use a console session.
 
+**The easy way: the Windows installer.** Download it with **Download for Windows** on the Portal's **Agents** page, or from the repository's [GitHub Releases](https://github.com/takwiannoh81/ZamTest-AI/releases/latest). `ZamTechAI-Agent-Setup.exe` installs the agent for the signed-in user (no administrator rights, nothing else to install) and asks for the server URL, the agent key and a bot name. The agent then runs from a tray icon, starts when the user signs in and restarts itself if it stops. Right-click the tray icon for **Settings**, **Open log**, **Run desktop self-test** and **Record a desktop workflow**. It installs to `%LOCALAPPDATA%\Programs\ZamTech AI Agent`, with its settings in `agent.json` and daily logs in `logs\` there.
+
+- **The agent key is encrypted** for that Windows user (Windows DPAPI) and stored as `keyProtected` in `agent.json`. Another user, or a copy of the file on another PC, cannot read it; there, open **Settings** and enter the key again.
+- **Stopping never cuts a job short without asking.** **Quit** and **Restart** let a running job finish first (up to 10 minutes) and ask whether to cancel it instead. An upgrade or uninstall asks the same; run silently, it waits for the job. A cancelled job is reported to the orchestrator as *cancelled*.
+- Releases are signed by **ZAMTECH&HOME LLC**, so Windows names the publisher. For the first releases, SmartScreen may still say "Windows protected your PC" until the publisher has built up reputation; choose **More info**, then **Run anyway**. Builds from branches are unsigned.
+
+To roll it out to many PCs without clicking through the wizard:
+```powershell
+ZamTechAI-Agent-Setup.exe /VERYSILENT /SERVER=https://api.zamtechai.com /KEY=<agent key> /NAME=finance-pc-01
+```
+Options: `/MERGETASKS="browsers"` also downloads Chromium for web automation, `/MERGETASKS="!autostart"` does not start the agent at sign-in, `/NOSTART` leaves it stopped after setup, and `/CANCELJOB` cancels a running job instead of waiting for it during an upgrade.
+
+**Building and releasing the installer.** Build it on Windows with [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`):
+```powershell
+pnpm --filter @zamtest/agent build:installer
+powershell -File apps/agent/installer/test-install.ps1   # install silently, check, uninstall
+```
+The setup file lands in `apps/agent/dist/installer/`. The **Agent installer (Windows)** GitHub Actions workflow builds and tests an unsigned installer on every change to the agent. To publish a signed version, raise `version` in `apps/agent/package.json`, commit, and push a tag with the same version:
+```bash
+git tag agent-v0.1.0 && git push origin agent-v0.1.0
+```
+The workflow then builds the installer signed, checks every signature, and creates the GitHub Release that the Portal's download button points to. A self-hosted Portal can link to its own copy instead by building it with `VITE_AGENT_DOWNLOAD_URL`.
+
+**Code signing** uses [Azure Artifact Signing](https://learn.microsoft.com/azure/artifact-signing/) (formerly Trusted Signing): the Artifact Signing account `zamtech` (East US) and its certificate profile `ZamTechAI`, issued to the validated company ZAMTECH&HOME LLC. The account settings are in `apps/agent/installer/artifact-signing.json`. The build signs the tray app, the setup file and the uninstaller, and Inno Setup refuses to finish if a signature is missing. Certificates last three days and are renewed by the service; every signature is timestamped, so signed files stay valid afterwards.
+
+One-time setup for GitHub, so releases can sign without any stored password:
+1. In **Microsoft Entra ID > App registrations**, create an app (e.g. `zamtech-agent-github-signing`). Under **Certificates & secrets > Federated credentials**, add a credential for **GitHub Actions deploying Azure resources**: organization `takwiannoh81`, repository `ZamTest-AI`, entity type **Environment**, name `release`.
+2. On the certificate profile **ZamTechAI**, open **Access control (IAM)** and give that app the **Artifact Signing Certificate Profile Signer** role.
+3. In the GitHub repository, go to **Settings > Environments**, create the environment `release` and add the secrets `AZURE_CLIENT_ID` (the app's Application ID), `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`. Optionally add yourself as a required reviewer, so every release waits for your approval.
+
+To sign on your own PC instead: install the [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli-windows), run `az login` with an account that has the Signer role on the profile, and build with `ZAMTEST_ARTIFACT_SIGNING=1`. It needs the Windows SDK's `signtool` and the .NET 8 runtime; the build downloads Microsoft's signing plug-in by itself. With a certificate from another authority, set `ZAMTEST_SIGN_COMMAND` to a command that signs one file, with `{file}` where the file goes.
+
+**Unattended PCs (no one signed in).** Desktop automation needs a signed-in, unlocked Windows session, so a bot PC that must come back by itself after a reboot or a Windows update should sign in automatically:
+
+1. Create a dedicated local Windows account for the bot, with only the rights its automations need. Install the agent while signed in as that account.
+2. Turn on automatic sign-in with Microsoft's [Sysinternals Autologon](https://learn.microsoft.com/sysinternals/downloads/autologon): run it as an administrator, enter the bot account's user name, domain and password, and click **Enable**. It stores the password encrypted (as an LSA secret), not in plain text in the registry.
+3. Keep the session unlocked: in **Settings > Accounts > Sign-in options** set *If you've been away, when should Windows require you to sign in again?* to **Never**; turn off the screen saver lock; and in **Settings > System > Power** set sleep to **Never**. A company Group Policy that locks idle sessions must exclude this account.
+4. For virtual machines reached over Remote Desktop: closing the RDP window locks the session, and a locked session cannot be automated. Disconnect with `tscon %sessionname% /dest:console` (run as administrator inside the session) instead, which hands the session back to the console unlocked.
+5. Reboot once and check that the agent appears as online on the Portal's **Agents** page.
+
+Anyone with physical access to an auto-signed-in PC can use that account, so keep bot PCs in a locked room or run them as virtual machines, and turn on BitLocker.
+
+**From source instead:**
+
 1. Install Node 20+ and pnpm, then clone the repo as above.
 2. Check that desktop automation works on the machine:
    ```powershell

@@ -5,6 +5,7 @@ import { parseWorkflow } from "@zamtest/core";
 import type { Workflow } from "@zamtest/core";
 import { recordDesktop, desktopSelfTest } from "./desktop-cli.js";
 import { AgentConnection } from "./connection.js";
+import { agentKeyFrom, loadAgentConfig } from "./config.js";
 import { aiEnabled, execute } from "./runtime.js";
 import { startRecording } from "./recorder.js";
 import { createInterface } from "node:readline/promises";
@@ -53,7 +54,7 @@ async function saveOrUpload(workflow: Workflow, name: string, server: string) {
 }
 
 async function record(url: string) {
-  const server = values.server ?? process.env.ZAMTEST_SERVER ?? "http://127.0.0.1:4000";
+  const server = defaultServer();
   const name = values.name ?? `Recording of ${new URL(url).hostname}`;
   const recording = await startRecording(url, {
     name,
@@ -100,6 +101,13 @@ Usage:
   zamtest-agent desktop-test
       Windows only. Checks desktop automation with Notepad and Calculator
       and writes desktop-test-report.txt.
+
+Every command accepts --config FILE (or ZAMTEST_AGENT_CONFIG): an agent.json
+with {"server", "key" or "keyProtected", "name", "env"}, as written by the
+Windows installer. Flags and environment variables override it.
+
+Stopping the agent (Ctrl+C) lets a running job finish first, for up to
+ZAMTEST_DRAIN_SECONDS (600); press Ctrl+C again to cancel the job.
 `;
 
 const { positionals, values } = parseArgs({
@@ -112,11 +120,14 @@ const { positionals, values } = parseArgs({
     out: { type: "string" },
     upload: { type: "boolean" },
     "all-apps": { type: "boolean" },
+    config: { type: "string" },
     help: { type: "boolean", short: "h" },
   },
 });
 
 const [command, file] = positionals;
+const fileConfig = loadAgentConfig(values.config ?? process.env.ZAMTEST_AGENT_CONFIG);
+const defaultServer = () => values.server ?? process.env.ZAMTEST_SERVER ?? fileConfig.server ?? "http://127.0.0.1:4000";
 
 if (values.help || !command) {
   console.log(USAGE);
@@ -125,17 +136,35 @@ if (values.help || !command) {
 
 if (command === "connect") {
   const agent = new AgentConnection({
-    server: values.server ?? process.env.ZAMTEST_SERVER ?? "http://127.0.0.1:4000",
-    key: values.key ?? process.env.ZAMTEST_AGENT_KEY ?? "dev-agent-key",
-    name: values.name ?? process.env.ZAMTEST_AGENT_NAME ?? hostname(),
+    server: defaultServer(),
+    key: values.key ?? process.env.ZAMTEST_AGENT_KEY ?? agentKeyFrom(fileConfig) ?? "dev-agent-key",
+    name: values.name ?? process.env.ZAMTEST_AGENT_NAME ?? (fileConfig.name || hostname()),
   });
   console.log(`[agent] AI features ${aiEnabled() ? "enabled" : "disabled (set ANTHROPIC_API_KEY to enable)"}`);
-  const stop = () => {
-    agent.stop();
-    setTimeout(() => process.exit(0), 2000).unref();
+  // Stopping lets a running job finish first (up to ZAMTEST_DRAIN_SECONDS); asking again cancels it.
+  const drainMs = Number(process.env.ZAMTEST_DRAIN_SECONDS ?? 600) * 1000;
+  let stopping = false;
+  const shutdown = async (cancelJob: boolean) => {
+    if (!stopping) console.log(cancelJob ? "[agent] Stopping now" : "[agent] Stopping after the current job");
+    stopping = true;
+    await agent.drain(cancelJob ? 0 : drainMs);
+    process.exit(0);
   };
-  process.on("SIGINT", stop);
-  process.on("SIGTERM", stop);
+  const onSignal = () => {
+    if (!stopping) console.log("[agent] Press Ctrl+C again to cancel the running job");
+    void shutdown(stopping);
+  };
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+  // The Windows tray app cannot send signals to a hidden process; it writes "drain" or "stop" to stdin.
+  if (process.env.ZAMTEST_STDIN_CONTROL === "1") {
+    const control = createInterface({ input: process.stdin });
+    control.on("line", (line) => {
+      if (line.trim() === "stop") void shutdown(true);
+      else if (line.trim() === "drain") void shutdown(false);
+    });
+    control.on("close", () => void shutdown(stopping));
+  }
   await agent.start();
 } else if (command === "run") {
   if (!file) {
@@ -165,7 +194,7 @@ if (command === "connect") {
 } else if (command === "record-desktop") {
   const name = values.name ?? (file ? `Desktop recording of ${file}` : "Desktop recording");
   const workflow = await recordDesktop({ program: file, name, allApps: values["all-apps"] });
-  await saveOrUpload(workflow, name, values.server ?? process.env.ZAMTEST_SERVER ?? "http://127.0.0.1:4000");
+  await saveOrUpload(workflow, name, defaultServer());
   process.exit(0);
 } else if (command === "desktop-test") {
   process.exit((await desktopSelfTest()) ? 0 : 1);

@@ -40,4 +40,4 @@ v0.1 is a working vertical slice: Designer → Orchestrator → Bot Agent, with 
 - Horizontal scaling of the orchestrator, with a Redis/NATS job queue.
 - Agent pools, machine templates, autoscaling cloud robots and high-density robots.
 - Metrics and dashboards (Prometheus/OpenTelemetry), SLA alerts and webhooks.
-- Helm chart, Docker images and a Windows service installer for agents.
+- Helm chart and Docker images. (The Windows agent installer with a tray app is done in v0.1; unattended PCs use Windows automatic sign-in, see docs/DEPLOYMENT.md.)
