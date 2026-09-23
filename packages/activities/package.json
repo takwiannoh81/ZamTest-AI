@@ -1,0 +1,30 @@
+{
+  "name": "@zamtest/activities",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Runtime implementations of the built-in activities (system, data, files, browser, AI)",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@zamtest/ai": "workspace:*",
+    "@zamtest/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.45"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "playwright": "^1.50.0"
+  }
+}

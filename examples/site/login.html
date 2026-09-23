@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+  <head><title>Demo ERP - Login</title></head>
+  <body>
+    <h1>Demo ERP</h1>
+    <form id="login" onsubmit="event.preventDefault(); document.getElementById('welcome').textContent = 'Welcome, ' + document.getElementById('user').value + '!';">
+      <label for="user">Username</label>
+      <input id="user" name="username" data-testid="username" />
+      <label for="pass">Password</label>
+      <input id="pass" name="password" type="password" data-testid="password" />
+      <button type="submit" data-testid="sign-in">Sign in</button>
+    </form>
+    <p id="welcome"></p>
+  </body>
+</html>

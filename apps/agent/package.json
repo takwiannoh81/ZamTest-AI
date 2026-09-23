@@ -1,0 +1,21 @@
+{
+  "name": "@zamtest/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bot agent (robot): connects to the orchestrator, picks up jobs and executes workflows",
+  "scripts": {
+    "dev": "tsx src/cli.ts connect",
+    "start": "tsx src/cli.ts connect",
+    "run-file": "tsx src/cli.ts run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@zamtest/activities": "workspace:*",
+    "@zamtest/ai": "workspace:*",
+    "@zamtest/core": "workspace:*"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.50.0"
+  }
+}

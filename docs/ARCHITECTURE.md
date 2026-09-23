@@ -1,0 +1,117 @@
+# Architecture
+
+```
+ ┌──────────────┐    ┌──────────────┐
+ │   Designer   │    │    Portal    │        React SPAs (Vite)
+ └──────┬───────┘    └──────┬───────┘
+        │  REST /api/*      │  (optional Bearer ZAMTEST_ADMIN_TOKEN)
+        ▼                   ▼
+ ┌──────────────────────────────────────┐
+ │            Orchestrator              │    Fastify
+ │ workflows · packages · jobs · logs   │
+ │ schedules (cron) · assets · agents   │──── Claude (Build with AI, selector assistant)
+ │ JSON-file store (swap for Postgres)  │
+ └──────────────────┬───────────────────┘
+                    │  REST /api/agent/*  (x-agent-key)
+                    │  register · heartbeat · jobs/next · events · complete · assets
+        ┌───────────┴───────────┐
+        ▼                       ▼
+ ┌──────────────┐        ┌──────────────┐
+ │  Bot Agent   │  ...   │  Bot Agent   │    Node process on each robot machine
+ │ core engine  │        │              │──── Claude (self-healing, AI activities, AI agents)
+ │ + activities │        │              │──── Playwright browsers, HTTP, files
+ └──────────────┘        └──────────────┘
+```
+
+## Workflow model (`packages/core`)
+
+A workflow is JSON, validated with zod (`WorkflowSchema`):
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "id": "invoice-bot",
+  "name": "Invoice bot",
+  "variables": [
+    { "name": "invoices", "type": "array", "direction": "in" },
+    { "name": "total", "type": "number", "direction": "out", "default": 0 }
+  ],
+  "root": {
+    "id": "root", "type": "core.sequence", "props": {},
+    "slots": { "body": [
+      { "id": "s1", "type": "core.forEach", "props": { "items": "invoices", "itemVariable": "inv" },
+        "slots": { "body": [
+          { "id": "s2", "type": "core.assign", "props": { "variable": "total", "value": "total + inv.amount" } }
+        ] } }
+    ] }
+  }
+}
+```
+
+- **Steps** have a `type` that points at an activity, some `props`, and named child `slots` for containers. A step can also carry the execution policies `retry`, `timeoutMs`, `continueOnError` and `disabled`.
+- **Props** are resolved using the prop type from the catalog:
+  - `expression` props are JavaScript expressions over variables.
+  - String props support `{{ template }}` interpolation. A string that is exactly one `{{ x }}` keeps its type.
+  - `variable` props name a variable.
+- **Activity metadata** (`BUILTIN_ACTIVITIES`) is pure data. The Designer uses it to render the palette and the properties panel, the AI uses it to plan workflows, and the engine uses it to resolve props and assign `output` variables.
+- **The engine** (`runWorkflow`):
+  - Executes control flow itself: sequence, if, forEach, while, tryCatch and break.
+  - Delegates every leaf activity to handlers.
+  - Emits `stepStart`, `stepEnd`, `log` and `custom` events.
+  - Honours an `AbortSignal` for cancellation.
+  - Runs registered disposers at the end, for example to close a browser.
+
+## Activities (`packages/activities`)
+
+The handlers are grouped as follows:
+
+| Group | Activities |
+|---|---|
+| `system` | `core.log`, `core.assign`, `core.delay`, `core.getAsset`, `core.runScript`, `core.throw` |
+| `data` | HTTP, JSON, files |
+| `browser` | Playwright (loaded lazily, so agents without browsers still work) |
+| `ai` | AI Prompt, AI Extract Data, AI Agent |
+
+An `ActivityPackage` bundles metadata and handlers. This is the extension point for custom activity packages (Excel, SAP, email, desktop UI...).
+
+### AI self-healing
+
+`browser.*` activities run through `withSelector()`. If the selector fails and AI is available (`aiHeal` defaults to true):
+
+1. Capture a condensed DOM snapshot. Scripts, styles and SVG internals are dropped, and only semantic attributes are kept. The snapshot is capped at 150k characters, and Claude is told when it has been truncated.
+2. Ask Claude for ranked replacement selectors, using structured JSON output. The request includes the step's plain-language `description`.
+3. Check each candidate against the live page. A candidate is only used if it matches exactly one element.
+4. Retry the action with the first candidate that passes. Log the change and emit a `selectorHealed` event.
+5. The orchestrator stores healed selectors on the job. The Portal lists them, and the Designer offers **Apply fix**.
+
+### AI agents
+
+`ai.agent` turns every catalog activity marked `agentTool: true` into a Claude tool. The input schemas are derived from the activities' prop definitions. It also adds a `browser_snapshot` tool.
+
+A manual agent loop in `packages/ai/src/agent.ts` runs tool calls one at a time, because UI actions must not race each other. The loop enforces `maxSteps`, supports cancellation, and logs every tool call to the job log.
+
+## Orchestrator (`apps/orchestrator`)
+
+| Entity | Notes |
+|---|---|
+| Workflow (draft) | Edited by the Designer |
+| Package ("process") | Immutable, versioned snapshot created by **Publish** |
+| Job | Status: `pending → running → succeeded / failed / cancelled` (with `cancelling` in between). Stores inputs, outputs, logs and healed selectors |
+| Agent | `online / busy / offline`, derived from heartbeats. Jobs on an agent that stays silent for 2 minutes are failed |
+| Schedule | Cron (croner) with an optional IANA time zone, inputs and a target agent |
+| Asset | text / number / boolean / credential. Credentials are masked for the Portal and only returned in full to agents |
+
+Persistence is a debounced, atomic JSON file (`ZAMTEST_DATA_DIR/db.json`) behind the small `Store` class. That class is the seam for moving to Postgres.
+
+### Agent protocol
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/agent/register` | Returns an `agentId`. Re-registration fails jobs that were running on the agent before it restarted |
+| `POST /api/agent/heartbeat` | Every 10 s. The response lists jobs to cancel |
+| `POST /api/agent/jobs/next` | Pull model, FIFO. Respects `targetAgentId`. Returns 204 when there is no work |
+| `POST /api/agent/jobs/:id/events` | Batched engine events (about 1 s). The response can request cancellation |
+| `POST /api/agent/jobs/:id/complete` | Final status and outputs |
+| `GET /api/agent/assets/:name` | Used by the Get Asset activity |
+
+Agents use a pull model, so they only need outbound HTTPS to the orchestrator and work behind NAT and firewalls.

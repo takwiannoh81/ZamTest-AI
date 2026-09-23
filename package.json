@@ -1,0 +1,33 @@
+{
+  "name": "zamtest-ai",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ZamTest AI - low-code, AI-native automation platform (Portal, Designer, Agents)",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter ./apps/* dev",
+    "dev:orchestrator": "pnpm --filter @zamtest/orchestrator dev",
+    "dev:agent": "pnpm --filter @zamtest/agent dev",
+    "dev:portal": "pnpm --filter @zamtest/portal dev",
+    "dev:designer": "pnpm --filter @zamtest/designer dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "hello-world",
+  "name": "Hello World",
+  "description": "Loops over a list, calls a REST API and handles errors.",
+  "variables": [
+    { "name": "names", "type": "array", "direction": "in", "default": ["Ada", "Grace", "Linus"] },
+    { "name": "greetings", "type": "array", "direction": "out", "default": [] },
+    { "name": "name", "type": "string" },
+    { "name": "i", "type": "number" },
+    { "name": "response", "type": "object" }
+  ],
+  "root": {
+    "id": "root",
+    "type": "core.sequence",
+    "props": {},
+    "slots": {
+      "body": [
+        { "id": "log-start", "type": "core.log", "label": "Start", "props": { "message": "Greeting {{ names.length }} people" } },
+        {
+          "id": "loop",
+          "type": "core.forEach",
+          "label": "For each name",
+          "props": { "items": "names", "itemVariable": "name", "indexVariable": "i" },
+          "slots": {
+            "body": [
+              { "id": "add", "type": "core.assign", "props": { "variable": "greetings", "value": "[...greetings, `Hello ${name}!`]" } },
+              { "id": "log", "type": "core.log", "props": { "message": "#{{ i + 1 }}: Hello {{ name }}" } }
+            ]
+          }
+        },
+        {
+          "id": "try",
+          "type": "core.tryCatch",
+          "label": "Call an API safely",
+          "props": { "errorVariable": "error" },
+          "slots": {
+            "try": [
+              { "id": "throw", "type": "core.throw", "props": { "message": "Simulated API outage" } }
+            ],
+            "catch": [
+              { "id": "warn", "type": "core.log", "props": { "level": "warn", "message": "Handled: {{ error.message }}" } }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "browser-login",
+  "name": "Browser Login Demo",
+  "description": "Logs into the demo ERP page and reads the welcome message. Uses AI self-healing descriptions on every selector.",
+  "variables": [
+    { "name": "url", "type": "string", "direction": "in", "default": "file:///path/to/examples/site/login.html" },
+    { "name": "username", "type": "string", "direction": "in", "default": "ada" },
+    { "name": "welcome", "type": "string", "direction": "out" }
+  ],
+  "root": {
+    "id": "root",
+    "type": "core.sequence",
+    "props": {},
+    "slots": {
+      "body": [
+        { "id": "open", "type": "browser.open", "props": { "url": "{{ url }}", "headless": true } },
+        {
+          "id": "try",
+          "type": "core.tryCatch",
+          "props": { "errorVariable": "error" },
+          "slots": {
+            "try": [
+              { "id": "user", "type": "browser.type", "props": { "selector": "css=[data-testid=\"username\"]", "text": "{{ username }}", "description": "Username input on the login form" } },
+              { "id": "pass", "type": "browser.type", "props": { "selector": "css=[data-testid=\"password\"]", "text": "not-a-real-password", "description": "Password input on the login form" } },
+              { "id": "submit", "type": "browser.click", "retry": { "count": 1, "delayMs": 500 }, "props": { "selector": "role=button[name=\"Sign in\"]", "description": "The Sign in button" } },
+              { "id": "read", "type": "browser.getText", "props": { "selector": "css=#welcome", "output": "welcome", "description": "Welcome message shown after login" } },
+              { "id": "log", "type": "core.log", "props": { "message": "Page says: {{ welcome }}" } }
+            ],
+            "catch": [
+              { "id": "shot", "type": "browser.screenshot", "props": { "path": "login-error.png" } },
+              { "id": "rethrow", "type": "core.throw", "props": { "message": "Login failed: {{ error.message }}" } }
+            ],
+            "finally": [
+              { "id": "close", "type": "browser.close", "props": {} }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
