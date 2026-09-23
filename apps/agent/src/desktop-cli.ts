@@ -4,20 +4,22 @@ import { createInterface } from "node:readline";
 import { desktop } from "@zamtest/actions";
 import { errorMessage } from "@zamtest/core";
 import type { Workflow } from "@zamtest/core";
-import { desktopEventsToWorkflow, isIgnored, parseRawEvents } from "./desktop-recorder.js";
+import { desktopEventsToWorkflow, isIgnored, parseRawEvents, processOf } from "./desktop-recorder.js";
 import type { RawDesktopEvent } from "./desktop-recorder.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** `record-desktop`: records clicks and typing in Windows applications until Enter is pressed. */
-export async function recordDesktop(options: { program?: string; name: string }): Promise<Workflow> {
+export async function recordDesktop(options: { program?: string; name: string; allApps?: boolean }): Promise<Workflow> {
   const driver = desktop.DesktopDriver.start();
+  // With a program, only that program's windows are recorded (not the terminal, browser, ...).
+  const processes = options.program && !options.allApps ? [processOf(options.program)] : undefined;
   const events: RawDesktopEvent[] = [];
   const show = (batch: RawDesktopEvent[]) => {
     for (const e of batch) {
       events.push(e);
       if (e.kind === "error") console.log(`  (recorder warning: ${e.message})`);
-      else if (e.chain?.length && !isIgnored(e.chain)) {
+      else if (e.chain?.length && !isIgnored(e.chain, processes)) {
         console.log(`  recorded ${e.kind.padEnd(10)} ${desktop.describeChain(e.chain)}${e.secret ? " (password, not stored)" : ""}`);
       }
     }
@@ -28,7 +30,11 @@ export async function recordDesktop(options: { program?: string; name: string })
       console.log(`Started ${options.program}`);
     }
     await driver.call("recordStart");
-    console.log("Recording. Work in your Windows applications, then come back here and press Enter to finish.\n");
+    console.log(
+      processes
+        ? `Recording ${options.program} only (add --all-apps to record every application). Come back here and press Enter to finish.\n`
+        : "Recording. Work in your Windows applications, then come back here and press Enter to finish.\n",
+    );
     let done = false;
     const rl = createInterface({ input: process.stdin });
     rl.once("line", () => {
@@ -46,7 +52,14 @@ export async function recordDesktop(options: { program?: string; name: string })
   } finally {
     await driver.close();
   }
-  return desktopEventsToWorkflow(events, { name: options.name, program: options.program });
+  const workflow = desktopEventsToWorkflow(events, { name: options.name, program: options.program, processes });
+  const recorded = (workflow.root.slots?.body?.length ?? 0) - (options.program ? 1 : 0);
+  if (processes && recorded === 0 && events.some((e) => e.chain?.length)) {
+    // The program runs under another process name (e.g. calc.exe -> CalculatorApp): keep everything.
+    console.log(`No steps were recorded in "${processes[0]}"; keeping the steps from all applications instead.`);
+    return desktopEventsToWorkflow(events, { name: options.name, program: options.program });
+  }
+  return workflow;
 }
 
 /**

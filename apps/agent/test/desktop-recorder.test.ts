@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUILTIN_ACTIONS, parseWorkflow } from "@zamtest/core";
-import { desktopEventsToWorkflow, parseRawEvents } from "../src/desktop-recorder.js";
+import { desktopEventsToWorkflow, parseRawEvents, processOf } from "../src/desktop-recorder.js";
 import type { RawDesktopEvent } from "../src/desktop-recorder.js";
 
 const win = { type: "window", name: "Sign in - ERP", process: "erp", class: "WinForm" };
@@ -36,6 +36,23 @@ describe("desktop recorder", () => {
     expect(wf.variables).toEqual([expect.objectContaining({ name: "password", direction: "in" })]);
     // Every step type exists in the catalog.
     for (const s of steps) expect(BUILTIN_ACTIONS.some((a) => a.type === s.type)).toBe(true);
+  });
+
+  it("skips container clicks and, with a process filter, other applications", () => {
+    const notepad = { type: "window", name: "*note - Notepad", process: "Notepad" };
+    const chrome = { type: "window", name: "Portal - Google Chrome", process: "chrome" };
+    const events: RawDesktopEvent[] = [
+      { kind: "click", chain: [notepad, { type: "pane", class: "Microsoft.UI.Content.DesktopChildSiteBridge" }] },
+      { kind: "click", chain: [notepad] },
+      { kind: "type", value: "hello", chain: [notepad, { type: "document", name: "Text editor" }] },
+      { kind: "click", chain: [notepad, { type: "menuitem", name: "File", id: "File" }] },
+      { kind: "click", chain: [chrome, { type: "tabitem", name: "Portal" }] },
+    ];
+    const only = desktopEventsToWorkflow(events, { program: "notepad.exe", processes: [processOf("notepad.exe")] });
+    expect(only.root.slots!.body!.map((s) => s.type)).toEqual(["desktop.launch", "desktop.type", "desktop.click"]);
+    const all = desktopEventsToWorkflow(events);
+    expect(all.root.slots!.body!.map((s) => s.type)).toEqual(["desktop.type", "desktop.click", "desktop.click"]);
+    expect(processOf("C:\\Program Files\\ERP\\Erp.EXE")).toBe("erp");
   });
 
   it("sends Enter as a key press when nothing was typed first", () => {

@@ -91,10 +91,11 @@ Usage:
       uploads it to the Designer. --upload asks for your email and password
       (or uses ZAMTEST_TOKEN).
 
-  zamtest-agent record-desktop [program] [--name NAME] [--out FILE] [--upload] [--server URL]
+  zamtest-agent record-desktop [program] [--name NAME] [--out FILE] [--upload] [--server URL] [--all-apps]
       Windows only. Records clicks and typing in desktop applications
-      (optionally starting [program] first, e.g. notepad.exe). Press Enter
-      here to finish.
+      (optionally starting [program] first, e.g. notepad.exe; then only that
+      program is recorded unless --all-apps is given). Press Enter here to
+      finish.
 
   zamtest-agent desktop-test
       Windows only. Checks desktop automation with Notepad and Calculator
@@ -110,6 +111,7 @@ const { positionals, values } = parseArgs({
     inputs: { type: "string" },
     out: { type: "string" },
     upload: { type: "boolean" },
+    "all-apps": { type: "boolean" },
     help: { type: "boolean", short: "h" },
   },
 });
@@ -162,7 +164,7 @@ if (command === "connect") {
   await record(file);
 } else if (command === "record-desktop") {
   const name = values.name ?? (file ? `Desktop recording of ${file}` : "Desktop recording");
-  const workflow = await recordDesktop({ program: file, name });
+  const workflow = await recordDesktop({ program: file, name, allApps: values["all-apps"] });
   await saveOrUpload(workflow, name, values.server ?? process.env.ZAMTEST_SERVER ?? "http://127.0.0.1:4000");
   process.exit(0);
 } else if (command === "desktop-test") {

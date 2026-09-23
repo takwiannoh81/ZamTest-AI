@@ -20,16 +20,38 @@ const IGNORED_WINDOW_CLASSES = new Set(["Shell_TrayWnd", "Shell_SecondaryTrayWnd
 /** Clicking into these only moves the focus; the typing that follows is recorded instead. */
 const FIELD_TYPES = new Set(["edit", "document"]);
 
-export function isIgnored(chain: ElementInfo[] | undefined): boolean {
+/** Containers: a click that lands on one of these (without a name or id) does nothing useful. */
+const CONTAINER_TYPES = new Set(["pane", "group", "custom", "window"]);
+
+/** Process name a program path runs as, e.g. "C:\\Apps\\Erp.exe" -> "erp". */
+export function processOf(program: string): string {
+  return (program.split(/[\\/]/).pop() ?? program).replace(/\.exe$/i, "").toLowerCase();
+}
+
+export function isIgnored(chain: ElementInfo[] | undefined, processes?: string[]): boolean {
   const win = chain?.[0];
   if (!win) return true;
-  return IGNORED_PROCESSES.has((win.process ?? "").toLowerCase()) || IGNORED_WINDOW_CLASSES.has(win.class ?? "");
+  const proc = (win.process ?? "").toLowerCase();
+  if (processes?.length && !processes.includes(proc)) return true;
+  return IGNORED_PROCESSES.has(proc) || IGNORED_WINDOW_CLASSES.has(win.class ?? "");
+}
+
+/** Clicks on the window itself or on an anonymous container (e.g. a WinUI island bridge). */
+function isContainerClick(chain: ElementInfo[]): boolean {
+  if (chain.length === 1) return true;
+  const target = chain.at(-1)!;
+  return CONTAINER_TYPES.has(target.type) && !target.name && !target.id;
 }
 
 /** Collapses recorded desktop events into workflow steps. */
 export function desktopEventsToWorkflow(
   events: RawDesktopEvent[],
-  options: { name?: string; program?: string } = {},
+  options: {
+    name?: string;
+    program?: string;
+    /** Only record these processes (lower-case names without .exe). Empty = every application. */
+    processes?: string[];
+  } = {},
 ): Workflow {
   const steps: Step[] = [];
   const variables: VariableDef[] = [];
@@ -41,7 +63,8 @@ export function desktopEventsToWorkflow(
   }
 
   for (const e of events) {
-    if (e.kind === "error" || !e.chain?.length || isIgnored(e.chain)) continue;
+    if (e.kind === "error" || !e.chain?.length || isIgnored(e.chain, options.processes)) continue;
+    if ((e.kind === "click" || e.kind === "rightclick") && isContainerClick(e.chain)) continue;
     const selector = desktop.selectorFromChain(e.chain);
     const description = desktop.describeChain(e.chain);
     if (launch && launch.props.waitFor === undefined) {

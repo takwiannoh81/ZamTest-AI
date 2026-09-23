@@ -137,7 +137,7 @@ Desktop actions (**Desktop** category in the Designer) drive Windows application
 ```powershell
 pnpm --filter @zamtest/agent exec tsx src/cli.ts record-desktop notepad.exe --upload --server https://api.zamtechai.com
 ```
-1. **Record:** the program starts (leave the program name out to record whatever is already open). Work through the process once.
+1. **Record:** the program starts, and only that program is recorded. Add `--all-apps` to record every application, or leave the program name out to record whatever is already open. Work through the process once.
 2. **Finish:** return to the terminal and press Enter.
 3. **Upload:** the result is a workflow of **Start Application**, **Click (Desktop)** and **Type Into (Desktop)** steps, with selectors such as `window[process="notepad"] > document`. Anything typed into a password field becomes a `password` input rather than being stored.
 
