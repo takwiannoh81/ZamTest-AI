@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { catalogSource, createTranslator, detectLocale, en, LOCALE_LOADERS, LOCALES } from "../src/index.js";
+import { catalogSource, createTranslator, detectLocale, en, LOCALE_LOADERS, localeDir, LOCALES } from "../src/index.js";
 
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 const source = catalogSource();
@@ -11,6 +11,15 @@ describe("locale detection", () => {
     expect(detectLocale(["pt-PT"])).toBe("pt-BR");
     expect(detectLocale(["ko", "de-AT"])).toBe("de");
     expect(detectLocale(["ko"])).toBe("en");
+    expect(detectLocale(["ar-EG"])).toBe("ar");
+  });
+
+  it("marks Arabic as right-to-left with Latin digits in dates", () => {
+    expect(localeDir("ar")).toBe("rtl");
+    expect(localeDir("fr")).toBe("ltr");
+    const t = createTranslator("ar");
+    expect(t.dir).toBe("rtl");
+    expect(t.dateTime("2026-01-02T03:04:05Z")).toMatch(/2026/);
   });
 });
 

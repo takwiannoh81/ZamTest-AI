@@ -1,3 +1,14 @@
+export interface LocaleInfo {
+  code: string;
+  /** Native name shown in the language picker. */
+  name: string;
+  /** English name, used to tell the AI which language to answer in. */
+  english: string;
+  dir?: "ltr" | "rtl";
+  /** BCP 47 tag for Intl date/number formatting when it differs from `code`. */
+  intl?: string;
+}
+
 export const LOCALES = [
   { code: "en", name: "English", english: "English" },
   { code: "ja", name: "日本語", english: "Japanese" },
@@ -12,13 +23,27 @@ export const LOCALES = [
   { code: "th", name: "ไทย", english: "Thai" },
   { code: "af", name: "Afrikaans", english: "Afrikaans" },
   { code: "sw", name: "Kiswahili", english: "Swahili" },
-] as const;
+  // Latin digits keep dates consistent with the numbers shown elsewhere in the UI.
+  { code: "ar", name: "العربية", english: "Arabic", dir: "rtl", intl: "ar-u-nu-latn" },
+] as const satisfies readonly LocaleInfo[];
 
 export type Locale = (typeof LOCALES)[number]["code"];
 export const DEFAULT_LOCALE: Locale = "en";
 
 export function isLocale(value: unknown): value is Locale {
   return LOCALES.some((l) => l.code === value);
+}
+
+function info(locale: string): LocaleInfo | undefined {
+  return (LOCALES as readonly LocaleInfo[]).find((l) => l.code === locale);
+}
+
+export function localeDir(locale: string): "ltr" | "rtl" {
+  return info(locale)?.dir ?? "ltr";
+}
+
+export function intlLocale(locale: string): string {
+  return info(locale)?.intl ?? locale;
 }
 
 /** English name of a locale, used to tell the AI which language to answer in. */

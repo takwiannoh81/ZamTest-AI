@@ -25,13 +25,14 @@ ZamTest AI is a low-code, AI-native automation (RPA) platform, in the same space
 
 ## Languages
 
-The Portal and Designer are available in 13 languages:
+The Portal and Designer are available in 14 languages:
 
-English, 日本語 (Japanese), 简体中文 (Simplified Chinese), Français (French), Español (Spanish), Português (Brasil) (Brazilian Portuguese), Deutsch (German), Nederlands (Dutch), Русский (Russian), Tiếng Việt (Vietnamese), ไทย (Thai), Afrikaans and Kiswahili (Swahili).
+English, 日本語 (Japanese), 简体中文 (Simplified Chinese), Français (French), Español (Spanish), Português (Brasil) (Brazilian Portuguese), Deutsch (German), Nederlands (Dutch), Русский (Russian), Tiếng Việt (Vietnamese), ไทย (Thai), Afrikaans, Kiswahili (Swahili) and العربية (Arabic).
 
 - **What is translated:** the whole UI, plus the action catalog: action names, descriptions, categories and property labels.
 - **Choosing a language:** the app picks the browser's language automatically. Users can change it in the Designer toolbar, or in the Portal sidebar and Settings page. The choice is remembered per browser.
 - **Dates and times** follow the selected language.
+- **Right-to-left:** in Arabic the whole layout mirrors (sidebar, panels, arrows, text alignment). Code, selectors, JSON and logs stay left-to-right so they remain readable.
 - **AI answers in the selected language:** Build with AI writes its notes, step labels and log messages in that language, and the selector assistant explains its suggestions in it. Code identifiers (action types, variable names, selectors) stay in ASCII.
 - **Adding a language:** see [packages/i18n/README.md](packages/i18n/README.md).
 

@@ -22,7 +22,7 @@ export function RunPanel({
   onApplyHealed: (stepId: string, selector: string) => void;
   onSelectStep: (id: string) => void;
 }) {
-  const { t, locale } = useI18n();
+  const { t, time } = useI18n();
   const [job, setJob] = useState<Job>();
   const [logs, setLogs] = useState<JobLog[]>([]);
   const last = useRef(0);
@@ -102,7 +102,7 @@ export function RunPanel({
       <div className="log" ref={box}>
         {logs.map((l) => (
           <div key={l.seq} className={`log-line log-${l.level}`} onClick={() => l.stepId && onSelectStep(l.stepId)}>
-            <span className="log-time">{new Date(l.time).toLocaleTimeString(locale)}</span>
+            <span className="log-time">{time(l.time)}</span>
             <span className="log-level">{l.level}</span>
             <span>{l.message}</span>
           </div>

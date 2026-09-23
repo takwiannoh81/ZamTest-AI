@@ -168,13 +168,13 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
     try {
       await api(`/api/workflows/${id}`, { method: "PUT", body: { name: workflow.name, description: workflow.description ?? "", definition: workflow } });
       setDirty(false);
-      setStatus(t("toolbar.saved", { time: new Date().toLocaleTimeString(i18n.locale) }));
+      setStatus(t("toolbar.saved", { time: i18n.time(Date.now()) }));
       return true;
     } catch (e) {
       setStatus(t("toolbar.saveFailed", { error: (e as Error).message }));
       return false;
     }
-  }, [id, workflow, t, i18n.locale]);
+  }, [id, workflow, t, i18n]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -268,7 +268,7 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
     <div className="designer">
       <header className="toolbar">
         <button className="icon-btn" title={t("toolbar.allWorkflows")} onClick={() => (!dirty || confirm(t("toolbar.discard"))) && onExit()}>
-          ←
+          <span className="flip-rtl">←</span>
         </button>
         <span className="logo small">Z</span>
         <input className="wf-name" value={workflow.name} onChange={(e) => update({ ...workflow, name: e.target.value })} />
@@ -276,10 +276,10 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
         <span className="muted tiny status">{status}</span>
         <span className="spacer" />
         <button className="btn-ghost" disabled={!history.past.length} onClick={undo} title={t("toolbar.undo")}>
-          ↶
+          <span className="flip-rtl">↶</span>
         </button>
         <button className="btn-ghost" disabled={!history.future.length} onClick={redo} title={t("toolbar.redo")}>
-          ↷
+          <span className="flip-rtl">↷</span>
         </button>
         <button className={`btn-ghost${issues.length ? " warn" : ""}`} onClick={() => setShowIssues(!showIssues)}>
           {issues.length ? t("toolbar.issues", { count: issues.length }) : t("toolbar.valid")}

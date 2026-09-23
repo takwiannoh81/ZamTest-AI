@@ -67,7 +67,7 @@ export function Jobs() {
 }
 
 export function JobDetail({ id }: { id: string }) {
-  const { t, dateTime, locale } = useI18n();
+  const { t, dateTime, time } = useI18n();
   const job = usePoll<Job>(`/api/jobs/${id}`, 2000);
   const [logs, setLogs] = useState<JobLog[]>([]);
   const lastSeq = useRef(0);
@@ -190,7 +190,7 @@ export function JobDetail({ id }: { id: string }) {
       <div className="log">
         {logs.map((l) => (
           <div key={l.seq} className={`log-line log-${l.level}`}>
-            <span className="log-time">{new Date(l.time).toLocaleTimeString(locale)}</span>
+            <span className="log-time">{time(l.time)}</span>
             <span className="log-level">{l.level}</span>
             <span>{l.message}</span>
           </div>

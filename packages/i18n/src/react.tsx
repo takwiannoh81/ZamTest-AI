@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { loadLocale } from "./loaders.js";
-import { detectLocale, isLocale, LOCALES } from "./locales.js";
+import { detectLocale, isLocale, localeDir, LOCALES } from "./locales.js";
 import type { Locale } from "./locales.js";
 import { createTranslator } from "./translator.js";
 import type { Translator } from "./translator.js";
@@ -42,6 +42,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.lang = loaded.locale;
+    document.documentElement.dir = localeDir(loaded.locale);
   }, [loaded.locale]);
 
   const value = useMemo<I18nValue>(

@@ -72,7 +72,7 @@ button { font: inherit; cursor: pointer; }
 /* layout */
 .layout { display: flex; min-height: 100vh; }
 .sidebar {
-  width: 220px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border);
+  width: 220px; flex-shrink: 0; background: var(--surface); border-inline-end: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 16px 12px; position: sticky; top: 0; height: 100vh;
 }
 .brand { display: flex; gap: 10px; align-items: center; padding: 4px 8px 18px; }
@@ -101,13 +101,13 @@ button { font: inherit; cursor: pointer; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; box-shadow: var(--shadow); max-width: 640px; }
 
 table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
-th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; background: var(--surface-2); }
+th { text-align: start; font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; background: var(--surface-2); }
 th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
 tr:last-child td { border-bottom: none; }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: var(--surface-2); }
-.row-actions { text-align: right; white-space: nowrap; }
-.row-actions > * + * { margin-left: 6px; }
+.row-actions { text-align: end; white-space: nowrap; }
+.row-actions > * + * { margin-inline-start: 6px; }
 
 .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--muted); }
 .badge-succeeded, .badge-online { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
@@ -154,3 +154,9 @@ tr.clickable:hover td { background: var(--surface-2); }
   .content { padding: 16px; }
   table { display: block; overflow-x: auto; }
 }
+
+/* Right-to-left (Arabic): code, selectors, JSON and logs stay left-to-right. */
+code, pre, .mono, .log, .log-line { direction: ltr; unicode-bidi: isolate; }
+.log { text-align: left; }
+[dir="rtl"] .flip-rtl { display: inline-block; transform: scaleX(-1); }
+:root[dir="rtl"] { font-family: "Segoe UI", "Noto Sans Arabic", "Noto Kufi Arabic", Tahoma, system-ui, sans-serif; }

@@ -16,9 +16,9 @@ Translations for the Portal, the Designer and the action catalog.
 
 ## Adding a language
 
-1. Add it to `LOCALES` in `src/locales.ts`.
+1. Add it to `LOCALES` in `src/locales.ts`. For a right-to-left language, set `dir: "rtl"`. The apps then set `<html dir="rtl">`, and their stylesheets use logical CSS properties so the layout mirrors.
 2. Create `src/locales/<code>.ts` by copying an existing bundle.
 3. Register its loader in `src/loaders.ts`.
 4. Run `pnpm test`.
 
-The translations were machine-assisted. Please have a native speaker review them before a customer launch, especially Thai, Afrikaans and Swahili.
+The translations were machine-assisted. Please have a native speaker review them before a customer launch, especially Thai, Afrikaans, Swahili and Arabic.

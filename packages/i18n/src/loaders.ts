@@ -15,6 +15,7 @@ export const LOCALE_LOADERS: Record<Exclude<Locale, "en">, () => Promise<LocaleM
   th: () => import("./locales/th.js").then((m) => m.th),
   af: () => import("./locales/af.js").then((m) => m.af),
   sw: () => import("./locales/sw.js").then((m) => m.sw),
+  ar: () => import("./locales/ar.js").then((m) => m.ar),
 };
 
 export async function loadLocale(locale: Locale): Promise<LocaleMessages | undefined> {

@@ -87,7 +87,7 @@ function StepCard({ step, ...props }: CanvasProps & { step: Step }) {
   return (
     <div
       className={`step${selected ? " selected" : ""}${step.disabled ? " disabled" : ""}${status ? ` run-${status}` : ""}`}
-      style={{ borderLeftColor: color }}
+      style={{ borderInlineStartColor: color }}
       onClick={(e) => {
         e.stopPropagation();
         props.onSelect(step.id);
@@ -114,7 +114,7 @@ function StepCard({ step, ...props }: CanvasProps & { step: Step }) {
           {step.continueOnError ? <span className="tag">{t("canvas.continueOnError")}</span> : null}
           {slots.length > 0 && (
             <button className="icon-btn" title={collapsed ? t("canvas.expand") : t("canvas.collapse")} onClick={(e) => { e.stopPropagation(); setCollapsed(!collapsed); }}>
-              {collapsed ? "▸" : "▾"}
+              <span className={collapsed ? "flip-rtl" : undefined}>{collapsed ? "▸" : "▾"}</span>
             </button>
           )}
           <button className="icon-btn" title={t("canvas.duplicate")} onClick={(e) => { e.stopPropagation(); props.onDuplicate(step.id); }}>
