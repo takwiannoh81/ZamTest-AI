@@ -11,6 +11,33 @@ The production stack runs on one Linux server with Docker. Caddy serves the apps
 
 The Portal and Designer call `/api` on their own address. Caddy forwards those calls to the orchestrator, so the browser never needs cross-site access.
 
+## Quick path: AWS Lightsail (zamtechai.com)
+
+These steps are for the Lightsail instance with static IP `18.227.11.31`.
+
+1. **Firewall.** In Lightsail, open the instance, go to **Networking**, then **IPv4 Firewall**, and add a rule for **HTTPS (TCP 443)**. HTTP (80) and SSH (22) are open by default. If you add IPv6 DNS records later, add the same rules under **IPv6 Firewall**.
+2. **DNS.** The domain is managed at Squarespace (**Domains**, then zamtechai.com, then **DNS**).
+   - Replace the Squarespace records for `@` and `www` with `A` records pointing to `18.227.11.31`. Doing this takes down any site that Squarespace currently serves on the domain.
+   - Add `A` records for `portal`, `designer` and `api` pointing to `18.227.11.31`.
+   - Leave out `AAAA` (IPv6) records to begin with. That keeps certificate issuance to IPv4 only.
+3. **Install.** Click **Connect using SSH** in Lightsail to open a terminal in the browser. Then run:
+   ```bash
+   sudo apt-get update && sudo apt-get install -y git
+   git clone -b claude/low-code-automation-platform-13z01c https://github.com/takwiannoh81/ZamTest-AI.git
+   sudo bash ZamTest-AI/deploy/install.sh
+   ```
+   If the repository is private, git asks for your GitHub username and a personal access token. A read-only token for this repo is enough.
+
+   The script then does the following:
+   - Adds swap memory, installs Docker and asks for your domain and email.
+   - Generates the secrets and checks DNS.
+   - Builds and starts everything. The first build takes about 5–10 minutes on a 2 GB instance.
+4. **Sign in.** Run `sudo grep ZAMTEST_ADMIN_TOKEN ZamTest-AI/deploy/.env` to show the admin token, then open `https://portal.zamtechai.com` and sign in with it.
+
+To update later, run `sudo bash ZamTest-AI/deploy/install.sh` again. It keeps your secrets and data.
+
+The sections below explain each part in more detail and apply to any provider.
+
 ## 1. Server
 
 Any Linux VPS works, for example Ubuntu 24.04 with 2 vCPU, 4 GB RAM and 40 GB disk. Add more if cloud bot agents will run browsers on it.
