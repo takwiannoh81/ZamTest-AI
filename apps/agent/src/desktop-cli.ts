@@ -102,7 +102,7 @@ export async function desktopSelfTest(): Promise<boolean> {
     });
     if (notepadOk) {
       await check("Find the text area", async () => {
-        for (const candidate of [`${win} > document`, `${win} > edit`]) {
+        for (const candidate of [`${win} > document`, `${win} > edit`, `${win} > *[class="Edit"]`, `${win} > *[class^="RichEdit"]`]) {
           const { count } = await driver.call<{ count: number }>("count", { selector: candidate });
           if (count >= 1) {
             field = count === 1 ? candidate : `${candidate}[index=1]`;
@@ -151,7 +151,9 @@ export async function desktopSelfTest(): Promise<boolean> {
       true,
     );
     if (calcStarted) {
-      await check("Calculate 7 + 8 with button clicks", async () => {
+      const calcOk = await check(
+        "Calculate 7 + 8 with button clicks",
+        async () => {
         for (const id of ["clearButton", "num7Button", "plusButton", "num8Button", "equalButton"]) {
           const selector = `${calc} > button[id="${id}"]`;
           if (id === "clearButton" && !(await driver.call<{ count: number }>("count", { selector })).count) continue;
@@ -160,10 +162,17 @@ export async function desktopSelfTest(): Promise<boolean> {
         const r = await driver.call<{ text: string }>("getText", { selector: `${calc} > text[id="CalculatorResults"]` });
         if (!/15\b/.test(r.text)) throw new Error(`display shows "${r.text}"`);
         return r.text;
-      });
+        },
+        true,
+      );
+      if (!calcOk) {
+        const tree = await driver.call<{ tree: string }>("tree", { selector: calc, maxNodes: 30 }).catch(() => ({ tree: "" }));
+        log("      Calculator UI tree (first 30 nodes):");
+        for (const l of tree.tree.split("\n")) log(`        ${l}`);
+      }
       await check("Close Calculator", async () => {
         await driver.call("close", { selector: calc });
-      });
+      }, true);
     } else {
       log("      (Calculator is optional: Windows Server has none, and on non-English Windows its window has another name.)");
     }

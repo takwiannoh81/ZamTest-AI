@@ -7,11 +7,13 @@ foreach ($e in $errors) { "PS $($e.Extent.StartLineNumber): $($e.Message)" }
 
 $src = Get-Content -Raw $Driver
 $code = [regex]::Match($src, "(?s)\`$NativeSource = @'\r?\n(.*?)\r?\n'@").Groups[1].Value
-if (-not $code) { 'C#: embedded source not found'; exit 1 }
+$jsonCode = [regex]::Match($src, "(?s)\`$JsonSource = @'\r?\n(.*?)\r?\n'@").Groups[1].Value
+if (-not $code -or -not $jsonCode) { 'C#: embedded source not found'; exit 1 }
 $opts = [Microsoft.CodeAnalysis.CSharp.CSharpParseOptions]::Default.WithLanguageVersion([Microsoft.CodeAnalysis.CSharp.LanguageVersion]::CSharp5)
 $trees = [Microsoft.CodeAnalysis.SyntaxTree[]]@(
   [Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree]::ParseText((Get-Content -Raw $Stub), $opts),
-  [Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree]::ParseText($code, $opts)
+  [Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree]::ParseText($code, $opts),
+  [Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree]::ParseText($jsonCode, $opts)
 )
 $refs = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { -not $_.IsDynamic -and $_.Location } |
   ForEach-Object { [Microsoft.CodeAnalysis.MetadataReference]::CreateFromFile($_.Location) }

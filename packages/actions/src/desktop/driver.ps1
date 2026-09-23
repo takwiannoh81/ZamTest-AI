@@ -17,9 +17,107 @@ try {
 } catch { }
 
 $script:UiaReady = $false
-$script:Serializer = $null
 $script:ProcessNames = @{}
 $script:ControlTypes = @{}
+
+# JSON writer in C#: PowerShell's serializers trip over PSObject-wrapped values
+# (e.g. hashtables added to lists) in Windows PowerShell 5.1. Needs no UI
+# Automation, so it is compiled at startup on any OS.
+$JsonSource = @'
+using System;
+using System.Collections;
+using System.Globalization;
+using System.Management.Automation;
+using System.Text;
+
+public static class ZtJson {
+  public static string Write(object value) {
+    var sb = new StringBuilder();
+    Append(sb, value, 0);
+    return sb.ToString();
+  }
+
+  static void Append(StringBuilder sb, object o, int depth) {
+    var ps = o as PSObject;
+    if (ps != null) {
+      if (ps.BaseObject is PSCustomObject) {
+        sb.Append('{');
+        bool firstProp = true;
+        foreach (var p in ps.Properties) {
+          if (!firstProp) sb.Append(',');
+          firstProp = false;
+          Str(sb, p.Name);
+          sb.Append(':');
+          object v = null;
+          try { v = p.Value; } catch { }
+          Append(sb, v, depth + 1);
+        }
+        sb.Append('}');
+        return;
+      }
+      o = ps.BaseObject;
+    }
+    if (o == null || depth > 40) { sb.Append("null"); return; }
+    if (o is string || o is char) { Str(sb, o.ToString()); return; }
+    if (o is bool) { sb.Append((bool)o ? "true" : "false"); return; }
+    if (o is int || o is long || o is short || o is byte || o is uint || o is ulong || o is ushort || o is sbyte) {
+      sb.Append(Convert.ToString(o, CultureInfo.InvariantCulture));
+      return;
+    }
+    if (o is double || o is float || o is decimal) {
+      double d = Convert.ToDouble(o, CultureInfo.InvariantCulture);
+      if (double.IsNaN(d) || double.IsInfinity(d)) sb.Append("null");
+      else sb.Append(d.ToString("R", CultureInfo.InvariantCulture));
+      return;
+    }
+    var dict = o as IDictionary;
+    if (dict != null) {
+      sb.Append('{');
+      bool first = true;
+      foreach (DictionaryEntry e in dict) {
+        if (!first) sb.Append(',');
+        first = false;
+        Str(sb, Convert.ToString(e.Key, CultureInfo.InvariantCulture));
+        sb.Append(':');
+        Append(sb, e.Value, depth + 1);
+      }
+      sb.Append('}');
+      return;
+    }
+    var list = o as IEnumerable;
+    if (list != null) {
+      sb.Append('[');
+      bool first = true;
+      foreach (var item in list) {
+        if (!first) sb.Append(',');
+        first = false;
+        Append(sb, item, depth + 1);
+      }
+      sb.Append(']');
+      return;
+    }
+    Str(sb, Convert.ToString(o, CultureInfo.InvariantCulture));
+  }
+
+  static void Str(StringBuilder sb, string s) {
+    sb.Append('"');
+    foreach (char ch in s ?? "") {
+      switch (ch) {
+        case '"': sb.Append("\\\""); break;
+        case '\\': sb.Append("\\\\"); break;
+        case '\n': sb.Append("\\n"); break;
+        case '\r': sb.Append("\\r"); break;
+        case '\t': sb.Append("\\t"); break;
+        default:
+          if (ch < 0x20) sb.Append("\\u" + ((int)ch).ToString("x4")); else sb.Append(ch);
+          break;
+      }
+    }
+    sb.Append('"');
+  }
+}
+'@
+Add-Type -TypeDefinition $JsonSource -Language CSharp
 
 $NativeSource = @'
 using System;
@@ -272,6 +370,13 @@ function Initialize-Uia {
     [System.Windows.Point].Assembly.Location
   )
   Add-Type -TypeDefinition $NativeSource -ReferencedAssemblies $refs -Language CSharp
+  # Classic Win32 controls (Edit, menus, list views) are exposed through the client-side
+  # providers; without them they show up as plain panes.
+  try {
+    Add-Type -AssemblyName UIAutomationClientsideProviders
+    $providers = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq 'UIAutomationClientsideProviders' } | Select-Object -First 1
+    if ($providers) { [System.Windows.Automation.ClientSettings]::RegisterClientSideProviderAssembly($providers.GetName()) }
+  } catch { }
   [ZtNative]::Init()
   foreach ($field in [System.Windows.Automation.ControlType].GetFields([System.Reflection.BindingFlags]'Public,Static')) {
     $script:ControlTypes[$field.Name.ToLowerInvariant()] = $field.GetValue($null)
@@ -280,22 +385,7 @@ function Initialize-Uia {
 }
 
 function ConvertTo-JsonLine($value) {
-  # Windows PowerShell 5.1: ConvertTo-Json is slow and mangles nested lists, so use JavaScriptSerializer.
-  # PowerShell 7+ has a good ConvertTo-Json and no System.Web.Extensions.
-  if ($null -eq $script:Serializer) {
-    $script:Serializer = $false
-    if ($PSVersionTable.PSVersion.Major -lt 6) {
-      try {
-        Add-Type -AssemblyName System.Web.Extensions
-        $s = New-Object System.Web.Script.Serialization.JavaScriptSerializer
-        $s.MaxJsonLength = [int]::MaxValue
-        [void]$s.Serialize(@{ probe = 1 })
-        $script:Serializer = $s
-      } catch { $script:Serializer = $false }
-    }
-  }
-  if ($script:Serializer) { return $script:Serializer.Serialize($value) }
-  return ($value | ConvertTo-Json -Depth 12 -Compress)
+  return [ZtJson]::Write($value)
 }
 
 function Get-ProcessName([int]$processId) {
