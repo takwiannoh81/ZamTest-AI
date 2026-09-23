@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Agent, Asset, Job, JobLog, Package, Schedule, Session, User, WorkflowDraft } from "./types.js";
+import type { Agent, Asset, Job, JobLog, Package, Queue, QueueItem, Schedule, Session, User, WorkflowDraft } from "./types.js";
 
 export interface Data {
   workflows: Record<string, WorkflowDraft>;
@@ -12,6 +12,8 @@ export interface Data {
   assets: Record<string, Asset>;
   users: Record<string, User>;
   sessions: Record<string, Session>;
+  queues: Record<string, Queue>;
+  queueItems: Record<string, QueueItem>;
 }
 
 const MAX_LOGS_PER_JOB = 5000;
@@ -26,6 +28,8 @@ const empty = (): Data => ({
   assets: {},
   users: {},
   sessions: {},
+  queues: {},
+  queueItems: {},
 });
 
 /**

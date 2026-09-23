@@ -24,9 +24,10 @@ import {
 import type { BackupService } from "./backup.js";
 import type { OrchestratorConfig } from "./config.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
+import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
 import { Scheduler, validateCron } from "./scheduler.js";
 import { newId, nowIso, Store } from "./store.js";
-import type { Agent, Asset, Job, Package, Principal, Schedule, User, WorkflowDraft } from "./types.js";
+import type { Agent, Asset, Job, Package, Principal, Queue, QueueItem, Schedule, User, WorkflowDraft } from "./types.js";
 import { ROLES } from "./types.js";
 
 declare module "fastify" {
@@ -459,6 +460,75 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     return { ok: true };
   });
 
+  /* ------------------------------ queues ---------------------------- */
+  const QueueBody = z.object({
+    name: z.string().trim().regex(/^[A-Za-z0-9_. -]{1,80}$/, "Use letters, digits, spaces, '.', '_' or '-'"),
+    description: z.string().optional(),
+    maxRetries: z.number().int().min(0).max(10).default(2),
+  });
+  const withCounts = (q: Queue) => ({ ...q, counts: queueCounts(store, q.id) });
+
+  app.get("/api/queues", async () => Object.values(store.data.queues).sort((a, b) => a.name.localeCompare(b.name)).map(withCounts));
+
+  app.post("/api/queues", async (req, reply) => {
+    const body = parse(QueueBody, req.body);
+    if (Object.values(store.data.queues).some((q) => q.name.toLowerCase() === body.name.toLowerCase())) {
+      throw new HttpError(409, `Queue "${body.name}" already exists`);
+    }
+    const queue: Queue = { id: newId("que"), ...body, createdAt: nowIso() };
+    store.data.queues[queue.id] = queue;
+    store.save();
+    return reply.status(201).send(withCounts(queue));
+  });
+
+  app.put<{ Params: { id: string } }>("/api/queues/:id", async (req) => {
+    const queue = get(store.data.queues, req.params.id, "Queue");
+    const body = parse(QueueBody.partial(), req.body);
+    Object.assign(queue, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)));
+    store.save();
+    return withCounts(queue);
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/queues/:id", async (req, reply) => {
+    get(store.data.queues, req.params.id, "Queue");
+    delete store.data.queues[req.params.id];
+    for (const item of Object.values(store.data.queueItems)) if (item.queueId === req.params.id) delete store.data.queueItems[item.id];
+    store.save();
+    return reply.status(204).send();
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { status?: string; limit?: string } }>("/api/queues/:id/items", async (req) => {
+    get(store.data.queues, req.params.id, "Queue");
+    const limit = Math.min(Number(req.query.limit ?? 200), 2000);
+    return Object.values(store.data.queueItems)
+      .filter((i) => i.queueId === req.params.id && (!req.query.status || i.status === req.query.status))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  });
+
+  app.post<{ Params: { id: string } }>("/api/queues/:id/items", async (req, reply) => {
+    const queue = get(store.data.queues, req.params.id, "Queue");
+    const body = parse(z.object({ data: z.unknown(), reference: z.string().trim().max(200).optional() }), req.body);
+    return reply.status(201).send(addItem(store, queue, body.data ?? {}, body.reference));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/queue-items/:id/retry", async (req) => {
+    const item = get(store.data.queueItems, req.params.id, "Queue item");
+    if (item.status !== "failed" && item.status !== "business-exception") {
+      throw new HttpError(409, "Only failed items can be retried");
+    }
+    Object.assign(item, { status: "new", jobId: undefined, agentId: undefined, startedAt: undefined, finishedAt: undefined });
+    store.save();
+    return item;
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/queue-items/:id", async (req, reply) => {
+    get(store.data.queueItems, req.params.id, "Queue item");
+    delete store.data.queueItems[req.params.id];
+    store.save();
+    return reply.status(204).send();
+  });
+
   /* ------------------------------ assets ---------------------------- */
   app.get("/api/assets", async () => Object.values(store.data.assets).map(maskAsset));
   app.post("/api/assets", async (req, reply) => {
@@ -618,6 +688,40 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     );
     if (!isFinal(job)) finishJob(store, job, body.status, body.error, body.outputs);
     return { ok: true };
+  });
+
+  /* bot side of work queues */
+  const agentBody = (req: FastifyRequest) => (req.body ?? {}) as { agentId?: string; jobId?: string };
+  const jobOfAgent = (agent: Agent, jobId: string | undefined): string | undefined => {
+    if (jobId && store.data.jobs[jobId]?.agentId !== agent.id) throw new HttpError(403, "Job belongs to another agent");
+    return jobId;
+  };
+
+  app.post<{ Params: { name: string } }>("/api/agent/queues/:name/items", async (req, reply) => {
+    agentFor(agentBody(req).agentId);
+    const body = parse(z.object({ data: z.unknown(), reference: z.string().trim().max(200).optional() }).passthrough(), req.body);
+    const item = addItem(store, findQueue(store, req.params.name), body.data ?? {}, body.reference);
+    return reply.status(201).send({ id: item.id });
+  });
+
+  app.post<{ Params: { name: string } }>("/api/agent/queues/:name/next", async (req, reply) => {
+    const agent = agentFor(agentBody(req).agentId);
+    const item = takeNext(store, findQueue(store, req.params.name), jobOfAgent(agent, agentBody(req).jobId), agent.id);
+    if (!item) return reply.status(204).send();
+    const queue = store.data.queues[item.queueId]!;
+    return { id: item.id, queue: queue.name, reference: item.reference, data: item.data, retries: item.retries };
+  });
+
+  app.post<{ Params: { id: string } }>("/api/agent/queue-items/:id/complete", async (req) => {
+    const agent = agentFor(agentBody(req).agentId);
+    const item: QueueItem = get(store.data.queueItems, req.params.id, "Queue item");
+    if (item.agentId !== agent.id || item.status !== "in-progress") throw new HttpError(409, "This item is not locked by this agent");
+    const body = parse(
+      z.object({ status: z.enum(["successful", "failed", "business-exception"]), result: z.unknown().optional(), message: z.string().optional() }).passthrough(),
+      req.body,
+    );
+    completeItem(store, item, body.status, body.result, body.message);
+    return { status: item.status, final: FINAL_ITEM_STATUSES.includes(item.status) };
   });
 
   app.get<{ Params: { name: string } }>("/api/agent/assets/:name", async (req) => {

@@ -159,6 +159,14 @@ export const browserHandlers: Record<string, ActionHandler> = {
       if (props.pressEnter) await loc.press("Enter", { timeout });
     }),
 
+  "browser.select": (props, ctx) =>
+    withSelector(ctx, props, async (sel, timeout) => {
+      const loc = getPage(ctx).locator(sel);
+      const value = String(props.value ?? "");
+      // Try the option value first, then the visible label.
+      await loc.selectOption({ value }, { timeout }).catch(() => loc.selectOption({ label: value }, { timeout }));
+    }),
+
   "browser.getText": (props, ctx) =>
     withSelector(ctx, props, async (sel, timeout) => (await getPage(ctx).locator(sel).innerText({ timeout })).trim()),
 

@@ -4,6 +4,70 @@ import { parseArgs } from "node:util";
 import { parseWorkflow } from "@zamtest/core";
 import { AgentConnection } from "./connection.js";
 import { aiEnabled, execute } from "./runtime.js";
+import { startRecording } from "./recorder.js";
+import { createInterface } from "node:readline/promises";
+import { writeFile } from "node:fs/promises";
+
+async function prompt(question: string, hidden = false): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+  if (hidden) {
+    const write = (rl as unknown as { _writeToOutput: (s: string) => void })._writeToOutput;
+    (rl as unknown as { _writeToOutput: (s: string) => void })._writeToOutput = (s) => write.call(rl, s.startsWith(question) ? s : "");
+  }
+  const answer = await rl.question(question);
+  rl.close();
+  if (hidden) process.stdout.write("\n");
+  return answer.trim();
+}
+
+async function record(url: string) {
+  const server = values.server ?? process.env.ZAMTEST_SERVER ?? "http://127.0.0.1:4000";
+  const name = values.name ?? `Recording of ${new URL(url).hostname}`;
+  const recording = await startRecording(url, {
+    name,
+    onEvent: (e) => console.log(`  recorded ${e.kind.padEnd(6)} ${e.description}${e.secret ? " (password, not stored)" : ""}`),
+  });
+  console.log("Recording. Use the browser normally, then close it (or press Enter here) to finish.\n");
+  await new Promise<void>((resolve) => {
+    recording.page.context().browser()?.on("disconnected", () => resolve());
+    recording.page.on("close", () => resolve());
+    process.once("SIGINT", () => resolve());
+    const rl = createInterface({ input: process.stdin });
+    rl.once("line", () => {
+      rl.close();
+      resolve();
+    });
+  });
+  const workflow = await recording.stop();
+  const steps = workflow.root.slots?.body?.length ?? 0;
+  const out = values.out ?? (values.upload ? undefined : "recording.json");
+  if (out) {
+    await writeFile(out, JSON.stringify(workflow, null, 2));
+    console.log(`\nSaved ${steps} steps to ${out}`);
+  }
+  if (values.upload) {
+    let token = process.env.ZAMTEST_TOKEN;
+    if (!token) {
+      const email = await prompt("Email: ");
+      const password = await prompt("Password: ", true);
+      const login = await fetch(new URL("/api/auth/login", server), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!login.ok) throw new Error("Sign-in failed. Check your email and password.");
+      token = ((await login.json()) as { token: string }).token;
+    }
+    const res = await fetch(new URL("/api/workflows", server), {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name, definition: workflow }),
+    });
+    if (!res.ok) throw new Error(`Upload failed: ${((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.status}`);
+    console.log(`Uploaded "${name}" to ${server}. Open it in the Designer to review and publish.`);
+  }
+  process.exit(0);
+}
 
 const USAGE = `ZamTech AI bot agent
 
@@ -14,6 +78,12 @@ Usage:
 
   zamtest-agent run <workflow.json> [--inputs '{"key":"value"}']
       Attended/dev mode: run a workflow file locally and print the log.
+
+  zamtest-agent record <url> [--name NAME] [--out FILE] [--upload] [--server URL]
+      Opens a browser; click through your process, then close the window
+      (or press Enter here). Writes the recorded workflow to FILE and/or
+      uploads it to the Designer. --upload asks for your email and password
+      (or uses ZAMTEST_TOKEN).
 `;
 
 const { positionals, values } = parseArgs({
@@ -23,6 +93,8 @@ const { positionals, values } = parseArgs({
     key: { type: "string" },
     name: { type: "string" },
     inputs: { type: "string" },
+    out: { type: "string" },
+    upload: { type: "boolean" },
     help: { type: "boolean", short: "h" },
   },
 });
@@ -67,6 +139,12 @@ if (command === "connect") {
   console.log(`\nResult: ${result.status}${result.error ? ` - ${result.error}` : ""} (${result.durationMs} ms)`);
   if (Object.keys(result.outputs).length) console.log("Outputs:", JSON.stringify(result.outputs, null, 2));
   process.exit(result.status === "succeeded" ? 0 : 1);
+} else if (command === "record") {
+  if (!file) {
+    console.error("Missing URL\n\n" + USAGE);
+    process.exit(1);
+  }
+  await record(file);
 } else {
   console.error(`Unknown command "${command}"\n\n${USAGE}`);
   process.exit(1);

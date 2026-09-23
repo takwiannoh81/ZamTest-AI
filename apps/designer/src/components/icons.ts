@@ -16,4 +16,8 @@ export const CATEGORY_COLORS: Record<string, string> = {
   Files: "#ca8a04",
   Browser: "#2563eb",
   AI: "#db2777",
+  "Excel & CSV": "#16a34a",
+  Email: "#ea580c",
+  PDF: "#dc2626",
+  "Work Queues": "#0d9488",
 };

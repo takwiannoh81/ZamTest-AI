@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "invoice-dispatcher",
+  "name": "Invoice dispatcher and performer",
+  "description": "Reads invoices from Excel into the 'Invoices' queue, then processes each item with retries. Create the queue in the Portal first.",
+  "variables": [
+    { "name": "file", "type": "string", "direction": "in", "default": "invoices.xlsx" },
+    { "name": "rows", "type": "array" },
+    { "name": "row", "type": "object" },
+    { "name": "item", "type": "object" },
+    { "name": "processed", "type": "number", "direction": "out", "default": 0 }
+  ],
+  "root": {
+    "id": "root",
+    "type": "core.sequence",
+    "props": {},
+    "slots": {
+      "body": [
+        { "id": "read", "type": "excel.read", "label": "Read invoices", "props": { "path": "{{ file }}", "output": "rows" } },
+        {
+          "id": "dispatch",
+          "type": "core.forEach",
+          "label": "Queue one item per invoice",
+          "props": { "items": "rows", "itemVariable": "row" },
+          "slots": {
+            "body": [
+              { "id": "add", "type": "queue.add", "props": { "queue": "Invoices", "data": { "number": "{{ row.number }}", "total": "{{ row.total }}" }, "reference": "{{ row.number }}" }, "continueOnError": true }
+            ]
+          }
+        },
+        { "id": "first", "type": "queue.getNext", "label": "Take the first item", "props": { "queue": "Invoices", "output": "item" } },
+        {
+          "id": "loop",
+          "type": "core.while",
+          "label": "Process items until the queue is empty",
+          "props": { "condition": "item", "maxIterations": 10000 },
+          "slots": {
+            "body": [
+              {
+                "id": "try",
+                "type": "core.tryCatch",
+                "props": { "errorVariable": "error" },
+                "slots": {
+                  "try": [
+                    {
+                      "id": "check",
+                      "type": "core.if",
+                      "label": "Reject invoices without a total",
+                      "props": { "condition": "!Number(item.data.total)" },
+                      "slots": {
+                        "then": [{ "id": "bex", "type": "queue.complete", "props": { "item": "item", "status": "business-exception", "message": "Invoice has no total" } }],
+                        "else": [
+                          { "id": "log", "type": "core.log", "props": { "message": "Paying invoice {{ item.data.number }} ({{ item.data.total }})" } },
+                          { "id": "done", "type": "queue.complete", "props": { "item": "item", "status": "successful" } },
+                          { "id": "count", "type": "core.assign", "props": { "variable": "processed", "value": "processed + 1" } }
+                        ]
+                      }
+                    }
+                  ],
+                  "catch": [{ "id": "fail", "type": "queue.complete", "props": { "item": "item", "status": "failed", "message": "{{ error.message }}" } }]
+                }
+              },
+              { "id": "next", "type": "queue.getNext", "props": { "queue": "Invoices", "output": "item" } }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

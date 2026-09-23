@@ -151,3 +151,28 @@ export interface BackupStatus {
   lastError?: string;
   nextRunAt?: string;
 }
+
+export type QueueItemStatus = "new" | "in-progress" | "successful" | "failed" | "business-exception";
+
+export interface Queue {
+  id: string;
+  name: string;
+  description?: string;
+  maxRetries: number;
+  createdAt: string;
+  counts: Record<QueueItemStatus, number>;
+}
+
+export interface QueueItem {
+  id: string;
+  queueId: string;
+  reference?: string;
+  data: unknown;
+  status: QueueItemStatus;
+  retries: number;
+  result?: unknown;
+  message?: string;
+  jobId?: string;
+  createdAt: string;
+  finishedAt?: string;
+}

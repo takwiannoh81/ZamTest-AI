@@ -125,3 +125,30 @@ export interface Principal {
   role: Role;
   kind: "user" | "token" | "open";
 }
+
+export interface Queue {
+  id: string;
+  name: string;
+  description?: string;
+  /** How many times a failed item is retried before it stays failed. */
+  maxRetries: number;
+  createdAt: string;
+}
+
+export type QueueItemStatus = "new" | "in-progress" | "successful" | "failed" | "business-exception";
+
+export interface QueueItem {
+  id: string;
+  queueId: string;
+  reference?: string;
+  data: unknown;
+  status: QueueItemStatus;
+  retries: number;
+  result?: unknown;
+  message?: string;
+  jobId?: string;
+  agentId?: string;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+}

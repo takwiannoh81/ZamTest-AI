@@ -74,6 +74,14 @@ The orchestrator refuses to start in production without a strong admin token and
 
 To enable the AI features, put `ANTHROPIC_API_KEY` in `deploy/.env` and run `docker compose up -d` again.
 
+## 4a. AI features
+
+Run this on the server and paste your Anthropic API key when asked (the input stays hidden):
+```bash
+sudo bash ~/ZamTest-AI/deploy/set-env.sh ANTHROPIC_API_KEY
+```
+The script saves the key and restarts the services, including the cloud bot. The Portal's **Settings** page then shows that AI is enabled.
+
 ## 4. Bot agents
 
 **On the server (cloud bot):**
@@ -95,7 +103,15 @@ ZAMTEST_AGENT_NAME=finance-pc-01 \
 pnpm --filter @zamtest/agent start
 ```
 
-Agents only make outbound HTTPS requests, so they work behind company firewalls and NAT.
+Agents only make outbound HTTPS requests, so they work behind company firewalls and NAT. On machines without a screen, such as servers and containers, browsers run headless automatically.
+
+**Recording a workflow (on your own computer):**
+```bash
+pnpm --filter @zamtest/agent exec tsx src/cli.ts record https://erp.example.com --upload --server https://api.zamtechai.com
+```
+1. **Record:** a browser window opens. Click through the process once.
+2. **Finish:** close the window, or press Enter in the terminal.
+3. **Upload:** sign in with your ZamTech AI email and password when asked. The workflow appears in the Designer, where you can review it, test it and publish it.
 
 ## 5. User accounts
 

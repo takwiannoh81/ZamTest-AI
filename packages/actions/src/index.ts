@@ -3,10 +3,15 @@ import { BUILTIN_ACTIONS } from "@zamtest/core";
 import { aiHandlers } from "./ai.js";
 import { browserHandlers } from "./browser.js";
 import { dataHandlers } from "./data.js";
+import { emailHandlers } from "./email.js";
+import { officeHandlers } from "./office.js";
+import { pdfHandlers } from "./pdf.js";
+import { queueHandlers } from "./queue.js";
 import { systemHandlers } from "./system.js";
 
 export { actionTools, getAi } from "./ai.js";
 export { snapshotDom } from "./browser.js";
+export type { QueueItem, QueueItemStatus, QueueService } from "./queue.js";
 
 /**
  * An action package bundles metadata (for the Designer) with runtime
@@ -22,6 +27,10 @@ export interface ActionPackage {
 export const builtinHandlers: Record<string, ActionHandler> = {
   ...systemHandlers,
   ...dataHandlers,
+  ...officeHandlers,
+  ...emailHandlers,
+  ...pdfHandlers,
+  ...queueHandlers,
   ...browserHandlers,
   ...aiHandlers,
 };

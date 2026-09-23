@@ -21,7 +21,22 @@ ZamTech AI is a low-code, AI-native automation (RPA) platform, in the same space
   - *AI actions*: **AI Prompt**, **AI Extract Data** (structured output validated against a JSON Schema) and **AI Agent**. The agent is given a goal and decides which platform actions to call (browser, HTTP, files) until the goal is met.
 - **Portal**: dashboard, processes (start with inputs, target a specific agent), jobs (live logs, cancel, outputs, healed selectors), cron schedules with time zones, bot agent health, and assets/credentials (credentials are masked in the UI).
 - **Bot Agent**: registers with the orchestrator, sends heartbeats, pulls jobs, streams logs, supports cancellation and reads assets. `run` mode executes a workflow file locally.
-- **Actions**: control flow, log, assign, delay, JavaScript, get asset, HTTP, JSON, files, and browser automation through Playwright (open, navigate, click, type, get text, wait, screenshot, close).
+- **Actions**:
+  - **Control flow and basics:** control flow, log, assign, delay, JavaScript, get asset, HTTP, JSON and files.
+  - **Browser:** automation through Playwright: open, navigate, click, type, select option, get text, wait, screenshot, close.
+  - **Excel & CSV:** read and write `.xlsx` sheets and CSV files.
+  - **Email:** send over SMTP and read over IMAP, with attachments. The password comes from a credential asset.
+  - **PDF:** read text, which pairs well with **AI Extract Data**, and merge files.
+  - **Work queues:** add, take and complete items.
+- **Work queues**: queues of work items (for example one per invoice) that bots process one at a time.
+  - **Retries:** failed items are retried automatically. Business exceptions (bad data) are not retried.
+  - **Duplicates:** a duplicate reference is rejected.
+  - **Crashed jobs:** items locked by a job that crashed go back into the queue.
+  - **Management:** the Portal has a **Queues** page for managing them.
+- **Recorder**: run `pnpm --filter @zamtest/agent exec tsx src/cli.ts record https://your-app` on your own computer and click through the process once.
+  - **Output:** the recorder writes the workflow for you, with robust selectors and descriptions that AI self-healing can use.
+  - **Passwords:** anything typed into a password field is never stored.
+  - **Upload:** `--upload` sends the workflow straight to the Designer.
 
 ## Languages
 

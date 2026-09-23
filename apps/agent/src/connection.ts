@@ -1,5 +1,6 @@
 import { hostname, platform, release } from "node:os";
 import { parseWorkflow, sleep } from "@zamtest/core";
+import type { QueueItem } from "@zamtest/actions";
 import type { EngineEvent } from "@zamtest/core";
 import { execute } from "./runtime.js";
 
@@ -146,6 +147,21 @@ export class AgentConnection {
           if (buffer.length >= 200) void flush();
         },
         getAsset: async (name) => (await this.call<{ value: unknown }>("GET", `/api/agent/assets/${encodeURIComponent(name)}`))?.value,
+        queues: {
+          add: async (queue, data, reference) =>
+            (await this.call<{ id: string }>("POST", `/api/agent/queues/${encodeURIComponent(queue)}/items`, {
+              agentId: this.agentId,
+              jobId: job.id,
+              data,
+              reference,
+            }))!,
+          next: async (queue) =>
+            (await this.call<QueueItem>("POST", `/api/agent/queues/${encodeURIComponent(queue)}/next`, { agentId: this.agentId, jobId: job.id })) ??
+            null,
+          complete: async (id, status, result, message) => {
+            await this.call("POST", `/api/agent/queue-items/${encodeURIComponent(id)}/complete`, { agentId: this.agentId, status, result, message });
+          },
+        },
       });
       ({ status, error, outputs } = result);
     } catch (err) {

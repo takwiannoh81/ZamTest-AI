@@ -101,6 +101,9 @@ A manual agent loop in `packages/ai/src/agent.ts` runs tool calls one at a time,
 | Schedule | Cron (croner) with an optional IANA time zone, inputs and a target agent |
 | Asset | text / number / boolean / credential. Credentials are masked for the Portal and only returned in full to agents |
 
+| Queue / item | Work queues. Items are `new → in-progress → successful / failed / business-exception`. A failed item goes back to `new` until the queue's retry limit is reached. Items locked by a job that ends are released as failed |
+| User / session | Accounts with roles (admin, developer, operator, viewer). Only the SHA-256 of each session token is stored, and passwords are stored as scrypt hashes |
+
 Persistence is a debounced, atomic JSON file (`ZAMTEST_DATA_DIR/db.json`) behind the small `Store` class. That class is the seam for moving to Postgres.
 
 ### Agent protocol
@@ -113,5 +116,8 @@ Persistence is a debounced, atomic JSON file (`ZAMTEST_DATA_DIR/db.json`) behind
 | `POST /api/agent/jobs/:id/events` | Batched engine events (about 1 s). The response can request cancellation |
 | `POST /api/agent/jobs/:id/complete` | Final status and outputs |
 | `GET /api/agent/assets/:name` | Used by the Get Asset action |
+| `POST /api/agent/queues/:name/items` | Add Queue Item |
+| `POST /api/agent/queues/:name/next` | Get Next Queue Item: locks the oldest `new` item for the job, or returns 204 |
+| `POST /api/agent/queue-items/:id/complete` | Set Queue Item Result: records successful, failed (retried) or business-exception |
 
 Agents use a pull model, so they only need outbound HTTPS to the orchestrator and work behind NAT and firewalls.

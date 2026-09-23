@@ -6,6 +6,7 @@ import { Assets } from "./pages/Assets";
 import { Dashboard } from "./pages/Dashboard";
 import { JobDetail, Jobs } from "./pages/Jobs";
 import { Processes } from "./pages/Processes";
+import { QueueDetail, Queues } from "./pages/Queues";
 import { Schedules } from "./pages/Schedules";
 import { Settings } from "./pages/Settings";
 import { Users } from "./pages/Users";
@@ -18,6 +19,7 @@ const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolea
   { path: "/processes", label: "nav.processes", icon: "▣" },
   { path: "/jobs", label: "nav.jobs", icon: "▶" },
   { path: "/schedules", label: "nav.schedules", icon: "◷" },
+  { path: "/queues", label: "nav.queues", icon: "☷" },
   { path: "/agents", label: "nav.agents", icon: "⚙" },
   { path: "/assets", label: "nav.assets", icon: "🔑" },
   { path: "/users", label: "nav.users", icon: "👥", admin: true },
@@ -32,6 +34,8 @@ export function App() {
 
   let page;
   if (route.startsWith("/jobs/")) page = <JobDetail id={route.slice("/jobs/".length)} />;
+  else if (route.startsWith("/queues/")) page = <QueueDetail id={route.slice("/queues/".length)} />;
+  else if (route === "/queues") page = <Queues />;
   else if (route === "/processes") page = <Processes />;
   else if (route === "/jobs") page = <Jobs />;
   else if (route === "/schedules") page = <Schedules />;

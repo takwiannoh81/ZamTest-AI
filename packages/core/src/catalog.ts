@@ -260,6 +260,19 @@ export const BUILTIN_ACTIONS: ActionMeta[] = [
     ],
   },
   {
+    type: "browser.select",
+    displayName: "Select Option",
+    category: "Browser",
+    description: "Chooses an option in a dropdown list (by value or visible label).",
+    icon: "list",
+    agentTool: true,
+    props: [
+      { name: "selector", label: "Selector", type: "selector", required: true },
+      { name: "value", label: "Option", type: "string", required: true },
+      ...healing,
+    ],
+  },
+  {
     type: "browser.getText",
     displayName: "Get Text",
     category: "Browser",
@@ -295,6 +308,163 @@ export const BUILTIN_ACTIONS: ActionMeta[] = [
     description: "Closes the browser.",
     icon: "close",
     props: [],
+  },
+
+  /* ----------------------------- Excel & CSV ------------------------------ */
+  {
+    type: "excel.read",
+    displayName: "Read Excel",
+    category: "Excel & CSV",
+    description: "Reads a worksheet from an .xlsx file into a list of rows.",
+    icon: "table",
+    agentTool: true,
+    props: [
+      { name: "path", label: "File path", type: "string", required: true },
+      { name: "sheet", label: "Sheet", type: "string", description: "Sheet name. Empty = first sheet." },
+      {
+        name: "hasHeader",
+        label: "First row is header",
+        type: "boolean",
+        default: true,
+        description: "When on, each row becomes an object keyed by the header names.",
+      },
+      output("Save rows to"),
+    ],
+  },
+  {
+    type: "excel.write",
+    displayName: "Write Excel",
+    category: "Excel & CSV",
+    description: "Writes a list of rows to a worksheet in an .xlsx file (creates the file if needed).",
+    icon: "table",
+    props: [
+      { name: "path", label: "File path", type: "string", required: true },
+      { name: "sheet", label: "Sheet", type: "string", default: "Sheet1" },
+      { name: "rows", label: "Rows", type: "expression", required: true, description: "A list of objects or a list of lists." },
+      { name: "append", label: "Append to existing rows", type: "boolean", default: false },
+    ],
+  },
+  {
+    type: "csv.read",
+    displayName: "Read CSV",
+    category: "Excel & CSV",
+    description: "Reads a CSV file into a list of rows.",
+    icon: "table",
+    agentTool: true,
+    props: [
+      { name: "path", label: "File path", type: "string", required: true },
+      { name: "delimiter", label: "Delimiter", type: "string", default: "," },
+      { name: "hasHeader", label: "First row is header", type: "boolean", default: true },
+      output("Save rows to"),
+    ],
+  },
+  {
+    type: "csv.write",
+    displayName: "Write CSV",
+    category: "Excel & CSV",
+    description: "Writes a list of rows to a CSV file.",
+    icon: "table",
+    props: [
+      { name: "path", label: "File path", type: "string", required: true },
+      { name: "rows", label: "Rows", type: "expression", required: true, description: "A list of objects or a list of lists." },
+      { name: "delimiter", label: "Delimiter", type: "string", default: "," },
+      { name: "append", label: "Append to existing file", type: "boolean", default: false },
+    ],
+  },
+
+  /* --------------------------------- Email -------------------------------- */
+  {
+    type: "email.send",
+    displayName: "Send Email",
+    category: "Email",
+    description: "Sends an email through an SMTP server.",
+    icon: "message",
+    props: [
+      { name: "server", label: "SMTP server", type: "string", required: true, description: "host:port, e.g. smtp.office365.com:587" },
+      { name: "credential", label: "Credential asset", type: "string", required: true, description: "Name of a credential asset with the mailbox username and password." },
+      { name: "from", label: "From", type: "string", description: "Empty = the credential's username." },
+      { name: "to", label: "To", type: "string", required: true, description: "One or more addresses, separated by commas." },
+      { name: "cc", label: "Cc", type: "string" },
+      { name: "subject", label: "Subject", type: "string", required: true },
+      { name: "body", label: "Body", type: "text", required: true },
+      { name: "html", label: "Body is HTML", type: "boolean", default: false },
+      { name: "attachments", label: "Attachments", type: "expression", description: "A list of file paths, e.g. [\"report.xlsx\"]." },
+    ],
+  },
+  {
+    type: "email.read",
+    displayName: "Read Emails",
+    category: "Email",
+    description: "Reads messages from a mailbox folder over IMAP. Result: a list of { from, to, subject, date, text, attachments }.",
+    icon: "message",
+    props: [
+      { name: "server", label: "IMAP server", type: "string", required: true, description: "host:port, e.g. outlook.office365.com:993" },
+      { name: "credential", label: "Credential asset", type: "string", required: true, description: "Name of a credential asset with the mailbox username and password." },
+      { name: "folder", label: "Folder", type: "string", default: "INBOX" },
+      { name: "unreadOnly", label: "Unread only", type: "boolean", default: true },
+      { name: "limit", label: "Maximum messages", type: "number", default: 10 },
+      { name: "markAsRead", label: "Mark as read", type: "boolean", default: false },
+      { name: "attachmentsFolder", label: "Save attachments to", type: "string", description: "Folder for attachments. Empty = don't save them." },
+      output("Save messages to"),
+    ],
+  },
+
+  /* ---------------------------------- PDF --------------------------------- */
+  {
+    type: "pdf.readText",
+    displayName: "Read PDF Text",
+    category: "PDF",
+    description: "Extracts the text of a PDF. Combine with AI Extract Data to pull fields out of invoices or forms.",
+    icon: "file",
+    agentTool: true,
+    props: [{ name: "path", label: "File path", type: "string", required: true }, output("Save text to")],
+  },
+  {
+    type: "pdf.merge",
+    displayName: "Merge PDFs",
+    category: "PDF",
+    description: "Combines several PDF files into one.",
+    icon: "file",
+    props: [
+      { name: "files", label: "Files", type: "expression", required: true, description: "A list of PDF paths, in order." },
+      { name: "path", label: "Output file", type: "string", required: true },
+    ],
+  },
+
+  /* ------------------------------ Work queues ----------------------------- */
+  {
+    type: "queue.add",
+    displayName: "Add Queue Item",
+    category: "Work Queues",
+    description: "Adds a work item to a queue, for example one per invoice, for bots to process.",
+    icon: "list",
+    props: [
+      { name: "queue", label: "Queue", type: "string", required: true },
+      { name: "data", label: "Data", type: "json", required: true, description: "The item's data, e.g. {\"invoice\": \"{{ row.number }}\"}" },
+      { name: "reference", label: "Reference", type: "string", description: "Optional business key, e.g. an invoice number. Duplicates are rejected." },
+      output("Save item id to"),
+    ],
+  },
+  {
+    type: "queue.getNext",
+    displayName: "Get Next Queue Item",
+    category: "Work Queues",
+    description: "Takes the next waiting item from a queue and locks it for this job. The result is empty when the queue has no work.",
+    icon: "list",
+    props: [{ name: "queue", label: "Queue", type: "string", required: true }, output("Save item to")],
+  },
+  {
+    type: "queue.complete",
+    displayName: "Set Queue Item Result",
+    category: "Work Queues",
+    description: "Marks a queue item as done. Failed items are retried automatically; business exceptions are not.",
+    icon: "list",
+    props: [
+      { name: "item", label: "Item", type: "expression", required: true, description: "The item from Get Next Queue Item, or its id." },
+      { name: "status", label: "Status", type: "enum", options: ["successful", "failed", "business-exception"], default: "successful" },
+      { name: "result", label: "Result data", type: "json" },
+      { name: "message", label: "Message", type: "string", description: "Reason for a failure or business exception." },
+    ],
   },
 
   /* ---------------------------------- AI ---------------------------------- */

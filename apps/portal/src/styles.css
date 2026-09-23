@@ -182,3 +182,4 @@ code, pre, .mono, .log, .log-line { direction: ltr; unicode-bidi: isolate; }
 .notice { background: var(--accent-soft); color: var(--text); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; }
 .roles-legend { margin-top: 20px; display: grid; gap: 8px; font-size: 13px; }
 .card-sub { font-size: 14px; margin: 16px 0 8px; }
+.data-cell { display: inline-block; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }

@@ -2,6 +2,7 @@ import type { Workflow } from "@zamtest/core";
 import type { OrchestratorConfig } from "./config.js";
 import { newId, nowIso } from "./store.js";
 import type { Store } from "./store.js";
+import { releaseJobItems } from "./queues.js";
 import type { Job } from "./types.js";
 import { FINAL_JOB_STATUSES } from "./types.js";
 
@@ -77,6 +78,7 @@ export function finishJob(store: Store, job: Job, status: Job["status"], error?:
   store.appendLogs(job.id, [
     { time: job.finishedAt, level: status === "succeeded" ? "info" : "error", message: `Job ${status}${error ? `: ${error}` : ""}` },
   ]);
+  releaseJobItems(store, job.id, `Job ${status} before the item was completed${error ? `: ${error}` : ""}`);
   store.save();
 }
 
