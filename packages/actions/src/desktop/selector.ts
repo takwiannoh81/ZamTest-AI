@@ -147,7 +147,10 @@ export interface ElementInfo {
 
 /** AutomationIds that are generated at run time and change between sessions. */
 function stableId(id?: string): id is string {
-  return Boolean(id) && !/^\d+$/.test(id!) && !/[0-9a-f]{8}-[0-9a-f]{4}/i.test(id!) && id!.length < 80;
+  if (!id || id.length >= 80) return false;
+  if (/^\d+$/.test(id) || /[0-9a-f]{8}-[0-9a-f]{4}/i.test(id)) return false;
+  // Counters handed out per session, e.g. Chromium's "view_20" or "item_1734".
+  return !/^[a-z]+_\d+$/i.test(id) && !/\d{4,}$/.test(id);
 }
 
 function stableName(name?: string): name is string {

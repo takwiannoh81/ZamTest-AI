@@ -306,13 +306,39 @@ public static class ZtRecorder {
           continue;
         }
         Flush();
-        var el = AutomationElement.FromPoint(new System.Windows.Point(p[0], p[1]));
+        var pt = new System.Windows.Point(p[0], p[1]);
+        var el = AutomationElement.FromPoint(pt);
         if (el == null || el.Current.ProcessId == ownPid) continue;
+        el = Deepest(el, pt);
         events.Enqueue("{\"kind\":\"" + (p[2] == 1 ? "rightclick" : "click") + "\",\"chain\":" + Chain(el) + "}");
       } catch (Exception ex) {
         events.Enqueue("{\"kind\":\"error\",\"message\":" + Json(ex.Message) + "}");
       }
     }
+  }
+
+  /// FromPoint stops at hosts such as WinUI/XAML islands (the new Notepad's
+  /// menu bar) and Chromium panes; walk down to the smallest element under the point.
+  static AutomationElement Deepest(AutomationElement el, System.Windows.Point pt) {
+    var walker = TreeWalker.ControlViewWalker;
+    int visited = 0;
+    for (int depth = 0; depth < 25; depth++) {
+      AutomationElement best = null;
+      double bestArea = double.MaxValue;
+      for (var c = walker.GetFirstChild(el); c != null && visited < 400; c = walker.GetNextSibling(c)) {
+        visited++;
+        try {
+          if (c.Current.IsOffscreen) continue;
+          var r = c.Current.BoundingRectangle;
+          if (r.IsEmpty || !r.Contains(pt)) continue;
+          double area = r.Width * r.Height;
+          if (area < bestArea) { best = c; bestArea = area; }
+        } catch { }
+      }
+      if (best == null) break;
+      el = best;
+    }
+    return el;
   }
 
   static void OnFocus(object sender, AutomationFocusChangedEventArgs e) {

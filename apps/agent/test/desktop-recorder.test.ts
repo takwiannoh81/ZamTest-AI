@@ -59,4 +59,10 @@ describe("desktop recorder", () => {
     const wf = desktopEventsToWorkflow([{ kind: "enter", chain: [win, user] }]);
     expect(wf.root.slots!.body![0]).toMatchObject({ type: "desktop.sendKeys", props: { keys: "{ENTER}" } });
   });
+
+  it("prefers names over per-session ids", () => {
+    const chrome = { type: "window", name: "Portal - Google Chrome", process: "chrome" };
+    const wf = desktopEventsToWorkflow([{ kind: "click", chain: [chrome, { type: "tabitem", id: "view_20", name: "Portal" }] }]);
+    expect(wf.root.slots!.body![0]!.props.selector).toBe('window[process="chrome"][name$=" - Google Chrome"] > tabitem[name="Portal"]');
+  });
 });
