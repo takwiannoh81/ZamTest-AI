@@ -158,16 +158,25 @@ export async function desktopSelfTest(): Promise<boolean> {
         await driver.call("close", { selector: win });
         // Notepad may ask "Save changes?" (inside the window or as its own dialog): answer "Don't save".
         const dontSave = `${anyNotepad} > button[name^="Don"]`;
-        const deadline = Date.now() + 10_000;
+        const dialog = `${anyNotepad} > window[class="#32770"]`;
+        const started = Date.now();
         let answered = false;
-        while (Date.now() < deadline) {
-          if (!(await count(win))) return answered ? "answered the save prompt" : undefined;
+        let keyed = false;
+        while (Date.now() - started < 10_000) {
+          if (!(await count(win))) return answered ? `answered the save prompt${keyed ? " (Alt+N)" : ""}` : undefined;
           if (await count(dontSave)) {
             await driver.call("click", { selector: `${dontSave}[index=1]` });
             answered = true;
+          } else if (!keyed && Date.now() - started > 2_000 && (await count(dialog))) {
+            // Classic dialog whose buttons are not exposed: "Don't Save" has the Alt+N shortcut.
+            await driver.call("sendKeys", { selector: `${dialog}[index=1]`, keys: "%n" });
+            keyed = answered = true;
           }
           await sleep(400);
         }
+        const dump = await driver.call<{ tree: string }>("tree", { selector: win, maxNodes: 40 }).catch(() => ({ tree: "" }));
+        log("      Notepad UI tree while closing:");
+        for (const l of dump.tree.split("\n")) log(`        ${l}`);
         const open = await driver.call<Array<{ type: string; name: string; class: string; process: string }>>("windows").catch(() => []);
         const mine = open.filter((w) => w.process.toLowerCase() === "notepad").map((w) => `${w.type} "${w.name}" [${w.class}]`);
         throw new Error(`Notepad is still open (${win}); Notepad windows: ${mine.join(", ") || "none"}`);
