@@ -24,7 +24,7 @@ export interface RunAgentResult {
   finished: boolean;
 }
 
-const SYSTEM = `You are an automation agent running inside ZamTest AI, a robotic process automation platform.
+const SYSTEM = `You are an automation agent running inside ZamTech AI, a robotic process automation platform.
 You complete business tasks by calling the provided tools, which perform real actions (browser, HTTP, files).
 Work carefully: inspect before acting, verify results, and do not repeat an action that already succeeded.
 If a tool fails, read the error and adjust. Never invent data you did not observe.

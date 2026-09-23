@@ -1,4 +1,4 @@
-# Production stack for ZamTest AI.
+# Production stack for ZamTech AI.
 #   cd deploy && ./init-env.sh && docker compose up -d --build
 # Optional cloud bot agent:  docker compose --profile agent up -d --build
 name: zamtest
@@ -36,6 +36,14 @@ services:
       ZAMTEST_CORS_ORIGINS: https://portal.${SITE_DOMAIN},https://designer.${SITE_DOMAIN}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ZAMTEST_AI_MODEL: ${ZAMTEST_AI_MODEL:-}
+      # Nightly S3 backups (optional; see docs/DEPLOYMENT.md)
+      ZAMTEST_BACKUP_S3_BUCKET: ${ZAMTEST_BACKUP_S3_BUCKET:-}
+      ZAMTEST_BACKUP_S3_PREFIX: ${ZAMTEST_BACKUP_S3_PREFIX:-zamtest/}
+      ZAMTEST_BACKUP_S3_REGION: ${ZAMTEST_BACKUP_S3_REGION:-}
+      ZAMTEST_BACKUP_CRON: ${ZAMTEST_BACKUP_CRON:-0 3 * * *}
+      ZAMTEST_BACKUP_KEEP_DAYS: ${ZAMTEST_BACKUP_KEEP_DAYS:-30}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
     volumes:
       - zamtest_data:/data
     restart: unless-stopped

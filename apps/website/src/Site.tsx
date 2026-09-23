@@ -53,7 +53,7 @@ export function Site() {
         <div className="wrap header-inner">
           <a className="brand" href="#top">
             <img src="/favicon.svg" alt="" width={32} height={32} />
-            <strong>ZamTest AI</strong>
+            <strong>ZamTech AI</strong>
           </a>
           <nav className="nav">
             <a href="#features">{t("site.nav.features")}</a>

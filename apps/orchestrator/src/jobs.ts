@@ -21,6 +21,7 @@ export interface CreateJobInput {
   targetAgentId?: string;
   source: Job["source"];
   scheduleId?: string;
+  startedBy?: string;
 }
 
 export function createJob(store: Store, input: CreateJobInput): Job {
@@ -47,6 +48,7 @@ export function createJob(store: Store, input: CreateJobInput): Job {
     inputs: input.inputs ?? {},
     status: "pending",
     source: input.source,
+    startedBy: input.startedBy,
     scheduleId: input.scheduleId,
     targetAgentId: input.targetAgentId,
     healedSelectors: [],

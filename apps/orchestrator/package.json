@@ -11,12 +11,13 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1138.0",
     "@fastify/cors": "^10.0.0",
     "@zamtest/ai": "workspace:*",
     "@zamtest/core": "workspace:*",
+    "@zamtest/i18n": "workspace:*",
     "croner": "^9.0.0",
     "fastify": "^5.2.0",
-    "zod": "^3.24.0",
-    "@zamtest/i18n": "workspace:*"
+    "zod": "^3.24.0"
   }
 }

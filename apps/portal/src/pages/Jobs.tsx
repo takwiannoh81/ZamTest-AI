@@ -133,6 +133,12 @@ export function JobDetail({ id }: { id: string }) {
             <span className="muted">{t("common.source")}</span>
             {t(`source.${j.source}` as MessageKey)}
           </div>
+          {j.startedBy && (
+            <div>
+              <span className="muted">{t("jobs.startedBy")}</span>
+              {j.startedBy}
+            </div>
+          )}
           <div>
             <span className="muted">{t("common.duration")}</span>
             {duration(j.startedAt, j.finishedAt)}

@@ -5,7 +5,7 @@ import { parseWorkflow } from "@zamtest/core";
 import { AgentConnection } from "./connection.js";
 import { aiEnabled, execute } from "./runtime.js";
 
-const USAGE = `ZamTest AI bot agent
+const USAGE = `ZamTech AI bot agent
 
 Usage:
   zamtest-agent connect [--server URL] [--key KEY] [--name NAME]

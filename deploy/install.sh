@@ -50,7 +50,7 @@ if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1; t
 fi
 systemctl enable --now docker >/dev/null
 
-say "Fetching ZamTest AI ($BRANCH)"
+say "Fetching ZamTech AI ($BRANCH)"
 if [ -d "$INSTALL_DIR/.git" ]; then
   git config --global --add safe.directory "$INSTALL_DIR"
   if git -C "$INSTALL_DIR" fetch --quiet origin "$BRANCH"; then

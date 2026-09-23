@@ -45,6 +45,7 @@ export class Scheduler {
         inputs: schedule.inputs,
         targetAgentId: schedule.targetAgentId,
         source: "schedule",
+        startedBy: "schedule",
         scheduleId: schedule.id,
       });
       schedule.lastRunAt = nowIso();

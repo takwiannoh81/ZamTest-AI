@@ -2,7 +2,7 @@
   "name": "zamtest-ai",
   "private": true,
   "version": "0.1.0",
-  "description": "ZamTest AI - low-code, AI-native automation platform (Portal, Designer, Agents)",
+  "description": "ZamTech AI - low-code, AI-native automation platform (Portal, Designer, Agents)",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "engines": {

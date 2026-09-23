@@ -18,6 +18,8 @@ export function setToken(token: string) {
 
 /** Fired when the server rejects the stored access token (or none is stored). */
 export const UNAUTHORIZED_EVENT = "zamtest:unauthorized";
+/** Fired when the signed-in user's role does not allow the request. */
+export const FORBIDDEN_EVENT = "zamtest:forbidden";
 
 export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const token = getToken();
@@ -30,6 +32,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
   if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  if (res.status === 403) window.dispatchEvent(new Event(FORBIDDEN_EVENT));
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);

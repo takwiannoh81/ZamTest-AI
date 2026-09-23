@@ -4,7 +4,7 @@ v0.1 is a working vertical slice: Designer → Orchestrator → Bot Agent, with 
 
 ## v0.2: Production foundations
 - Postgres persistence (behind `Store`) and migrations. Keep job logs in a separate table or object storage.
-- Users, roles and tenants/folders (admin, developer, operator, viewer), with SSO through OIDC/SAML.
+- Tenants/folders on top of the existing user roles, SSO through OIDC/SAML, and multi-factor authentication.
 - Per-machine agent keys created in the Portal, in place of the shared key. Add mTLS as an option.
 - Encrypted credential assets (envelope encryption) and connectors for HashiCorp Vault, Azure Key Vault and CyberArk.
 - WebSocket/SSE push for job logs and agent commands, in place of polling.

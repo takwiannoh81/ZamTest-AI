@@ -1,8 +1,8 @@
-# ZamTest AI
+# ZamTech AI
 
-ZamTest AI is a low-code, AI-native automation (RPA) platform, in the same space as UiPath, Automation Anywhere and TITA Automation.
+ZamTech AI is a low-code, AI-native automation (RPA) platform, in the same space as UiPath, Automation Anywhere and TITA Automation.
 
-| ZamTest AI | UiPath | Automation Anywhere | What it does |
+| ZamTech AI | UiPath | Automation Anywhere | What it does |
 |---|---|---|---|
 | **Designer** (`apps/designer`) | Studio | Bot Creator | Visual, drag-and-drop workflow editor with AI assistance |
 | **Portal** (`apps/portal`) | Orchestrator | Control Room | Processes, jobs, schedules, bot agents, assets and credentials |
@@ -118,7 +118,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together
 These are MVP defaults. Read them before exposing the platform on a network.
 
 - The orchestrator binds to `127.0.0.1` by default.
-- Set `ZAMTEST_ADMIN_TOKEN` to require a bearer token for the Portal and Designer API.
+- Set `ZAMTEST_ADMIN_TOKEN` to enable the master access token, then create personal accounts with roles (Admin, Developer, Operator, Viewer) under **Users** in the Portal. Once any account exists, the API requires sign-in.
 - Set `ZAMTEST_AGENT_KEY` to replace the default agent key.
-- Credential assets are stored **unencrypted** in `.data/db.json` for now. Encryption at rest and an external vault integration are on the roadmap.
+- Credential assets are stored **unencrypted** in `.data/db.json` for now. Encryption at rest and an external vault integration are on the roadmap. User passwords are stored only as scrypt hashes.
+- Nightly encrypted backups to S3 are built in; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 - Workflow expressions and the *Run JavaScript* action run with the agent's permissions. Only let trusted automation developers publish processes.

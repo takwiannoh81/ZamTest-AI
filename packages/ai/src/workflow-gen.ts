@@ -58,7 +58,7 @@ export interface GenerateWorkflowResult {
  */
 export async function generateWorkflow(ai: AiClient, input: GenerateWorkflowInput): Promise<GenerateWorkflowResult> {
   const catalog = input.catalog ?? BUILTIN_ACTIONS;
-  const system = `You are the automation architect inside ZamTest AI, a low-code RPA platform.
+  const system = `You are the automation architect inside ZamTech AI, a low-code RPA platform.
 You design workflows that are reliable in production: validate inputs, wrap fragile UI work in Try/Catch,
 log progress with meaningful messages, add retries on flaky network or UI steps, and close browsers you open.
 

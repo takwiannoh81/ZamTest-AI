@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import cors from "@fastify/cors";
 import Fastify from "fastify";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -7,11 +6,34 @@ import { AiClient, AiNotConfiguredError, AiRefusalError, ZamAI } from "@zamtest/
 import { BUILTIN_ACTIONS, WorkflowSchema } from "@zamtest/core";
 import { languageName } from "@zamtest/i18n";
 import type { EngineEvent } from "@zamtest/core";
+import {
+  createSession,
+  deleteSession,
+  deleteUserSessions,
+  hashPassword,
+  hasRole,
+  LoginLimiter,
+  MIN_PASSWORD_LENGTH,
+  pruneSessions,
+  publicUser,
+  requiredRole,
+  resolvePrincipal,
+  safeEqual,
+  verifyPassword,
+} from "./auth.js";
+import type { BackupService } from "./backup.js";
 import type { OrchestratorConfig } from "./config.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
 import { Scheduler, validateCron } from "./scheduler.js";
 import { newId, nowIso, Store } from "./store.js";
-import type { Agent, Asset, Job, Package, Schedule, WorkflowDraft } from "./types.js";
+import type { Agent, Asset, Job, Package, Principal, Schedule, User, WorkflowDraft } from "./types.js";
+import { ROLES } from "./types.js";
+
+declare module "fastify" {
+  interface FastifyRequest {
+    principal?: Principal;
+  }
+}
 
 export interface AppOptions {
   config: OrchestratorConfig;
@@ -19,13 +41,10 @@ export interface AppOptions {
   /** Inject an AI facade (tests); defaults to a real client when an API key is configured. */
   ai?: ZamAI | null;
   logger?: boolean;
+  /** Nightly S3 backups; null/undefined when not configured. */
+  backup?: BackupService | null;
 }
 
-function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return ab.length === bb.length && timingSafeEqual(ab, bb);
-}
 
 function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
   const result = schema.safeParse(value);
@@ -92,7 +111,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   await app.register(cors, { origin: config.corsOrigins });
 
   app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
-    if (err instanceof HttpError) return reply.status(err.statusCode).send({ error: err.message });
+    if (err instanceof HttpError) {
+      return reply.status(err.statusCode).send({ error: err.message, ...(err.statusCode === 403 ? { code: "forbidden" } : {}) });
+    }
     if (err instanceof AiNotConfiguredError) return reply.status(503).send({ error: err.message });
     if (err instanceof AiRefusalError) return reply.status(422).send({ error: err.message });
     const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
@@ -109,10 +130,130 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       if (!safeEqual(key, config.agentKey)) return reply.status(401).send({ error: "Invalid agent key" });
       return;
     }
-    if (config.adminToken) {
-      const auth = String(req.headers.authorization ?? "");
-      if (!safeEqual(auth, `Bearer ${config.adminToken}`)) return reply.status(401).send({ error: "Unauthorized" });
+    if (url === "/api/auth/login") return;
+    const principal = resolvePrincipal(store, config.adminToken, req.headers.authorization);
+    if (!principal) return reply.status(401).send({ error: "Sign in required", code: "unauthorized" });
+    req.principal = principal;
+    if (url.startsWith("/api/auth/")) return;
+    const needed = requiredRole(req.method, url);
+    if (!hasRole(principal, needed)) {
+      return reply.status(403).send({ error: `This needs the ${needed} role`, code: "forbidden", needed });
     }
+  });
+
+  const me = (req: FastifyRequest): Principal => req.principal!;
+  const bearer = (req: FastifyRequest) => /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? "")?.[1]?.trim() ?? "";
+  const limiter = new LoginLimiter();
+  const emailSchema = z.string().trim().toLowerCase().email();
+  const passwordSchema = z.string().min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`).max(200);
+  const findByEmail = (email: string) => Object.values(store.data.users).find((u) => u.email === email);
+  const activeAdmins = () => Object.values(store.data.users).filter((u) => u.role === "admin" && !u.disabled);
+
+  /* --------------------------- auth + users ------------------------- */
+  app.post("/api/auth/login", async (req, reply) => {
+    const body = parse(z.object({ email: z.string().trim().toLowerCase(), password: z.string() }), req.body);
+    const keys = [`ip:${req.ip}`, `email:${body.email}`];
+    if (limiter.blocked(...keys)) return reply.status(429).send({ error: "Too many attempts", code: "rate_limited" });
+    const user = findByEmail(body.email);
+    const ok = await verifyPassword(body.password, user?.passwordHash);
+    if (!user || !ok || user.disabled) {
+      limiter.fail(...keys);
+      return reply.status(401).send({ error: "Email or password is incorrect", code: "invalid_login" });
+    }
+    limiter.reset(...keys);
+    user.lastLoginAt = nowIso();
+    const token = createSession(store, user);
+    return { token, user: publicUser(user) };
+  });
+
+  app.post("/api/auth/logout", async (req) => {
+    if (me(req).kind === "user") deleteSession(store, bearer(req));
+    return { ok: true };
+  });
+
+  app.get("/api/auth/me", async (req) => {
+    const p = me(req);
+    return { id: p.id, name: p.name, email: p.email, role: p.role, kind: p.kind };
+  });
+
+  app.post("/api/auth/password", async (req) => {
+    const p = me(req);
+    if (p.kind !== "user") throw new HttpError(400, "Only user accounts have a password");
+    const body = parse(z.object({ current: z.string(), next: passwordSchema }), req.body);
+    const user = get(store.data.users, p.id, "User");
+    if (!(await verifyPassword(body.current, user.passwordHash))) throw new HttpError(400, "Current password is incorrect");
+    user.passwordHash = await hashPassword(body.next);
+    deleteUserSessions(store, user.id, bearer(req));
+    store.save();
+    return { ok: true };
+  });
+
+  const UserBody = z.object({
+    email: emailSchema,
+    name: z.string().trim().min(1).max(100),
+    role: z.enum(["admin", "developer", "operator", "viewer"]),
+    password: passwordSchema,
+    disabled: z.boolean().optional(),
+  });
+
+  app.get("/api/users", async () =>
+    Object.values(store.data.users)
+      .sort((a, b) => ROLES.indexOf(b.role) - ROLES.indexOf(a.role) || a.name.localeCompare(b.name))
+      .map(publicUser),
+  );
+
+  app.post("/api/users", async (req, reply) => {
+    const body = parse(UserBody, req.body);
+    if (findByEmail(body.email)) throw new HttpError(409, `A user with email ${body.email} already exists`);
+    const user: User = {
+      id: newId("usr"),
+      email: body.email,
+      name: body.name,
+      role: body.role,
+      disabled: body.disabled,
+      passwordHash: await hashPassword(body.password),
+      createdAt: nowIso(),
+    };
+    store.data.users[user.id] = user;
+    store.save();
+    return reply.status(201).send(publicUser(user));
+  });
+
+  app.put<{ Params: { id: string } }>("/api/users/:id", async (req) => {
+    const user = get(store.data.users, req.params.id, "User");
+    const body = parse(UserBody.partial().extend({ password: passwordSchema.optional().or(z.literal("")) }), req.body);
+    const losesAdmin = user.role === "admin" && ((body.role && body.role !== "admin") || body.disabled === true);
+    if (losesAdmin && activeAdmins().length <= 1) throw new HttpError(409, "Keep at least one active administrator");
+    if (body.email && body.email !== user.email && findByEmail(body.email)) {
+      throw new HttpError(409, `A user with email ${body.email} already exists`);
+    }
+    if (body.email) user.email = body.email;
+    if (body.name) user.name = body.name;
+    if (body.role) user.role = body.role;
+    if (body.disabled !== undefined) user.disabled = body.disabled;
+    if (body.password) user.passwordHash = await hashPassword(body.password);
+    if (body.password || body.disabled) deleteUserSessions(store, user.id);
+    store.save();
+    return publicUser(user);
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/users/:id", async (req, reply) => {
+    const user = get(store.data.users, req.params.id, "User");
+    if (user.id === me(req).id) throw new HttpError(409, "You cannot delete your own account");
+    if (user.role === "admin" && !user.disabled && activeAdmins().length <= 1) {
+      throw new HttpError(409, "Keep at least one active administrator");
+    }
+    delete store.data.users[user.id];
+    deleteUserSessions(store, user.id);
+    return reply.status(204).send();
+  });
+
+  /* ------------------------------ backups --------------------------- */
+  app.get("/api/admin/backup", async () => options.backup?.getStatus() ?? { configured: false, running: false });
+  app.post("/api/admin/backup", async () => {
+    if (!options.backup) throw new HttpError(409, "Backups are not configured");
+    const key = await options.backup.runNow();
+    return { ...options.backup.getStatus(), key };
   });
 
   const get = <T>(collection: Record<string, T>, id: string, what: string): T => {
@@ -239,7 +380,12 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   app.post("/api/jobs", async (req, reply) => {
     const body = parse(JobBody, req.body);
-    const job = createJob(store, body);
+    // Running an unpublished definition (Designer test run) is a developer action.
+    if (body.definition && !hasRole(me(req), "developer")) {
+      throw new HttpError(403, "Test runs of unpublished workflows need the developer role");
+    }
+    const who = me(req);
+    const job = createJob(store, { ...body, startedBy: who.email || who.name });
     return reply.status(201).send(jobSummary(job));
   });
 
@@ -481,12 +627,17 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* ---------------------------- lifecycle --------------------------- */
-  const sweeper = setInterval(() => sweep(store, config), 5_000);
+  const sweeper = setInterval(() => {
+    sweep(store, config);
+    pruneSessions(store);
+  }, 5_000);
   sweeper.unref();
   scheduler.start();
+  options.backup?.start();
   app.addHook("onClose", async () => {
     clearInterval(sweeper);
     scheduler.stop();
+    options.backup?.stop();
     store.flush();
   });
 

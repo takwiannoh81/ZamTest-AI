@@ -1,4 +1,6 @@
 import { buildApp } from "./app.js";
+import { BackupService, loadBackupConfig, s3Target } from "./backup.js";
+import { Store } from "./store.js";
 import { loadConfig, productionProblems } from "./config.js";
 
 const config = loadConfig();
@@ -7,7 +9,13 @@ if (problems.length) {
   console.error(`Refusing to start in production:\n- ${problems.join("\n- ")}\nGenerate values with: openssl rand -hex 32`);
   process.exit(1);
 }
-const { app } = await buildApp({ config, logger: true });
+const store = new Store(config.dataDir);
+const backupConfig = loadBackupConfig();
+const backup = backupConfig
+  ? new BackupService(store, backupConfig, s3Target(backupConfig), (msg) => console.log(`[backup] ${msg}`))
+  : null;
+const { app } = await buildApp({ config, store, backup, logger: true });
+if (backupConfig) app.log.info(`Backups: s3://${backupConfig.bucket}/${backupConfig.prefix} on "${backupConfig.cron}", keeping ${backupConfig.keepDays} days`);
 
 if (config.agentKey === "dev-agent-key") {
   app.log.warn("Using the default agent key. Set ZAMTEST_AGENT_KEY before exposing the orchestrator to a network.");

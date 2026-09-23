@@ -97,21 +97,69 @@ pnpm --filter @zamtest/agent start
 
 Agents only make outbound HTTPS requests, so they work behind company firewalls and NAT.
 
-## 5. Operations
+## 5. User accounts
+
+People sign in with their own email and password. Each account has one role:
+
+| Role | Can do |
+|---|---|
+| **Admin** | Everything, including users, backups and removing bot agents |
+| **Developer** | Build, test and publish workflows; manage schedules and assets |
+| **Operator** | Start and stop jobs, run schedules; view everything |
+| **Viewer** | Read-only |
+
+**First-time setup:**
+1. Open the Portal. On the sign-in screen, click **Use the master access token instead** and paste `ZAMTEST_ADMIN_TOKEN` from `deploy/.env`.
+2. Go to **Users**, then **+ New user**, and create your own **Admin** account. Then create an account for each teammate.
+3. Sign out and sign back in with your email and password.
+
+After that, keep the master token for emergencies only, for example if every admin is locked out. Sessions last 7 days. Changing a password signs that person out everywhere else. Repeated failed sign-ins are blocked for a few minutes.
+
+## 6. Backups to Amazon S3
+
+The orchestrator writes a compressed, encrypted (SSE-S3) copy of the database to S3 every night at 03:00 server time, and deletes copies older than 30 days. Admins see the status under **Settings**, where there is also a **Back up now** button.
+
+**One-time setup in the AWS console:**
+1. **Create a bucket.** In S3, click **Create bucket**, for example `zamtechai-backups`, in your region (for example us-east-2). Keep **Block all public access** turned on and turn **Bucket versioning** on.
+2. **Create a policy.** In IAM, go to **Policies**, then **Create policy**, then the **JSON** tab. Paste [`deploy/backup-iam-policy.json`](../deploy/backup-iam-policy.json), replacing `YOUR-BUCKET-NAME` with your bucket name. Name the policy `zamtech-backups`.
+3. **Create a user.** In IAM, go to **Users**, then **Create user**, for example `zamtech-backup`. Choose **Attach policies directly**, select `zamtech-backups`, and create the user. This user can only reach this one bucket folder.
+4. **Create an access key.** Open the new user, go to **Security credentials**, then **Create access key**, and choose **Application running outside AWS**. Copy both values.
+5. **Add the settings on the server.** Run `sudo nano ~/ZamTest-AI/deploy/.env` and add these lines:
+   ```
+   ZAMTEST_BACKUP_S3_BUCKET=zamtechai-backups
+   ZAMTEST_BACKUP_S3_REGION=us-east-2
+   AWS_ACCESS_KEY_ID=AKIA...
+   AWS_SECRET_ACCESS_KEY=...
+   ```
+   Then run `cd ~/ZamTest-AI/deploy && sudo docker compose up -d`.
+6. **Test it.** In the Portal, go to **Settings**, then **Backups**, then **Back up now**.
+
+Never paste these keys into chats, tickets or the repository. They belong only in `deploy/.env` on the server.
+
+**Restore:**
+```bash
+cd ~/ZamTest-AI/deploy
+sudo docker compose stop orchestrator
+sudo docker compose run --rm orchestrator node_modules/.bin/tsx apps/orchestrator/src/restore.ts latest
+sudo docker compose start orchestrator
+```
+To restore an older copy, replace `latest` with an object key from S3, for example `zamtest/db-2026-09-20T03-00-00-000Z.json.gz`. The database that was replaced is kept next to it as `db.json.before-restore-<time>`.
+
+## 7. Operations
 
 | Task | Command |
 |---|---|
 | Update to the latest code | `git pull && docker compose up -d --build` |
 | Logs | `docker compose logs -f orchestrator` (or `web`, `agent`) |
-| Backup | `docker run --rm -v zamtest_zamtest_data:/data -v $PWD:/backup alpine tar czf /backup/zamtest-$(date +%F).tgz -C /data .` |
+| Manual local backup | `docker run --rm -v zamtest_zamtest_data:/data -v $PWD:/backup alpine tar czf /backup/zamtest-$(date +%F).tgz -C /data .` |
 | Restore | Stop the stack, extract the archive into the `zamtest_zamtest_data` volume, then start it again |
 
-Back up the data volume regularly. It holds the workflows, processes, jobs, schedules and assets, including credentials. Until encryption at rest ships (see the roadmap), store the backups somewhere private.
+The data volume holds the workflows, processes, jobs, schedules, assets (including credentials) and user accounts (passwords are stored only as scrypt hashes). Set up the S3 backups in section 6 so that copies leave the server every night.
 
 ## Security checklist
 
 - [ ] `deploy/.env` stays on the server (it is git-ignored and created with permissions 600).
 - [ ] The admin token is shared only with people who should administer the platform.
 - [ ] SSH access uses keys, not passwords.
-- [ ] Backups are scheduled and stored privately.
-- [ ] User accounts, roles and SSO are the next security milestone (see [ROADMAP.md](ROADMAP.md)). Until then, everyone signs in with the same admin token.
+- [ ] Every person has their own account. The master token is kept for emergencies only.
+- [ ] S3 backups are configured, the bucket blocks public access, and the backup IAM user can reach only that bucket.

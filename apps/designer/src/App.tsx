@@ -12,6 +12,24 @@ import type { RunState } from "./components/RunPanel";
 import { cloneWithNewIds, createStep, findStep, insertStep, locate, mapStep, moveStep, removeStep } from "./tree";
 import type { Location } from "./tree";
 import { validate } from "./validate";
+import { signOut, useMe } from "./components/session";
+import type { MessageKey } from "@zamtest/i18n";
+
+function UserMenu() {
+  const { t } = useI18n();
+  const me = useMe();
+  if (!me || me.kind === "open") return null;
+  return (
+    <span className="user-inline">
+      <span className="muted">
+        {me.kind === "token" ? t("role.token") : t("auth.signedInAs", { name: me.name })} · {t(`role.${me.role}` as MessageKey)}
+      </span>
+      <button className="link-btn" onClick={() => void signOut()}>
+        {t("auth.signOut")}
+      </button>
+    </span>
+  );
+}
 
 const PORTAL_URL = import.meta.env.VITE_PORTAL_URL ?? "http://localhost:5173";
 
@@ -58,8 +76,12 @@ function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
   }, []);
 
   const create = async () => {
-    const wf = await api<WorkflowDraft>("/api/workflows", { method: "POST", body: { name: t("designer.defaultWorkflowName") } });
-    onOpen(wf.id);
+    try {
+      const wf = await api<WorkflowDraft>("/api/workflows", { method: "POST", body: { name: t("designer.defaultWorkflowName") } });
+      onOpen(wf.id);
+    } catch {
+      /* permission and connection errors are shown by the app shell */
+    }
   };
 
   const importFile = async (file: File) => {
@@ -99,6 +121,7 @@ function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
           {t("designer.openPortal")}
         </a>
         <LanguageSelect className="lang-select" />
+        <UserMenu />
       </div>
       <h2 className="section-title">{t("designer.workflows")}</h2>
       {list?.length ? (

@@ -162,3 +162,10 @@ code, pre, .mono, .log, .log-line { direction: ltr; unicode-bidi: isolate; }
 :root[dir="rtl"] { font-family: "Segoe UI", "Noto Sans Arabic", "Noto Kufi Arabic", Tahoma, system-ui, sans-serif; }
 .auth-backdrop { background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(4px); z-index: 100; }
 .auth-modal { width: min(420px, 100%); }
+.link-btn { background: none; border: none; padding: 0; color: var(--accent); font-size: 13px; cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
+.toast { position: fixed; bottom: 20px; inset-inline-start: 50%; transform: translateX(-50%); z-index: 120; max-width: min(520px, calc(100% - 32px)); background: var(--text); color: var(--bg); padding: 12px 16px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); cursor: pointer; }
+[dir="rtl"] .toast { transform: translateX(50%); }
+.user-chip { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; }
+.user-chip .role { color: var(--muted); font-size: 12px; }
+.role-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--accent-soft); color: var(--accent); }
