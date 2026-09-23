@@ -1,6 +1,9 @@
 // Minimal stand-ins for the UI Automation types driver.ps1 uses, so its C# can be
 // compile-checked (as C# 5, like Windows PowerShell 5.1 does) on machines without Windows.
-namespace System.Windows { public struct Point { public Point(double x, double y) { X = x; Y = y; } public double X, Y; } }
+namespace System.Windows {
+  public struct Point { public Point(double x, double y) { X = x; Y = y; } public double X, Y; }
+  public struct Rect { public bool IsEmpty; public double Width, Height; public bool Contains(Point p) { return false; } }
+}
 namespace System.Windows.Automation {
   public delegate void AutomationFocusChangedEventHandler(object sender, AutomationFocusChangedEventArgs e);
   public class AutomationFocusChangedEventArgs : System.EventArgs {}
@@ -15,11 +18,16 @@ namespace System.Windows.Automation {
     public static AutomationElement RootElement;
     public static AutomationElement FromPoint(System.Windows.Point p) { return null; }
     public Info Current;
-    public struct Info { public int ProcessId; public bool IsPassword; public ControlType ControlType; public string Name, AutomationId, ClassName; }
+    public struct Info { public int ProcessId; public bool IsPassword, IsOffscreen; public ControlType ControlType; public string Name, AutomationId, ClassName; public System.Windows.Rect BoundingRectangle; }
     public bool TryGetCurrentPattern(AutomationPattern p, out object o) { o = null; return false; }
   }
   public class ValuePattern { public static AutomationPattern Pattern; public Info Current; public struct Info { public bool IsReadOnly; public string Value; } }
   public class TextPatternRange { public string GetText(int n) { return ""; } }
   public class TextPattern { public static AutomationPattern Pattern; public TextPatternRange DocumentRange; }
-  public class TreeWalker { public static TreeWalker ControlViewWalker; public AutomationElement GetParent(AutomationElement e) { return null; } }
+  public class TreeWalker {
+    public static TreeWalker ControlViewWalker;
+    public AutomationElement GetParent(AutomationElement e) { return null; }
+    public AutomationElement GetFirstChild(AutomationElement e) { return null; }
+    public AutomationElement GetNextSibling(AutomationElement e) { return null; }
+  }
 }
