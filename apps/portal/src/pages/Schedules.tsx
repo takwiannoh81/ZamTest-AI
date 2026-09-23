@@ -1,19 +1,22 @@
+import { useI18n } from "@zamtest/i18n/react";
+import type { MessageKey } from "@zamtest/i18n";
 import { useState } from "react";
 import { api } from "../api";
 import type { Agent, Package, Schedule } from "../api";
-import { timeAgo, usePoll } from "../hooks";
+import { usePoll } from "../hooks";
 import { Empty, ErrorBanner, Field, Modal, PageHeader } from "../ui";
 import { collectInputs, formatInput, InputsEditor } from "./StartJobModal";
 
-const PRESETS: Array<[string, string]> = [
-  ["Every 5 minutes", "*/5 * * * *"],
-  ["Hourly", "0 * * * *"],
-  ["Weekdays 09:00", "0 9 * * 1-5"],
-  ["Daily 06:00", "0 6 * * *"],
-  ["Mondays 08:00", "0 8 * * 1"],
+const PRESETS: Array<[MessageKey, string]> = [
+  ["schedules.presetEvery5", "*/5 * * * *"],
+  ["schedules.presetHourly", "0 * * * *"],
+  ["schedules.presetWeekdays9", "0 9 * * 1-5"],
+  ["schedules.presetDaily6", "0 6 * * *"],
+  ["schedules.presetMondays8", "0 8 * * 1"],
 ];
 
 export function Schedules() {
+  const { t, timeAgo, dateTime } = useI18n();
   const { data, error, reload } = usePoll<Schedule[]>("/api/schedules", 10_000);
   const packages = usePoll<Package[]>("/api/packages", 0);
   const [editing, setEditing] = useState<Partial<Schedule> | null>(null);
@@ -31,7 +34,7 @@ export function Schedules() {
     window.location.hash = "/jobs";
   };
   const remove = async (s: Schedule) => {
-    if (!confirm(`Delete schedule ${s.name}?`)) return;
+    if (!confirm(t("schedules.confirmDelete", { name: s.name }))) return;
     await api(`/api/schedules/${s.id}`, { method: "DELETE" });
     reload();
   };
@@ -39,11 +42,11 @@ export function Schedules() {
   return (
     <>
       <PageHeader
-        title="Schedules"
-        subtitle="Time-based triggers for unattended automation"
+        title={t("schedules.title")}
+        subtitle={t("schedules.subtitle")}
         actions={
           <button className="btn" onClick={() => setEditing({ cron: "0 9 * * 1-5", enabled: true, inputs: {} })}>
-            + New schedule
+            {t("schedules.new")}
           </button>
         }
       />
@@ -52,12 +55,12 @@ export function Schedules() {
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Process</th>
-              <th>Cron</th>
-              <th>Next run</th>
-              <th>Last run</th>
-              <th>Enabled</th>
+              <th>{t("common.name")}</th>
+              <th>{t("common.process")}</th>
+              <th>{t("schedules.cron")}</th>
+              <th>{t("schedules.nextRun")}</th>
+              <th>{t("schedules.lastRun")}</th>
+              <th>{t("schedules.enabled")}</th>
               <th />
             </tr>
           </thead>
@@ -71,20 +74,20 @@ export function Schedules() {
                 <td>
                   <code>{s.cron}</code> {s.timezone && <span className="muted">{s.timezone}</span>}
                 </td>
-                <td>{s.nextRunAt ? new Date(s.nextRunAt).toLocaleString() : "-"}</td>
+                <td>{s.nextRunAt ? dateTime(s.nextRunAt) : "-"}</td>
                 <td>{timeAgo(s.lastRunAt)}</td>
                 <td>
                   <input type="checkbox" checked={s.enabled} onChange={() => void toggle(s)} />
                 </td>
                 <td className="row-actions">
                   <button className="btn-ghost" onClick={() => void runNow(s)}>
-                    Run now
+                    {t("schedules.runNow")}
                   </button>
                   <button className="btn-ghost" onClick={() => setEditing(s)}>
-                    Edit
+                    {t("common.edit")}
                   </button>
                   <button className="btn-ghost danger" onClick={() => void remove(s)}>
-                    Delete
+                    {t("common.delete")}
                   </button>
                 </td>
               </tr>
@@ -92,7 +95,7 @@ export function Schedules() {
           </tbody>
         </table>
       ) : (
-        <Empty>No schedules yet.</Empty>
+        <Empty>{t("schedules.empty")}</Empty>
       )}
       {editing && (
         <ScheduleModal
@@ -120,6 +123,7 @@ function ScheduleModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useI18n();
   const agents = usePoll<Agent[]>("/api/agents", 0);
   const [form, setForm] = useState<Partial<Schedule>>(initial);
   const [inputs, setInputs] = useState<Record<string, string>>(
@@ -141,26 +145,26 @@ function ScheduleModal({
 
   return (
     <Modal
-      title={initial.id ? "Edit schedule" : "New schedule"}
+      title={initial.id ? t("schedules.editTitle") : t("schedules.newTitle")}
       onClose={onClose}
       footer={
         <>
           <button className="btn-ghost" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button className="btn" onClick={() => void save()}>
-            Save
+            {t("common.save")}
           </button>
         </>
       }
     >
       <ErrorBanner error={error} />
-      <Field label="Name">
+      <Field label={t("common.name")}>
         <input value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       </Field>
-      <Field label="Process">
+      <Field label={t("common.process")}>
         <select value={form.packageId ?? ""} onChange={(e) => setForm({ ...form, packageId: e.target.value })}>
-          <option value="">Select a process...</option>
+          <option value="">{t("schedules.selectProcess")}</option>
           {packages.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name} v{p.version}
@@ -168,22 +172,22 @@ function ScheduleModal({
           ))}
         </select>
       </Field>
-      <Field label="Cron expression" hint="minute hour day-of-month month day-of-week">
+      <Field label={t("schedules.cronExpression")} hint={t("schedules.cronHint")}>
         <input value={form.cron ?? ""} onChange={(e) => setForm({ ...form, cron: e.target.value })} />
       </Field>
       <div className="chips">
         {PRESETS.map(([label, cron]) => (
           <button key={cron} type="button" className="chip" onClick={() => setForm({ ...form, cron })}>
-            {label}
+            {t(label)}
           </button>
         ))}
       </div>
-      <Field label="Time zone" hint="IANA name, e.g. Europe/London. Empty = server time.">
+      <Field label={t("schedules.timezone")} hint={t("schedules.timezoneHint")}>
         <input value={form.timezone ?? ""} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
       </Field>
-      <Field label="Run on">
+      <Field label={t("common.runOn")}>
         <select value={form.targetAgentId ?? ""} onChange={(e) => setForm({ ...form, targetAgentId: e.target.value })}>
-          <option value="">Any available agent</option>
+          <option value="">{t("common.anyAgent")}</option>
           {agents.data?.map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}

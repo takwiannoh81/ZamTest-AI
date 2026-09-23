@@ -1,45 +1,51 @@
+import { useI18n } from "@zamtest/i18n/react";
 import type { Job, Stats } from "../api";
-import { timeAgo, usePoll } from "../hooks";
+import { usePoll } from "../hooks";
 import { Badge, Empty, ErrorBanner, PageHeader } from "../ui";
 
 export function Dashboard() {
+  const { t, timeAgo } = useI18n();
   const stats = usePoll<Stats>("/api/stats");
   const jobs = usePoll<Job[]>("/api/jobs?limit=8");
   const s = stats.data;
 
   const tiles = s
     ? [
-        { label: "Agents online", value: `${s.agents.online} / ${s.agents.total}`, hint: `${s.agents.busy} busy` },
-        { label: "Jobs running", value: s.jobs.running, hint: `${s.jobs.pending} queued` },
-        { label: "Succeeded", value: s.jobs.succeeded, hint: `${s.jobs.failed} failed` },
-        { label: "Processes", value: s.packages, hint: `${s.workflows} workflows in design` },
-        { label: "Active schedules", value: s.schedules, hint: "cron triggers" },
-        { label: "Selectors self-healed", value: s.healedSelectors, hint: s.ai.configured ? "AI enabled" : "AI not configured" },
+        { label: t("dashboard.agentsOnline"), value: `${s.agents.online} / ${s.agents.total}`, hint: t("dashboard.busyCount", { count: s.agents.busy }) },
+        { label: t("dashboard.jobsRunning"), value: s.jobs.running, hint: t("dashboard.queuedCount", { count: s.jobs.pending }) },
+        { label: t("dashboard.succeeded"), value: s.jobs.succeeded, hint: t("dashboard.failedCount", { count: s.jobs.failed }) },
+        { label: t("dashboard.processes"), value: s.packages, hint: t("dashboard.workflowsInDesign", { count: s.workflows }) },
+        { label: t("dashboard.activeSchedules"), value: s.schedules, hint: t("dashboard.cronTriggers") },
+        {
+          label: t("dashboard.selectorsHealed"),
+          value: s.healedSelectors,
+          hint: s.ai.configured ? t("dashboard.aiEnabled") : t("dashboard.aiNotConfigured"),
+        },
       ]
     : [];
 
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="Health of your digital workforce" />
+      <PageHeader title={t("dashboard.title")} subtitle={t("dashboard.subtitle")} />
       <ErrorBanner error={stats.error} />
       <section className="tiles">
-        {tiles.map((t) => (
-          <div className="tile" key={t.label}>
-            <span className="muted">{t.label}</span>
-            <strong>{t.value}</strong>
-            <small className="muted">{t.hint}</small>
+        {tiles.map((tile) => (
+          <div className="tile" key={tile.label}>
+            <span className="muted">{tile.label}</span>
+            <strong>{tile.value}</strong>
+            <small className="muted">{tile.hint}</small>
           </div>
         ))}
       </section>
-      <h2 className="section-title">Recent jobs</h2>
+      <h2 className="section-title">{t("dashboard.recentJobs")}</h2>
       {jobs.data?.length ? (
         <table>
           <thead>
             <tr>
-              <th>Process</th>
-              <th>Status</th>
-              <th>Source</th>
-              <th>Created</th>
+              <th>{t("common.process")}</th>
+              <th>{t("common.status")}</th>
+              <th>{t("common.source")}</th>
+              <th>{t("common.created")}</th>
             </tr>
           </thead>
           <tbody>
@@ -49,14 +55,14 @@ export function Dashboard() {
                 <td>
                   <Badge status={j.status} />
                 </td>
-                <td>{j.source}</td>
+                <td>{t(`source.${j.source}` as "source.manual")}</td>
                 <td>{timeAgo(j.createdAt)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : (
-        <Empty>No jobs yet. Publish a workflow from the Designer and start it from Processes.</Empty>
+        <Empty>{t("dashboard.noJobs")}</Empty>
       )}
     </>
   );

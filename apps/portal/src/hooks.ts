@@ -42,16 +42,6 @@ export function useHashRoute(): [string, (to: string) => void] {
   return [route, (to: string) => (window.location.hash = to)];
 }
 
-export function timeAgo(iso?: string): string {
-  if (!iso) return "-";
-  const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
-  if (s < 5) return "just now";
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
-  return new Date(iso).toLocaleDateString();
-}
-
 export function duration(start?: string, end?: string): string {
   if (!start) return "-";
   const ms = (end ? Date.parse(end) : Date.now()) - Date.parse(start);

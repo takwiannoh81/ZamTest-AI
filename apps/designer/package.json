@@ -12,7 +12,8 @@
   "dependencies": {
     "@zamtest/core": "workspace:*",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@zamtest/i18n": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

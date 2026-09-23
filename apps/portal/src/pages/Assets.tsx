@@ -1,18 +1,23 @@
+import { useI18n } from "@zamtest/i18n/react";
 import { useState } from "react";
 import { api } from "../api";
 import type { Asset } from "../api";
-import { timeAgo, usePoll } from "../hooks";
+import { usePoll } from "../hooks";
 import { Empty, ErrorBanner, Field, Modal, PageHeader } from "../ui";
 
 export function Assets() {
+  const { t, timeAgo } = useI18n();
   const { data, error, reload } = usePoll<Asset[]>("/api/assets", 0);
   const [editing, setEditing] = useState<Partial<Asset> | null>(null);
 
   const remove = async (a: Asset) => {
-    if (!confirm(`Delete asset ${a.name}?`)) return;
+    if (!confirm(t("assets.confirmDelete", { name: a.name }))) return;
     await api(`/api/assets/${a.id}`, { method: "DELETE" });
     reload();
   };
+
+  const typeLabel = (type: Asset["type"]) =>
+    ({ text: t("assets.typeText"), number: t("assets.typeNumber"), boolean: t("assets.typeBoolean"), credential: t("assets.typeCredential") })[type];
 
   const show = (a: Asset) => {
     if (a.type === "credential") return `${(a.value as { username?: string }).username ?? ""} / ********`;
@@ -22,11 +27,11 @@ export function Assets() {
   return (
     <>
       <PageHeader
-        title="Assets"
-        subtitle="Shared configuration and credentials used by automations (read with the Get Asset action)"
+        title={t("assets.title")}
+        subtitle={t("assets.subtitle")}
         actions={
           <button className="btn" onClick={() => setEditing({ type: "text", value: "" })}>
-            + New asset
+            {t("assets.new")}
           </button>
         }
       />
@@ -35,10 +40,10 @@ export function Assets() {
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Value</th>
-              <th>Updated</th>
+              <th>{t("common.name")}</th>
+              <th>{t("common.type")}</th>
+              <th>{t("common.value")}</th>
+              <th>{t("common.updated")}</th>
               <th />
             </tr>
           </thead>
@@ -49,17 +54,17 @@ export function Assets() {
                   <strong>{a.name}</strong>
                   {a.description && <div className="muted">{a.description}</div>}
                 </td>
-                <td>{a.type}</td>
+                <td>{typeLabel(a.type)}</td>
                 <td>
                   <code>{show(a)}</code>
                 </td>
                 <td>{timeAgo(a.updatedAt)}</td>
                 <td className="row-actions">
                   <button className="btn-ghost" onClick={() => setEditing(a)}>
-                    Edit
+                    {t("common.edit")}
                   </button>
                   <button className="btn-ghost danger" onClick={() => void remove(a)}>
-                    Delete
+                    {t("common.delete")}
                   </button>
                 </td>
               </tr>
@@ -67,7 +72,7 @@ export function Assets() {
           </tbody>
         </table>
       ) : (
-        <Empty>No assets yet.</Empty>
+        <Empty>{t("assets.empty")}</Empty>
       )}
       {editing && (
         <AssetModal
@@ -84,6 +89,7 @@ export function Assets() {
 }
 
 function AssetModal({ initial, onClose, onSaved }: { initial: Partial<Asset>; onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<Partial<Asset>>(initial);
   const [error, setError] = useState<string>();
   const cred = (form.value ?? {}) as { username?: string; password?: string };
@@ -104,24 +110,24 @@ function AssetModal({ initial, onClose, onSaved }: { initial: Partial<Asset>; on
 
   return (
     <Modal
-      title={initial.id ? `Edit ${initial.name}` : "New asset"}
+      title={initial.id ? t("assets.editTitle", { name: initial.name ?? "" }) : t("assets.newTitle")}
       onClose={onClose}
       footer={
         <>
           <button className="btn-ghost" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button className="btn" onClick={() => void save()}>
-            Save
+            {t("common.save")}
           </button>
         </>
       }
     >
       <ErrorBanner error={error} />
-      <Field label="Name">
+      <Field label={t("common.name")}>
         <input value={form.name ?? ""} disabled={Boolean(initial.id)} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       </Field>
-      <Field label="Type">
+      <Field label={t("common.type")}>
         <select
           value={form.type}
           onChange={(e) => {
@@ -129,34 +135,34 @@ function AssetModal({ initial, onClose, onSaved }: { initial: Partial<Asset>; on
             setForm({ ...form, type, value: type === "credential" ? { username: "", password: "" } : "" });
           }}
         >
-          <option value="text">Text</option>
-          <option value="number">Number</option>
-          <option value="boolean">Boolean</option>
-          <option value="credential">Credential</option>
+          <option value="text">{t("assets.typeText")}</option>
+          <option value="number">{t("assets.typeNumber")}</option>
+          <option value="boolean">{t("assets.typeBoolean")}</option>
+          <option value="credential">{t("assets.typeCredential")}</option>
         </select>
       </Field>
       {form.type === "credential" ? (
         <>
-          <Field label="Username">
+          <Field label={t("assets.username")}>
             <input value={cred.username ?? ""} onChange={(e) => setForm({ ...form, value: { ...cred, username: e.target.value } })} />
           </Field>
-          <Field label="Password" hint={initial.id ? "Leave as ******** to keep the current password" : undefined}>
+          <Field label={t("assets.password")} hint={initial.id ? t("assets.passwordKeep") : undefined}>
             <input type="password" value={cred.password ?? ""} onChange={(e) => setForm({ ...form, value: { ...cred, password: e.target.value } })} />
           </Field>
         </>
       ) : form.type === "boolean" ? (
-        <Field label="Value">
+        <Field label={t("common.value")}>
           <select value={String(form.value)} onChange={(e) => setForm({ ...form, value: e.target.value })}>
             <option value="true">true</option>
             <option value="false">false</option>
           </select>
         </Field>
       ) : (
-        <Field label="Value">
+        <Field label={t("common.value")}>
           <input value={String(form.value ?? "")} onChange={(e) => setForm({ ...form, value: e.target.value })} />
         </Field>
       )}
-      <Field label="Description">
+      <Field label={t("common.description")}>
         <input value={form.description ?? ""} onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </Field>
     </Modal>

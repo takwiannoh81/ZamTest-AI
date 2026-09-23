@@ -1,11 +1,13 @@
+import { useI18n } from "@zamtest/i18n/react";
 import { useState } from "react";
 import { api } from "../api";
 import type { Package } from "../api";
-import { timeAgo, usePoll } from "../hooks";
+import { usePoll } from "../hooks";
 import { Empty, ErrorBanner, PageHeader } from "../ui";
 import { StartJobModal } from "./StartJobModal";
 
 export function Processes() {
+  const { t, timeAgo } = useI18n();
   const { data, error, reload } = usePoll<Package[]>("/api/packages", 10_000);
   const [starting, setStarting] = useState<Package>();
   const [showAll, setShowAll] = useState(false);
@@ -18,7 +20,7 @@ export function Processes() {
   const rows = showAll ? (data ?? []) : [...latest.values()];
 
   const remove = async (p: Package) => {
-    if (!confirm(`Delete ${p.name} v${p.version}?`)) return;
+    if (!confirm(t("processes.confirmDelete", { name: p.name, version: p.version }))) return;
     try {
       await api(`/api/packages/${p.id}`, { method: "DELETE" });
       reload();
@@ -30,11 +32,11 @@ export function Processes() {
   return (
     <>
       <PageHeader
-        title="Processes"
-        subtitle="Published, versioned automations ready to run"
+        title={t("processes.title")}
+        subtitle={t("processes.subtitle")}
         actions={
           <label className="toggle">
-            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Show all versions
+            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> {t("processes.showAll")}
           </label>
         }
       />
@@ -43,10 +45,10 @@ export function Processes() {
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Version</th>
-              <th>Inputs</th>
-              <th>Published</th>
+              <th>{t("common.name")}</th>
+              <th>{t("common.version")}</th>
+              <th>{t("common.inputs")}</th>
+              <th>{t("processes.published")}</th>
               <th />
             </tr>
           </thead>
@@ -56,17 +58,17 @@ export function Processes() {
                 <td>
                   <strong>{p.name}</strong>
                   {p.description && <div className="muted">{p.description}</div>}
-                  {p.releaseNotes && <div className="muted">Notes: {p.releaseNotes}</div>}
+                  {p.releaseNotes && <div className="muted">{t("processes.notes", { notes: p.releaseNotes })}</div>}
                 </td>
                 <td>v{p.version}</td>
                 <td>{p.variables.filter((v) => v.direction === "in" || v.direction === "inout").map((v) => v.name).join(", ") || "-"}</td>
                 <td>{timeAgo(p.publishedAt)}</td>
                 <td className="row-actions">
                   <button className="btn" onClick={() => setStarting(p)}>
-                    ▶ Start
+                    {t("processes.start")}
                   </button>
                   <button className="btn-ghost danger" onClick={() => void remove(p)}>
-                    Delete
+                    {t("common.delete")}
                   </button>
                 </td>
               </tr>
@@ -74,7 +76,7 @@ export function Processes() {
           </tbody>
         </table>
       ) : (
-        <Empty>No processes yet. Build a workflow in the Designer and click Publish.</Empty>
+        <Empty>{t("processes.empty")}</Empty>
       )}
       {starting && <StartJobModal pkg={starting} onClose={() => setStarting(undefined)} />}
     </>

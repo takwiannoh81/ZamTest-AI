@@ -54,7 +54,7 @@ Return 1-4 candidates, best first.`;
 /** Suggests robust selectors for an element described in plain language. */
 export async function suggestSelectors(
   ai: AiClient,
-  input: { html: string; description: string; url?: string; currentSelector?: string },
+  input: { html: string; description: string; url?: string; currentSelector?: string; language?: string },
 ): Promise<SelectorSuggestion> {
   const message = await ai.create({
     max_tokens: 16000,
@@ -67,6 +67,7 @@ export async function suggestSelectors(
           input.url ? `Page URL: ${input.url}` : "",
           input.currentSelector ? `Current selector: ${input.currentSelector}` : "",
           `Target element: ${input.description}`,
+          input.language && input.language !== "English" ? `Write each "reason" in ${input.language}.` : "",
           "Page DOM (scripts, styles and SVG internals removed):",
           "<dom>",
           input.html,

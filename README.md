@@ -23,6 +23,18 @@ ZamTest AI is a low-code, AI-native automation (RPA) platform, in the same space
 - **Bot Agent**: registers with the orchestrator, sends heartbeats, pulls jobs, streams logs, supports cancellation and reads assets. `run` mode executes a workflow file locally.
 - **Actions**: control flow, log, assign, delay, JavaScript, get asset, HTTP, JSON, files, and browser automation through Playwright (open, navigate, click, type, get text, wait, screenshot, close).
 
+## Languages
+
+The Portal and Designer are available in 13 languages:
+
+English, 日本語 (Japanese), 简体中文 (Simplified Chinese), Français (French), Español (Spanish), Português (Brasil) (Brazilian Portuguese), Deutsch (German), Nederlands (Dutch), Русский (Russian), Tiếng Việt (Vietnamese), ไทย (Thai), Afrikaans and Kiswahili (Swahili).
+
+- **What is translated:** the whole UI, plus the action catalog: action names, descriptions, categories and property labels.
+- **Choosing a language:** the app picks the browser's language automatically. Users can change it in the Designer toolbar, or in the Portal sidebar and Settings page. The choice is remembered per browser.
+- **Dates and times** follow the selected language.
+- **AI answers in the selected language:** Build with AI writes its notes, step labels and log messages in that language, and the selector assistant explains its suggestions in it. Code identifiers (action types, variable names, selectors) stay in ASCII.
+- **Adding a language:** see [packages/i18n/README.md](packages/i18n/README.md).
+
 ## Quick start
 
 Requires Node 20+ and pnpm 9+.
@@ -70,6 +82,7 @@ Without a key, every non-AI feature still works, and the AI buttons are disabled
 
 ```
 packages/
+  i18n/         Translations (13 languages) for the UI and the action catalog
   core/         Workflow schema (zod), action catalog, expression language, execution engine
   actions/   Runtime implementations: system, data, files, browser (Playwright), AI
   ai/           Claude integration: selectors, self-healing, workflow generation, extraction, agents

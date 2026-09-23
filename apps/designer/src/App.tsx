@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ActionMeta, Step, Workflow } from "@zamtest/core";
+import { LanguageSelect, useI18n } from "@zamtest/i18n/react";
 import { api } from "./api";
 import type { Job, WorkflowDraft, WorkflowSummary } from "./api";
 import { AiGenerateModal, JsonModal, SelectorAssistModal } from "./components/AiModals";
@@ -26,21 +27,22 @@ function useHashId(): [string | undefined, (id?: string) => void] {
 }
 
 export function App() {
+  const { t } = useI18n();
   const [catalog, setCatalog] = useState<ActionMeta[]>([]);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [error, setError] = useState<string>();
   const [workflowId, openWorkflow] = useHashId();
 
   useEffect(() => {
-    api<ActionMeta[]>("/api/actions").then(setCatalog).catch((e: Error) => setError(`Cannot reach the orchestrator: ${e.message}`));
+    api<ActionMeta[]>("/api/actions").then(setCatalog).catch((e: Error) => setError(t("designer.cannotReach", { error: e.message })));
     api<{ configured: boolean }>("/api/ai/status").then((s) => setAiEnabled(s.configured)).catch(() => undefined);
-  }, []);
+  }, [t]);
 
   if (error) {
     return (
       <div className="start">
         <div className="error-banner">{error}</div>
-        <p className="muted">Start it with <code>pnpm dev:orchestrator</code>.</p>
+        <p className="muted">{t("designer.startIt", { command: "pnpm dev:orchestrator" })}</p>
       </div>
     );
   }
@@ -49,13 +51,14 @@ export function App() {
 }
 
 function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
+  const { t, dateTime } = useI18n();
   const [list, setList] = useState<WorkflowSummary[]>();
   useEffect(() => {
     api<WorkflowSummary[]>("/api/workflows").then(setList).catch(() => setList([]));
   }, []);
 
   const create = async () => {
-    const wf = await api<WorkflowDraft>("/api/workflows", { method: "POST", body: { name: "New workflow" } });
+    const wf = await api<WorkflowDraft>("/api/workflows", { method: "POST", body: { name: t("designer.defaultWorkflowName") } });
     onOpen(wf.id);
   };
 
@@ -65,12 +68,12 @@ function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
       const wf = await api<WorkflowDraft>("/api/workflows", { method: "POST", body: { definition } });
       onOpen(wf.id);
     } catch (e) {
-      alert(`Import failed: ${(e as Error).message}`);
+      alert(t("designer.importFailed", { error: (e as Error).message }));
     }
   };
 
   const remove = async (w: WorkflowSummary) => {
-    if (!confirm(`Delete workflow "${w.name}"? Published versions are kept.`)) return;
+    if (!confirm(t("designer.confirmDeleteWorkflow", { name: w.name }))) return;
     await api(`/api/workflows/${w.id}`, { method: "DELETE" });
     setList((l) => l?.filter((x) => x.id !== w.id));
   };
@@ -80,44 +83,47 @@ function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
       <div className="start-head">
         <span className="logo">Z</span>
         <div>
-          <h1>ZamTest AI Designer</h1>
-          <p className="muted">Build automations visually, or describe them and let AI draft the workflow.</p>
+          <h1>{t("designer.title")}</h1>
+          <p className="muted">{t("designer.tagline")}</p>
         </div>
       </div>
       <div className="actions">
         <button className="btn" onClick={() => void create()}>
-          + New workflow
+          {t("designer.newWorkflow")}
         </button>
         <label className="btn-ghost">
-          Import JSON
+          {t("designer.importJson")}
           <input type="file" accept=".json" hidden onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])} />
         </label>
         <a className="btn-ghost" href={PORTAL_URL} target="_blank" rel="noreferrer">
-          Open Portal ↗
+          {t("designer.openPortal")}
         </a>
+        <LanguageSelect className="lang-select" />
       </div>
-      <h2 className="section-title">Workflows</h2>
+      <h2 className="section-title">{t("designer.workflows")}</h2>
       {list?.length ? (
         <div className="wf-grid">
           {list.map((w) => (
             <div key={w.id} className="wf-card" onClick={() => onOpen(w.id)}>
               <strong>{w.name}</strong>
-              <span className="muted">{w.description || `${w.steps} steps`}</span>
-              <small className="muted">Updated {new Date(w.updatedAt).toLocaleString()}</small>
-              <button className="icon-btn" title="Delete" onClick={(e) => { e.stopPropagation(); void remove(w); }}>
+              <span className="muted">{w.description || t("designer.stepCount", { count: w.steps })}</span>
+              <small className="muted">{t("designer.updatedAt", { time: dateTime(w.updatedAt) })}</small>
+              <button className="icon-btn" title={t("common.delete")} onClick={(e) => { e.stopPropagation(); void remove(w); }}>
                 🗑
               </button>
             </div>
           ))}
         </div>
       ) : (
-        <div className="empty">{list ? "No workflows yet." : "Loading..."}</div>
+        <div className="empty">{list ? t("designer.noWorkflows") : t("common.loading")}</div>
       )}
     </div>
   );
 }
 
 function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: ActionMeta[]; aiEnabled: boolean; onExit: () => void }) {
+  const i18n = useI18n();
+  const { t } = i18n;
   const metas = useMemo(() => new Map(catalog.map((m) => [m.type, m])), [catalog]);
   const [workflow, setWorkflow] = useState<Workflow>();
   const [history, setHistory] = useState<{ past: Workflow[]; future: Workflow[] }>({ past: [], future: [] });
@@ -162,13 +168,13 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
     try {
       await api(`/api/workflows/${id}`, { method: "PUT", body: { name: workflow.name, description: workflow.description ?? "", definition: workflow } });
       setDirty(false);
-      setStatus(`Saved ${new Date().toLocaleTimeString()}`);
+      setStatus(t("toolbar.saved", { time: new Date().toLocaleTimeString(i18n.locale) }));
       return true;
     } catch (e) {
-      setStatus(`Save failed: ${(e as Error).message}`);
+      setStatus(t("toolbar.saveFailed", { error: (e as Error).message }));
       return false;
     }
-  }, [id, workflow]);
+  }, [id, workflow, t, i18n.locale]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -201,11 +207,11 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  if (!workflow) return <div className="start">{status ?? "Loading..."}</div>;
+  if (!workflow) return <div className="start">{status ?? t("common.loading")}</div>;
 
   const root = workflow.root;
   const selected = selectedId ? findStep(root, selectedId) : undefined;
-  const issues = validate(workflow, metas);
+  const issues = validate(workflow, metas, i18n);
   const setRoot = (r: Step) => update({ ...workflow, root: r });
 
   /** Where a new step goes: after the selected step, inside an empty selected container, or at the end. */
@@ -226,14 +232,14 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
   };
 
   const publish = async () => {
-    if (issues.length && !confirm(`There are ${issues.length} design issues. Publish anyway?`)) return;
+    if (issues.length && !confirm(t("toolbar.publishConfirm", { count: issues.length }))) return;
     if (!(await save())) return;
-    const releaseNotes = prompt("Release notes (optional):") ?? undefined;
+    const releaseNotes = prompt(t("toolbar.releaseNotes")) ?? undefined;
     try {
       const pkg = await api<{ version: number }>(`/api/workflows/${id}/publish`, { method: "POST", body: { releaseNotes } });
-      setStatus(`Published v${pkg.version} - start it from the Portal`);
+      setStatus(t("toolbar.published", { version: pkg.version }));
     } catch (e) {
-      setStatus(`Publish failed: ${(e as Error).message}`);
+      setStatus(t("toolbar.publishFailed", { error: (e as Error).message }));
     }
   };
 
@@ -243,7 +249,7 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
       const job = await api<Job>("/api/jobs", { method: "POST", body: { definition: workflow, source: "designer" } });
       setRun({ jobId: job.id });
     } catch (e) {
-      setStatus(`Run failed: ${(e as Error).message}`);
+      setStatus(t("toolbar.runFailed", { error: (e as Error).message }));
     }
   };
 
@@ -261,41 +267,42 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
   return (
     <div className="designer">
       <header className="toolbar">
-        <button className="icon-btn" title="All workflows" onClick={() => (!dirty || confirm("Discard unsaved changes?")) && onExit()}>
+        <button className="icon-btn" title={t("toolbar.allWorkflows")} onClick={() => (!dirty || confirm(t("toolbar.discard"))) && onExit()}>
           ←
         </button>
         <span className="logo small">Z</span>
         <input className="wf-name" value={workflow.name} onChange={(e) => update({ ...workflow, name: e.target.value })} />
-        {dirty && <span className="dirty" title="Unsaved changes">●</span>}
+        {dirty && <span className="dirty" title={t("toolbar.unsaved")}>●</span>}
         <span className="muted tiny status">{status}</span>
         <span className="spacer" />
-        <button className="btn-ghost" disabled={!history.past.length} onClick={undo} title="Undo (Ctrl+Z)">
+        <button className="btn-ghost" disabled={!history.past.length} onClick={undo} title={t("toolbar.undo")}>
           ↶
         </button>
-        <button className="btn-ghost" disabled={!history.future.length} onClick={redo} title="Redo (Ctrl+Shift+Z)">
+        <button className="btn-ghost" disabled={!history.future.length} onClick={redo} title={t("toolbar.redo")}>
           ↷
         </button>
         <button className={`btn-ghost${issues.length ? " warn" : ""}`} onClick={() => setShowIssues(!showIssues)}>
-          {issues.length ? `⚠ ${issues.length} issues` : "✓ Valid"}
+          {issues.length ? t("toolbar.issues", { count: issues.length }) : t("toolbar.valid")}
         </button>
         <button className="btn-ghost" onClick={() => setModal("json")}>
           {"{ }"} JSON
         </button>
         <button className="btn-ghost" onClick={download}>
-          Export
+          {t("toolbar.export")}
         </button>
-        <button className="btn-ghost ai" disabled={!aiEnabled} title={aiEnabled ? "" : "Set ANTHROPIC_API_KEY on the orchestrator"} onClick={() => setModal("ai")}>
-          ✨ Build with AI
+        <button className="btn-ghost ai" disabled={!aiEnabled} title={aiEnabled ? "" : t("toolbar.aiNeedsKey")} onClick={() => setModal("ai")}>
+          {t("toolbar.buildWithAi")}
         </button>
         <button className="btn-ghost" onClick={() => void save()}>
-          Save
+          {t("common.save")}
         </button>
         <button className="btn-ghost" onClick={() => void testRun()}>
-          ▶ Run
+          {t("toolbar.run")}
         </button>
         <button className="btn" onClick={() => void publish()}>
-          Publish
+          {t("toolbar.publish")}
         </button>
+        <LanguageSelect className="lang-select" />
       </header>
       {showIssues && issues.length > 0 && (
         <div className="issues">
@@ -344,7 +351,7 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
               onSelectStep={setSelectedId}
               onApplyHealed={(stepId, selector) => {
                 setRoot(mapStep(root, stepId, (s) => ({ ...s, props: { ...s.props, selector } })));
-                setStatus("Applied healed selector - remember to save");
+                setStatus(t("toolbar.healedApplied"));
               }}
             />
           )}
@@ -372,7 +379,7 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
             update({ ...w, name: w.name || workflow.name });
             setSelectedId(undefined);
             setModal(null);
-            setStatus("AI draft applied - review, then save");
+            setStatus(t("toolbar.aiApplied"));
           }}
         />
       )}

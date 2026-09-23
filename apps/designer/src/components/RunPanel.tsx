@@ -1,3 +1,5 @@
+import { useI18n } from "@zamtest/i18n/react";
+import type { MessageKey } from "@zamtest/i18n";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { Job, JobLog } from "../api";
@@ -20,6 +22,7 @@ export function RunPanel({
   onApplyHealed: (stepId: string, selector: string) => void;
   onSelectStep: (id: string) => void;
 }) {
+  const { t, locale } = useI18n();
   const [job, setJob] = useState<Job>();
   const [logs, setLogs] = useState<JobLog[]>([]);
   const last = useRef(0);
@@ -68,16 +71,16 @@ export function RunPanel({
   return (
     <section className="run-panel">
       <div className="run-head">
-        <strong>Test run</strong>
-        <span className={`badge badge-${job?.status ?? "pending"}`}>{job?.status ?? "queued"}</span>
-        {job?.status === "pending" && <span className="muted tiny">Waiting for a bot agent... start one with `pnpm dev:agent`.</span>}
+        <strong>{t("run.title")}</strong>
+        <span className={`badge badge-${job?.status ?? "pending"}`}>{t(job ? (`status.${job.status}` as MessageKey) : "status.queued")}</span>
+        {job?.status === "pending" && <span className="muted tiny">{t("run.waiting", { command: "pnpm dev:agent" })}</span>}
         <span className="spacer" />
         {!final && (
           <button className="btn-ghost small danger" onClick={cancel}>
-            Stop
+            {t("run.stop")}
           </button>
         )}
-        <button className="icon-btn" onClick={onClose} aria-label="Close run panel">
+        <button className="icon-btn" onClick={onClose} aria-label={t("common.close")}>
           ×
         </button>
       </div>
@@ -85,11 +88,11 @@ export function RunPanel({
         <div className="healed">
           {job.healedSelectors.map((h, i) => (
             <div key={i} className="healed-row">
-              <span>✨ Self-healed</span>
+              <span>{t("run.healed")}</span>
               <code>{h.oldSelector}</code>→<code>{h.newSelector}</code>
               {h.stepId && (
                 <button className="btn small" onClick={() => onApplyHealed(h.stepId!, h.newSelector)}>
-                  Apply fix
+                  {t("run.applyFix")}
                 </button>
               )}
             </div>
@@ -99,13 +102,13 @@ export function RunPanel({
       <div className="log" ref={box}>
         {logs.map((l) => (
           <div key={l.seq} className={`log-line log-${l.level}`} onClick={() => l.stepId && onSelectStep(l.stepId)}>
-            <span className="log-time">{new Date(l.time).toLocaleTimeString()}</span>
+            <span className="log-time">{new Date(l.time).toLocaleTimeString(locale)}</span>
             <span className="log-level">{l.level}</span>
             <span>{l.message}</span>
           </div>
         ))}
       </div>
-      {job?.outputs && Object.keys(job.outputs).length > 0 && <pre className="outputs">Outputs: {JSON.stringify(job.outputs, null, 2)}</pre>}
+      {job?.outputs && Object.keys(job.outputs).length > 0 && <pre className="outputs">{t("run.outputs")} {JSON.stringify(job.outputs, null, 2)}</pre>}
     </section>
   );
 }

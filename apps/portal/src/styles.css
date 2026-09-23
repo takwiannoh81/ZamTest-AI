@@ -155,3 +155,12 @@ tr.clickable:hover td { background: var(--surface-2); }
   .content { padding: 16px; }
   table { display: block; overflow-x: auto; }
 }
+
+/* language picker + fonts for non-Latin scripts */
+:root { font-family: "Inter", system-ui, -apple-system, "Segoe UI", "Noto Sans", "Noto Sans JP", "Noto Sans SC", "Noto Sans Thai", "Hiragino Sans", "PingFang SC", "Microsoft YaHei", "Leelawadee UI", sans-serif; }
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+.sidebar-foot .designer-link { margin-top: 0; }
+.lang-select { font-size: 13px; }
+@media (max-width: 760px) {
+  .sidebar-foot { margin-top: 0; flex-direction: row; }
+}

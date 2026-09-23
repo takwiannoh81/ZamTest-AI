@@ -103,3 +103,18 @@ describe("ZamAI", () => {
     expect(second.at(-1)!.content[0]).toMatchObject({ type: "tool_result", tool_use_id: "t1", content: "42" });
   });
 });
+
+describe("languages", () => {
+  it("asks for human-readable workflow text in the user's language", async () => {
+    const good = {
+      id: "w",
+      name: "Hallo",
+      root: { id: "root", type: "core.sequence", props: {}, slots: { body: [{ id: "a", type: "core.log", props: { message: "hallo" } }] } },
+    };
+    const { client, requests } = fakeClient([{ content: [text("```json\n" + JSON.stringify(good) + "\n```")] }]);
+    await new ZamAI({ client }).generateWorkflow({ prompt: "sag hallo", language: "German" });
+    const first = (requests[0]!.messages as Array<{ content: string }>)[0]!.content;
+    expect(first).toContain("in German");
+    expect(first).toContain("ASCII identifiers");
+  });
+});

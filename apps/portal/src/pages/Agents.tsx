@@ -1,31 +1,33 @@
+import { useI18n } from "@zamtest/i18n/react";
 import { api } from "../api";
 import type { Agent } from "../api";
-import { timeAgo, usePoll } from "../hooks";
+import { usePoll } from "../hooks";
 import { Badge, Empty, ErrorBanner, PageHeader } from "../ui";
 
 export function Agents() {
+  const { t, timeAgo } = useI18n();
   const { data, error, reload } = usePoll<Agent[]>("/api/agents");
 
   const remove = async (a: Agent) => {
-    if (!confirm(`Remove agent ${a.name}? It will re-register the next time it connects.`)) return;
+    if (!confirm(t("agents.confirmRemove", { name: a.name }))) return;
     await api(`/api/agents/${a.id}`, { method: "DELETE" });
     reload();
   };
 
   return (
     <>
-      <PageHeader title="Bot Agents" subtitle="Machines that execute your automations" />
+      <PageHeader title={t("agents.title")} subtitle={t("agents.subtitle")} />
       <ErrorBanner error={error} />
       {data?.length ? (
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Machine</th>
-              <th>OS</th>
-              <th>Version</th>
-              <th>Last heartbeat</th>
+              <th>{t("common.name")}</th>
+              <th>{t("common.status")}</th>
+              <th>{t("agents.machine")}</th>
+              <th>{t("agents.os")}</th>
+              <th>{t("common.version")}</th>
+              <th>{t("agents.lastHeartbeat")}</th>
               <th />
             </tr>
           </thead>
@@ -36,7 +38,7 @@ export function Agents() {
                   <strong>{a.name}</strong>
                   {a.currentJobId && (
                     <div>
-                      <a href={`#/jobs/${a.currentJobId}`}>current job</a>
+                      <a href={`#/jobs/${a.currentJobId}`}>{t("agents.currentJob")}</a>
                     </div>
                   )}
                 </td>
@@ -49,7 +51,7 @@ export function Agents() {
                 <td>{timeAgo(a.lastHeartbeat)}</td>
                 <td className="row-actions">
                   <button className="btn-ghost danger" onClick={() => void remove(a)}>
-                    Remove
+                    {t("common.remove")}
                   </button>
                 </td>
               </tr>
@@ -58,8 +60,8 @@ export function Agents() {
         </table>
       ) : (
         <Empty>
-          <p>No agents connected yet. Start one on any machine:</p>
-          <pre>pnpm dev:agent{"\n"}# or: ZAMTEST_SERVER=http://host:4000 ZAMTEST_AGENT_KEY=... pnpm --filter @zamtest/agent start</pre>
+          <p>{t("agents.empty")}</p>
+          <pre>pnpm dev:agent{"\n"}# ZAMTEST_SERVER=http://host:4000 ZAMTEST_AGENT_KEY=... pnpm --filter @zamtest/agent start</pre>
         </Empty>
       )}
     </>

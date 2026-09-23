@@ -42,6 +42,9 @@ importers:
       '@zamtest/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@zamtest/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       react:
         specifier: ^19.0.0
         version: 19.3.0
@@ -73,6 +76,9 @@ importers:
       '@zamtest/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@zamtest/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       croner:
         specifier: ^9.0.0
         version: 9.1.0
@@ -85,6 +91,12 @@ importers:
 
   apps/portal:
     dependencies:
+      '@zamtest/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@zamtest/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       react:
         specifier: ^19.0.0
         version: 19.3.0
@@ -132,6 +144,19 @@ importers:
       zod:
         specifier: ^3.24.0
         version: 3.25.76
+
+  packages/i18n:
+    dependencies:
+      '@zamtest/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.3.0
+      react:
+        specifier: ^19.0.0
+        version: 19.3.0
 
 packages:
 

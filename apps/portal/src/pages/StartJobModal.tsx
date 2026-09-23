@@ -1,3 +1,4 @@
+import { useI18n } from "@zamtest/i18n/react";
 import { useState } from "react";
 import { api } from "../api";
 import type { Agent, Job, Package } from "../api";
@@ -27,8 +28,9 @@ export function InputsEditor({
   values: Record<string, string>;
   onChange: (v: Record<string, string>) => void;
 }) {
+  const { t } = useI18n();
   const inputs = pkg.variables.filter((v) => v.direction === "in" || v.direction === "inout");
-  if (!inputs.length) return <p className="muted">This process has no input arguments.</p>;
+  if (!inputs.length) return <p className="muted">{t("startJob.noInputs")}</p>;
   return (
     <>
       {inputs.map((v) => (
@@ -45,6 +47,7 @@ export function collectInputs(values: Record<string, string>): Record<string, un
 }
 
 export function StartJobModal({ pkg, onClose }: { pkg: Package; onClose: () => void }) {
+  const { t } = useI18n();
   const agents = usePoll<Agent[]>("/api/agents", 0);
   const [values, setValues] = useState<Record<string, string>>({});
   const [agentId, setAgentId] = useState("");
@@ -68,26 +71,26 @@ export function StartJobModal({ pkg, onClose }: { pkg: Package; onClose: () => v
 
   return (
     <Modal
-      title={`Start ${pkg.name} v${pkg.version}`}
+      title={t("startJob.title", { name: pkg.name, version: pkg.version })}
       onClose={onClose}
       footer={
         <>
           <button className="btn-ghost" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button className="btn" disabled={busy} onClick={() => void start()}>
-            Start job
+            {t("startJob.submit")}
           </button>
         </>
       }
     >
       <ErrorBanner error={error} />
-      <Field label="Run on">
+      <Field label={t("common.runOn")}>
         <select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-          <option value="">Any available agent</option>
+          <option value="">{t("common.anyAgent")}</option>
           {agents.data?.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name} ({a.status})
+              {a.name} ({t(`status.${a.status}`)})
             </option>
           ))}
         </select>

@@ -42,6 +42,8 @@ export interface GenerateWorkflowInput {
   /** When present, the model edits this workflow instead of starting from scratch. */
   existing?: Workflow;
   catalog?: ActionMeta[];
+  /** English name of the user's language, e.g. "Japanese". Defaults to English. */
+  language?: string;
 }
 
 export interface GenerateWorkflowResult {
@@ -71,7 +73,13 @@ Reply with a short explanation of the design (max 5 bullet points), then the com
     ? `Modify this workflow as requested.\n\nRequest: ${input.prompt}\n\nCurrent workflow:\n\`\`\`json\n${JSON.stringify(input.existing, null, 2)}\n\`\`\``
     : `Build a workflow for this automation:\n\n${input.prompt}`;
 
-  const messages: BetaMessageParam[] = [{ role: "user", content: request }];
+  const languageNote =
+    input.language && input.language !== "English"
+      ? `\n\nWrite the design explanation and all human-readable text in the workflow (name, description, step labels, log messages, ` +
+        `target descriptions, variable descriptions) in ${input.language}. Keep action types, prop names, variable names, ` +
+        `selectors and expressions exactly as the format requires (variable names must be ASCII identifiers).`
+      : "";
+  const messages: BetaMessageParam[] = [{ role: "user", content: request + languageNote }];
   let lastErrors: string[] = [];
 
   for (let attempt = 0; attempt < 2; attempt++) {

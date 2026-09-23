@@ -1,3 +1,4 @@
+import { useI18n } from "@zamtest/i18n/react";
 import type { ActionMeta, PropDef, Step, VariableDef, Workflow } from "@zamtest/core";
 import { Field } from "./ui";
 
@@ -11,12 +12,13 @@ interface Props {
 }
 
 function PropInput({ def, value, variables, onChange }: { def: PropDef; value: unknown; variables: VariableDef[]; onChange: (v: unknown) => void }) {
+  const { t } = useI18n();
   const placeholder = def.default !== undefined ? String(typeof def.default === "object" ? JSON.stringify(def.default) : def.default) : "";
   switch (def.type) {
     case "boolean":
       return (
         <select value={value === undefined ? "" : String(value)} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value === "true")}>
-          <option value="">Default ({placeholder || "false"})</option>
+          <option value="">{t("props.default", { value: placeholder || "false" })}</option>
           <option value="true">true</option>
           <option value="false">false</option>
         </select>
@@ -24,7 +26,7 @@ function PropInput({ def, value, variables, onChange }: { def: PropDef; value: u
     case "enum":
       return (
         <select value={value === undefined ? "" : String(value)} onChange={(e) => onChange(e.target.value || undefined)}>
-          <option value="">Default ({placeholder})</option>
+          <option value="">{t("props.default", { value: placeholder })}</option>
           {def.options?.map((o) => (
             <option key={o}>{o}</option>
           ))}
@@ -35,7 +37,7 @@ function PropInput({ def, value, variables, onChange }: { def: PropDef; value: u
     case "variable":
       return (
         <>
-          <input list="zamtest-vars" value={String(value ?? "")} placeholder={placeholder || "variable name"} onChange={(e) => onChange(e.target.value || undefined)} />
+          <input list="zamtest-vars" value={String(value ?? "")} placeholder={placeholder || t("props.variableName")} onChange={(e) => onChange(e.target.value || undefined)} />
           <datalist id="zamtest-vars">
             {variables.map((v) => (
               <option key={v.name} value={v.name} />
@@ -48,7 +50,7 @@ function PropInput({ def, value, variables, onChange }: { def: PropDef; value: u
     case "json":
       return <JsonInput value={value} onChange={onChange} />;
     case "expression":
-      return <input className="mono" value={String(value ?? "")} placeholder={placeholder || "e.g. total > 100"} onChange={(e) => onChange(e.target.value || undefined)} />;
+      return <input className="mono" value={String(value ?? "")} placeholder={placeholder || t("props.expressionPlaceholder")} onChange={(e) => onChange(e.target.value || undefined)} />;
     case "secret":
       return <input type="password" value={String(value ?? "")} onChange={(e) => onChange(e.target.value || undefined)} />;
     default:
@@ -57,6 +59,7 @@ function PropInput({ def, value, variables, onChange }: { def: PropDef; value: u
 }
 
 function JsonInput({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {
+  const { t } = useI18n();
   const text = value === undefined ? "" : typeof value === "string" ? value : JSON.stringify(value, null, 2);
   let invalid = false;
   if (typeof value === "string" && value.trim()) {
@@ -82,12 +85,13 @@ function JsonInput({ value, onChange }: { value: unknown; onChange: (v: unknown)
           }
         }}
       />
-      {invalid && <small className="warn-text">Not valid JSON</small>}
+      {invalid && <small className="warn-text">{t("props.invalidJson")}</small>}
     </>
   );
 }
 
 export function Properties({ step, meta, variables, aiEnabled, onChange, onSelectorAssist }: Props) {
+  const { t, actionName, actionDescription, propLabel, propDescription } = useI18n();
   const setProp = (name: string, v: unknown) => {
     const props = { ...step.props };
     if (v === undefined) delete props[name];
@@ -98,33 +102,33 @@ export function Properties({ step, meta, variables, aiEnabled, onChange, onSelec
   return (
     <div className="props-panel" key={step.id}>
       <div className="props-head">
-        <strong>{meta?.displayName ?? step.type}</strong>
-        <small className="muted">{meta?.description}</small>
+        <strong>{meta ? actionName(meta) : step.type}</strong>
+        <small className="muted">{meta ? actionDescription(meta) : ""}</small>
       </div>
-      <Field label="Label">
-        <input value={step.label ?? ""} placeholder={meta?.displayName} onChange={(e) => onChange({ ...step, label: e.target.value || undefined })} />
+      <Field label={t("props.label")}>
+        <input value={step.label ?? ""} placeholder={meta ? actionName(meta) : undefined} onChange={(e) => onChange({ ...step, label: e.target.value || undefined })} />
       </Field>
       {meta?.props.map((def) => (
-        <Field key={def.name} label={`${def.label}${def.required ? " *" : ""}`} hint={def.description}>
+        <Field key={def.name} label={`${propLabel(step.type, def)}${def.required ? " *" : ""}`} hint={propDescription(step.type, def)}>
           <div className="prop-row">
             <PropInput def={def} value={step.props[def.name]} variables={variables} onChange={(v) => setProp(def.name, v)} />
             {def.type === "selector" && (
-              <button className="btn-ghost ai-btn" disabled={!aiEnabled} title={aiEnabled ? "Suggest selectors with AI" : "AI not configured on the orchestrator"} onClick={() => onSelectorAssist(def.name)}>
-                ✨ AI
+              <button className="btn-ghost ai-btn" disabled={!aiEnabled} title={aiEnabled ? t("props.aiSuggest") : t("props.aiUnavailable")} onClick={() => onSelectorAssist(def.name)}>
+                {t("props.aiButton")}
               </button>
             )}
           </div>
         </Field>
       ))}
-      {!meta && <p className="warn-text">Unknown action type. It may come from a package that is not installed.</p>}
+      {!meta && <p className="warn-text">{t("props.unknown")}</p>}
       {meta && !meta.slots?.length && step.type !== "core.comment" && (
         <details className="advanced">
-          <summary>Error handling & timeouts</summary>
+          <summary>{t("props.errorHandling")}</summary>
           <label className="toggle">
             <input type="checkbox" checked={Boolean(step.continueOnError)} onChange={(e) => onChange({ ...step, continueOnError: e.target.checked || undefined })} />
-            Continue on error
+            {t("props.continueOnError")}
           </label>
-          <Field label="Retry count">
+          <Field label={t("props.retryCount")}>
             <input
               type="number"
               min={0}
@@ -137,20 +141,20 @@ export function Properties({ step, meta, variables, aiEnabled, onChange, onSelec
             />
           </Field>
           {step.retry && (
-            <Field label="Retry delay (ms)">
+            <Field label={t("props.retryDelay")}>
               <input type="number" min={0} value={step.retry.delayMs ?? 1000} onChange={(e) => onChange({ ...step, retry: { ...step.retry!, delayMs: Number(e.target.value) } })} />
             </Field>
           )}
-          <Field label="Timeout (ms)">
-            <input type="number" min={0} value={step.timeoutMs ?? ""} placeholder="none" onChange={(e) => onChange({ ...step, timeoutMs: Number(e.target.value) || undefined })} />
+          <Field label={t("props.timeout")}>
+            <input type="number" min={0} value={step.timeoutMs ?? ""} placeholder={t("props.none")} onChange={(e) => onChange({ ...step, timeoutMs: Number(e.target.value) || undefined })} />
           </Field>
         </details>
       )}
       <label className="toggle">
         <input type="checkbox" checked={Boolean(step.disabled)} onChange={(e) => onChange({ ...step, disabled: e.target.checked || undefined })} />
-        Disabled (skip at run time)
+        {t("props.disabled")}
       </label>
-      <p className="muted tiny">Step id: {step.id}</p>
+      <p className="muted tiny">{t("props.stepId", { id: step.id })}</p>
     </div>
   );
 }
@@ -159,6 +163,7 @@ const TYPES: VariableDef["type"][] = ["string", "number", "boolean", "object", "
 const DIRECTIONS: VariableDef["direction"][] = ["local", "in", "out", "inout"];
 
 export function WorkflowSettings({ workflow, onChange }: { workflow: Workflow; onChange: (w: Workflow) => void }) {
+  const { t } = useI18n();
   const setVar = (i: number, patch: Partial<VariableDef>) => {
     const variables = workflow.variables.map((v, j) => (j === i ? { ...v, ...patch } : v));
     onChange({ ...workflow, variables });
@@ -166,22 +171,22 @@ export function WorkflowSettings({ workflow, onChange }: { workflow: Workflow; o
   return (
     <div className="props-panel">
       <div className="props-head">
-        <strong>Workflow</strong>
-        <small className="muted">Select a step to edit its properties.</small>
+        <strong>{t("workflow.title")}</strong>
+        <small className="muted">{t("workflow.selectStep")}</small>
       </div>
-      <Field label="Name">
+      <Field label={t("common.name")}>
         <input value={workflow.name} onChange={(e) => onChange({ ...workflow, name: e.target.value })} />
       </Field>
-      <Field label="Description">
+      <Field label={t("common.description")}>
         <textarea rows={2} value={workflow.description ?? ""} onChange={(e) => onChange({ ...workflow, description: e.target.value || undefined })} />
       </Field>
       <div className="vars-head">
-        <strong>Variables & arguments</strong>
+        <strong>{t("workflow.variables")}</strong>
         <button className="btn-ghost small" onClick={() => onChange({ ...workflow, variables: [...workflow.variables, { name: `var${workflow.variables.length + 1}`, type: "any", direction: "local" }] })}>
-          + Add
+          {t("workflow.addVariable")}
         </button>
       </div>
-      <p className="muted tiny">"in" arguments are filled when a job starts; "out" are returned when it ends. Use them in expressions by name, or in text as {"{{ name }}"}.</p>
+      <p className="muted tiny">{t("workflow.variablesHelp", { example: "{{ name }}" })}</p>
       {workflow.variables.map((v, i) => (
         <div className="var-row" key={i}>
           <input className="mono" value={v.name} onChange={(e) => setVar(i, { name: e.target.value })} />
@@ -197,7 +202,7 @@ export function WorkflowSettings({ workflow, onChange }: { workflow: Workflow; o
           </select>
           <input
             className="mono"
-            placeholder="default (JSON)"
+            placeholder={t("workflow.defaultJson")}
             defaultValue={v.default === undefined ? "" : JSON.stringify(v.default)}
             onBlur={(e) => {
               const t = e.target.value.trim();
@@ -212,7 +217,7 @@ export function WorkflowSettings({ workflow, onChange }: { workflow: Workflow; o
               setVar(i, { default: value });
             }}
           />
-          <button className="icon-btn" title="Remove" onClick={() => onChange({ ...workflow, variables: workflow.variables.filter((_, j) => j !== i) })}>
+          <button className="icon-btn" title={t("common.remove")} onClick={() => onChange({ ...workflow, variables: workflow.variables.filter((_, j) => j !== i) })}>
             ×
           </button>
         </div>

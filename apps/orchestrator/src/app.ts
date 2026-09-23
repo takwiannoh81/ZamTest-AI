@@ -5,6 +5,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { AiClient, AiNotConfiguredError, AiRefusalError, ZamAI } from "@zamtest/ai";
 import { BUILTIN_ACTIONS, WorkflowSchema } from "@zamtest/core";
+import { languageName } from "@zamtest/i18n";
 import type { EngineEvent } from "@zamtest/core";
 import type { OrchestratorConfig } from "./config.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
@@ -350,8 +351,16 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.post("/api/ai/generate-workflow", async (req) => {
-    const body = parse(z.object({ prompt: z.string().min(3), existing: WorkflowSchema.optional() }), req.body);
-    return getAi().generateWorkflow({ prompt: body.prompt, existing: body.existing, catalog: BUILTIN_ACTIONS });
+    const body = parse(
+      z.object({ prompt: z.string().min(3), existing: WorkflowSchema.optional(), language: z.string().optional() }),
+      req.body,
+    );
+    return getAi().generateWorkflow({
+      prompt: body.prompt,
+      existing: body.existing,
+      catalog: BUILTIN_ACTIONS,
+      language: body.language ? languageName(body.language) : undefined,
+    });
   });
 
   app.post("/api/ai/suggest-selectors", async (req) => {
@@ -361,10 +370,11 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
         description: z.string().min(1),
         url: z.string().optional(),
         currentSelector: z.string().optional(),
+        language: z.string().optional(),
       }),
       req.body,
     );
-    return getAi().suggestSelectors(body);
+    return getAi().suggestSelectors({ ...body, language: body.language ? languageName(body.language) : undefined });
   });
 
   /* --------------------------- bot agent API ------------------------ */

@@ -1,3 +1,5 @@
+import { useI18n } from "@zamtest/i18n/react";
+import type { MessageKey } from "@zamtest/i18n";
 import { useState } from "react";
 import type { ActionMeta, Step } from "@zamtest/core";
 import type { Location } from "../tree";
@@ -18,13 +20,14 @@ interface CanvasProps {
 }
 
 export function Canvas(props: CanvasProps) {
+  const { t } = useI18n();
   const body = props.root.slots?.body ?? [];
   return (
     <div className="canvas" onClick={() => props.onSelect(props.root.id)}>
       <div className="flow">
-        <div className="flow-start">Start</div>
+        <div className="flow-start">{t("canvas.start")}</div>
         <StepList steps={body} loc={{ parentId: props.root.id, slot: "body" }} {...props} />
-        <div className="flow-end">End</div>
+        <div className="flow-end">{t("canvas.end")}</div>
       </div>
     </div>
   );
@@ -45,6 +48,7 @@ function StepList({ steps, loc, ...props }: CanvasProps & { steps: Step[]; loc: 
 }
 
 function DropZone({ loc, empty, onDropAction, onMoveStep }: CanvasProps & { loc: Location; empty?: boolean }) {
+  const { t } = useI18n();
   const [over, setOver] = useState(false);
   return (
     <div
@@ -66,12 +70,13 @@ function DropZone({ loc, empty, onDropAction, onMoveStep }: CanvasProps & { loc:
         else if (stepId) onMoveStep(stepId, loc);
       }}
     >
-      {empty ? "Drop actions here" : null}
+      {empty ? t("canvas.drop") : null}
     </div>
   );
 }
 
 function StepCard({ step, ...props }: CanvasProps & { step: Step }) {
+  const { t, actionName } = useI18n();
   const meta = props.metas.get(step.type);
   const color = CATEGORY_COLORS[meta?.category ?? ""] ?? "var(--muted)";
   const selected = props.selectedId === step.id;
@@ -101,21 +106,21 @@ function StepCard({ step, ...props }: CanvasProps & { step: Step }) {
           {iconFor(meta?.icon)}
         </span>
         <div className="step-title">
-          <strong>{step.label || meta?.displayName || step.type}</strong>
-          <small className="muted">{summarize(step) || meta?.displayName}</small>
+          <strong>{step.label || (meta ? actionName(meta) : step.type)}</strong>
+          <small className="muted">{summarize(step) || (meta ? actionName(meta) : "")}</small>
         </div>
         <div className="step-tools">
-          {step.retry?.count ? <span className="tag">retry×{step.retry.count}</span> : null}
-          {step.continueOnError ? <span className="tag">continue on error</span> : null}
+          {step.retry?.count ? <span className="tag">{t("canvas.retry", { count: step.retry.count })}</span> : null}
+          {step.continueOnError ? <span className="tag">{t("canvas.continueOnError")}</span> : null}
           {slots.length > 0 && (
-            <button className="icon-btn" title={collapsed ? "Expand" : "Collapse"} onClick={(e) => { e.stopPropagation(); setCollapsed(!collapsed); }}>
+            <button className="icon-btn" title={collapsed ? t("canvas.expand") : t("canvas.collapse")} onClick={(e) => { e.stopPropagation(); setCollapsed(!collapsed); }}>
               {collapsed ? "▸" : "▾"}
             </button>
           )}
-          <button className="icon-btn" title="Duplicate" onClick={(e) => { e.stopPropagation(); props.onDuplicate(step.id); }}>
+          <button className="icon-btn" title={t("canvas.duplicate")} onClick={(e) => { e.stopPropagation(); props.onDuplicate(step.id); }}>
             ⧉
           </button>
-          <button className="icon-btn" title="Delete" onClick={(e) => { e.stopPropagation(); props.onDelete(step.id); }}>
+          <button className="icon-btn" title={t("common.delete")} onClick={(e) => { e.stopPropagation(); props.onDelete(step.id); }}>
             🗑
           </button>
         </div>
@@ -124,7 +129,7 @@ function StepCard({ step, ...props }: CanvasProps & { step: Step }) {
         <div className={`slots slots-${slots.length}`}>
           {slots.map((slot) => (
             <div className="slot" key={slot}>
-              <div className="slot-name">{slot}</div>
+              <div className="slot-name">{t(`slot.${slot}` as MessageKey)}</div>
               <StepList steps={step.slots?.[slot] ?? []} loc={{ parentId: step.id, slot }} {...props} />
             </div>
           ))}
