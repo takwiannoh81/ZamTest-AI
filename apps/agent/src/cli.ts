@@ -103,7 +103,7 @@ const [command, file] = positionals;
 
 if (values.help || !command) {
   console.log(USAGE);
-  process.exit(command ? 0 : 1);
+  process.exit(values.help ? 0 : 1);
 }
 
 if (command === "connect") {
