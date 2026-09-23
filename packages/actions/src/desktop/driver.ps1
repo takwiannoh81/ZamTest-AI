@@ -17,7 +17,6 @@ try {
 } catch { }
 
 $script:UiaReady = $false
-$script:ProviderStatus = 'not loaded' 
 $script:ProcessNames = @{}
 $script:ControlTypes = @{}
 
@@ -173,6 +172,23 @@ public static class ZtTypes {
       if (parts.Length > 1 && Win32.TryGetValue(parts[1], out mapped)) return mapped;
     }
     return null;
+  }
+
+  /// The element's name. For classic Win32 controls seen as panes the name is the raw window
+  /// text, which still contains the "&" mnemonic markers ("Do&n't Save"); remove them.
+  public static string NameOf(AutomationElement el) {
+    var c = el.Current;
+    string name = c.Name ?? "";
+    if (name.IndexOf('&') < 0 || c.ControlType != ControlType.Pane || FromClass(c.ClassName) == null) return name;
+    var sb = new StringBuilder();
+    for (int i = 0; i < name.Length; i++) {
+      if (name[i] == '&') {
+        if (i + 1 < name.Length && name[i + 1] == '&') { sb.Append('&'); i++; }
+        continue;
+      }
+      sb.Append(name[i]);
+    }
+    return sb.ToString();
   }
 
   public static string Of(AutomationElement el) {
@@ -370,7 +386,7 @@ public static class ZtRecorder {
   static string Describe(AutomationElement el, bool top) {
     var c = el.Current;
     string type = ZtTypes.Of(el);
-    var sb = new StringBuilder("{\"type\":" + Json(type) + ",\"name\":" + Json(c.Name) + ",\"id\":" + Json(c.AutomationId) + ",\"class\":" + Json(c.ClassName));
+    var sb = new StringBuilder("{\"type\":" + Json(type) + ",\"name\":" + Json(ZtTypes.NameOf(el)) + ",\"id\":" + Json(c.AutomationId) + ",\"class\":" + Json(c.ClassName));
     if (c.IsPassword) sb.Append(",\"isPassword\":true");
     if (top) {
       try { sb.Append(",\"process\":" + Json(Process.GetProcessById(c.ProcessId).ProcessName)); } catch { }
@@ -408,16 +424,6 @@ function Initialize-Uia {
     [System.Windows.Point].Assembly.Location
   )
   Add-Type -TypeDefinition $NativeSource -ReferencedAssemblies $refs -Language CSharp
-  # Classic Win32 controls (Edit, menus, list views) are exposed through the client-side
-  # providers; without them they show up as plain panes.
-  try {
-    Add-Type -AssemblyName UIAutomationClientsideProviders
-    $providers = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq 'UIAutomationClientsideProviders' } | Select-Object -First 1
-    if ($providers) {
-      [System.Windows.Automation.ClientSettings]::RegisterClientSideProviderAssembly($providers.GetName())
-      $script:ProviderStatus = 'registered'
-    } else { $script:ProviderStatus = 'assembly not found' }
-  } catch { $script:ProviderStatus = "failed: $($_.Exception.Message)" }
   [ZtNative]::Init()
   foreach ($field in [System.Windows.Automation.ControlType].GetFields([System.Reflection.BindingFlags]'Public,Static')) {
     $script:ControlTypes[$field.Name.ToLowerInvariant()] = $field.GetValue($null)
@@ -441,7 +447,7 @@ function Get-ProcessName([int]$processId) {
 function Test-Condition($element, $condition) {
   $current = $element.Current
   $actual = switch ($condition.attr) {
-    'name' { $current.Name }
+    'name' { [ZtTypes]::NameOf($element) }
     'id' { $current.AutomationId }
     'class' { $current.ClassName }
     'process' { Get-ProcessName $current.ProcessId }
@@ -524,7 +530,7 @@ function Get-Info($element) {
   $rect = if ($r.IsEmpty -or [double]::IsInfinity($r.X) -or [double]::IsInfinity($r.Width)) { $null } else { @{ x = [int]$r.X; y = [int]$r.Y; width = [int]$r.Width; height = [int]$r.Height } }
   return @{
     type = [ZtTypes]::Of($element)
-    name = $c.Name; id = $c.AutomationId; class = $c.ClassName
+    name = [ZtTypes]::NameOf($element); id = $c.AutomationId; class = $c.ClassName
     process = (Get-ProcessName $c.ProcessId); enabled = $c.IsEnabled
     rect = $rect
   }
@@ -585,7 +591,8 @@ function Get-Tree($element, [int]$depth, [int]$maxNodes) {
     if ($lines.Count -ge $maxNodes -or $level -gt $depth) { return }
     $c = $node.Current
     $line = ('  ' * $level) + [ZtTypes]::Of($node)
-    if ($c.Name) { $line += ' name="' + ($c.Name -replace '"', '\"' -replace "`r?`n", ' ') + '"' }
+    $name = [ZtTypes]::NameOf($node)
+    if ($name) { $line += ' name="' + ($name -replace '"', '\"' -replace "`r?`n", ' ') + '"' }
     if ($c.AutomationId) { $line += ' id="' + $c.AutomationId + '"' }
     if ($c.ClassName) { $line += ' class="' + $c.ClassName + '"' }
     if ($level -eq 0) { $line += ' process="' + (Get-ProcessName $c.ProcessId) + '"' }
@@ -611,7 +618,7 @@ function Invoke-Op([string]$op, $a) {
       try { [void]$proc.WaitForInputIdle(10000) } catch { }
       return @{ pid = $proc.Id }
     }
-    'info' { return @{ providers = $script:ProviderStatus; powershell = $PSVersionTable.PSVersion.ToString(); clr = [Environment]::Version.ToString() } }
+    'info' { return @{ win32 = 'class-name mapping'; powershell = $PSVersionTable.PSVersion.ToString(); clr = [Environment]::Version.ToString() } }
     'windows' {
       $list = New-Object System.Collections.Generic.List[object]
       $root = [System.Windows.Automation.AutomationElement]::RootElement

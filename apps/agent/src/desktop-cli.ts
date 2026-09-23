@@ -89,8 +89,7 @@ export async function desktopSelfTest(): Promise<boolean> {
     });
     await check("UI Automation (list windows)", async () => {
       const list = await driver.call<Array<{ name: string; process: string }>>("windows");
-      const info = await driver.call<{ providers: string }>("info");
-      return `${list.length} windows, e.g. ${list.slice(0, 3).map((w) => `${w.name} [${w.process}]`).join(", ")}; Win32 helper: ${info.providers}`;
+      return `${list.length} windows, e.g. ${list.slice(0, 3).map((w) => `${w.name} [${w.process}]`).join(", ")}`;
     });
     const count = async (selector: string) => (await driver.call<{ count: number }>("count", { selector })).count;
 
@@ -102,6 +101,7 @@ export async function desktopSelfTest(): Promise<boolean> {
     if (before) log(`      (${before} Notepad window(s) already open; the test uses only the one it opens)`);
     let win = anyNotepad;
     let field = "";
+    let kind = "";
     const notepadOk = await check("Start Notepad", async () => {
       await driver.call("launch", { path: "notepad.exe" });
       const deadline = Date.now() + 15_000;
@@ -112,10 +112,11 @@ export async function desktopSelfTest(): Promise<boolean> {
     });
     if (notepadOk) {
       await check("Find the text area", async () => {
-        for (const kind of ["document", "edit"]) {
-          const n = await count(`${win} > ${kind}`);
+        for (const candidate of ["document", "edit"]) {
+          const n = await count(`${win} > ${candidate}`);
           if (n >= 1) {
-            field = n === 1 ? `${win} > ${kind}` : `${win} > ${kind}[index=1]`;
+            kind = n === 1 ? candidate : `${candidate}[index=1]`;
+            field = `${win} > ${kind}`;
             return field;
           }
         }
@@ -124,6 +125,15 @@ export async function desktopSelfTest(): Promise<boolean> {
       if (field) {
         await check("Type into Notepad", async () => {
           const r = await driver.call<{ method: string }>("type", { selector: field, text });
+          // Typing renames the window: Windows 11 Notepad uses the text, classic Notepad "*Untitled".
+          await sleep(300);
+          for (const titled of [`${anyNotepad}[name~="${text}"]`, `${anyNotepad}[name^="*Untitled"]`]) {
+            if ((await count(titled)) === 1) {
+              win = titled;
+              field = `${win} > ${kind}`;
+              break;
+            }
+          }
           return `method ${r.method}`;
         });
         await check("Read the text back", async () => {
@@ -131,13 +141,6 @@ export async function desktopSelfTest(): Promise<boolean> {
           if (!r.text.includes(text)) throw new Error(`expected "${text}", got "${r.text.slice(0, 80)}"`);
           return "matches";
         });
-        // Windows 11 Notepad names the window after the text; classic Notepad shows "*Untitled".
-        for (const titled of [`${anyNotepad}[name~="${text}"]`, `${anyNotepad}[name^="*Untitled"]`]) {
-          if ((await count(titled)) === 1) {
-            win = titled;
-            break;
-          }
-        }
       }
       await check(
         "Menu bar is visible to UI Automation",

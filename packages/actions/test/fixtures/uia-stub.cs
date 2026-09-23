@@ -9,7 +9,7 @@ namespace System.Windows.Automation {
     public static void RemoveAutomationFocusChangedEventHandler(AutomationFocusChangedEventHandler h) {}
     public static bool Compare(AutomationElement a, AutomationElement b) { return false; }
   }
-  public class ControlType { public string ProgrammaticName; public static ControlType Edit, Document, ComboBox; }
+  public class ControlType { public string ProgrammaticName; public static ControlType Edit, Document, ComboBox, Pane; }
   public class AutomationPattern {}
   public class AutomationElement {
     public static AutomationElement RootElement;
