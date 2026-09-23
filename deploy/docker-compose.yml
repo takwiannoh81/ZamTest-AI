@@ -58,6 +58,7 @@ services:
       ZAMTEST_SERVER: http://orchestrator:4000
       ZAMTEST_AGENT_KEY: ${ZAMTEST_AGENT_KEY}
       ZAMTEST_AGENT_NAME: ${ZAMTEST_AGENT_NAME:-cloud-bot-1}
+      ZAMTEST_HEADLESS: "1"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     shm_size: 1gb
     depends_on:

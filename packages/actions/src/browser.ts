@@ -127,7 +127,11 @@ export const browserHandlers: Record<string, ActionHandler> = {
     const kind = (String(props.browser ?? "chromium") as "chromium" | "firefox" | "webkit") || "chromium";
     // ZAMTEST_BROWSER_EXECUTABLE points at a custom Chromium build (e.g. a corporate-managed browser).
     const executablePath = kind === "chromium" ? process.env.ZAMTEST_BROWSER_EXECUTABLE || undefined : undefined;
-    const browser = await pw[kind].launch({ headless: Boolean(props.headless), executablePath });
+    // Machines without a screen (servers, containers) can only run headless browsers.
+    const noDisplay = process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
+    const headless = Boolean(props.headless) || process.env.ZAMTEST_HEADLESS === "1" || noDisplay;
+    if (headless && !props.headless) ctx.log("info", "No display on this machine; running the browser headless");
+    const browser = await pw[kind].launch({ headless, executablePath });
     const page = await browser.newPage();
     const session: BrowserSession = { browser, page };
     ctx.resources.set(SESSION, session);
