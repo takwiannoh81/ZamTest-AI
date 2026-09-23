@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { parseArgs } from "node:util";
 import { parseWorkflow } from "@zamtest/core";
+import type { Workflow } from "@zamtest/core";
+import { recordDesktop, desktopSelfTest } from "./desktop-cli.js";
 import { AgentConnection } from "./connection.js";
 import { aiEnabled, execute } from "./runtime.js";
 import { startRecording } from "./recorder.js";
@@ -20,25 +22,7 @@ async function prompt(question: string, hidden = false): Promise<string> {
   return answer.trim();
 }
 
-async function record(url: string) {
-  const server = values.server ?? process.env.ZAMTEST_SERVER ?? "http://127.0.0.1:4000";
-  const name = values.name ?? `Recording of ${new URL(url).hostname}`;
-  const recording = await startRecording(url, {
-    name,
-    onEvent: (e) => console.log(`  recorded ${e.kind.padEnd(6)} ${e.description}${e.secret ? " (password, not stored)" : ""}`),
-  });
-  console.log("Recording. Use the browser normally, then close it (or press Enter here) to finish.\n");
-  await new Promise<void>((resolve) => {
-    recording.page.context().browser()?.on("disconnected", () => resolve());
-    recording.page.on("close", () => resolve());
-    process.once("SIGINT", () => resolve());
-    const rl = createInterface({ input: process.stdin });
-    rl.once("line", () => {
-      rl.close();
-      resolve();
-    });
-  });
-  const workflow = await recording.stop();
+async function saveOrUpload(workflow: Workflow, name: string, server: string) {
   const steps = workflow.root.slots?.body?.length ?? 0;
   const out = values.out ?? (values.upload ? undefined : "recording.json");
   if (out) {
@@ -66,6 +50,28 @@ async function record(url: string) {
     if (!res.ok) throw new Error(`Upload failed: ${((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.status}`);
     console.log(`Uploaded "${name}" to ${server}. Open it in the Designer to review and publish.`);
   }
+}
+
+async function record(url: string) {
+  const server = values.server ?? process.env.ZAMTEST_SERVER ?? "http://127.0.0.1:4000";
+  const name = values.name ?? `Recording of ${new URL(url).hostname}`;
+  const recording = await startRecording(url, {
+    name,
+    onEvent: (e) => console.log(`  recorded ${e.kind.padEnd(6)} ${e.description}${e.secret ? " (password, not stored)" : ""}`),
+  });
+  console.log("Recording. Use the browser normally, then close it (or press Enter here) to finish.\n");
+  await new Promise<void>((resolve) => {
+    recording.page.context().browser()?.on("disconnected", () => resolve());
+    recording.page.on("close", () => resolve());
+    process.once("SIGINT", () => resolve());
+    const rl = createInterface({ input: process.stdin });
+    rl.once("line", () => {
+      rl.close();
+      resolve();
+    });
+  });
+  const workflow = await recording.stop();
+  await saveOrUpload(workflow, name, server);
   process.exit(0);
 }
 
@@ -84,6 +90,15 @@ Usage:
       (or press Enter here). Writes the recorded workflow to FILE and/or
       uploads it to the Designer. --upload asks for your email and password
       (or uses ZAMTEST_TOKEN).
+
+  zamtest-agent record-desktop [program] [--name NAME] [--out FILE] [--upload] [--server URL]
+      Windows only. Records clicks and typing in desktop applications
+      (optionally starting [program] first, e.g. notepad.exe). Press Enter
+      here to finish.
+
+  zamtest-agent desktop-test
+      Windows only. Checks desktop automation with Notepad and Calculator
+      and writes desktop-test-report.txt.
 `;
 
 const { positionals, values } = parseArgs({
@@ -145,6 +160,13 @@ if (command === "connect") {
     process.exit(1);
   }
   await record(file);
+} else if (command === "record-desktop") {
+  const name = values.name ?? (file ? `Desktop recording of ${file}` : "Desktop recording");
+  const workflow = await recordDesktop({ program: file, name });
+  await saveOrUpload(workflow, name, values.server ?? process.env.ZAMTEST_SERVER ?? "http://127.0.0.1:4000");
+  process.exit(0);
+} else if (command === "desktop-test") {
+  process.exit((await desktopSelfTest()) ? 0 : 1);
 } else {
   console.error(`Unknown command "${command}"\n\n${USAGE}`);
   process.exit(1);

@@ -3,6 +3,7 @@ import type { AgentTool, ZamAI } from "@zamtest/ai";
 import type { ActionContext, ActionHandler, ActionMeta, PropDef } from "@zamtest/core";
 import { stringify } from "@zamtest/core";
 import { hasPage, getPage, MAX_DOM_CHARS, snapshotDom } from "./browser.js";
+import { desktopSnapshot } from "./desktop/index.js";
 
 /** The host puts a ZamAI instance in `services.ai` when AI is configured. */
 export function getAi(ctx: ActionContext, required = true): ZamAI | undefined {
@@ -13,7 +14,7 @@ export function getAi(ctx: ActionContext, required = true): ZamAI | undefined {
 
 const HIDDEN_FROM_AGENT = new Set(["output", "aiHeal"]);
 
-function propSchema(p: PropDef): Record<string, unknown> {
+function propSchema(p: PropDef, actionType: string): Record<string, unknown> {
   const base: Record<string, unknown> = { description: p.description ?? p.label };
   switch (p.type) {
     case "number":
@@ -25,7 +26,9 @@ function propSchema(p: PropDef): Record<string, unknown> {
     case "json":
       return base;
     case "selector":
-      return { ...base, type: "string", description: `${base.description}. Playwright selector, e.g. css=#id, role=button[name="Save"], text="Next"` };
+      return actionType.startsWith("desktop.")
+        ? { ...base, type: "string", description: `${base.description}. Desktop selector, e.g. window[process="notepad"] > button[name="Save"]; call desktop_snapshot first` }
+        : { ...base, type: "string", description: `${base.description}. Playwright selector, e.g. css=#id, role=button[name="Save"], text="Next"` };
     default:
       return { ...base, type: "string" };
   }
@@ -33,7 +36,11 @@ function propSchema(p: PropDef): Record<string, unknown> {
 
 /** Turns catalog actions into tools an AI agent can call. */
 export function actionTools(ctx: ActionContext, allowed?: string[]): AgentTool[] {
-  const metas = ctx.catalog.filter((a: ActionMeta) => a.agentTool && (!allowed?.length || allowed.includes(a.type)));
+  // Without an explicit list, desktop tools are only offered on Windows agents.
+  const onWindows = process.platform === "win32";
+  const metas = ctx.catalog.filter(
+    (a: ActionMeta) => a.agentTool && (allowed?.length ? allowed.includes(a.type) : onWindows || !a.type.startsWith("desktop.")),
+  );
   const tools: AgentTool[] = metas.map((meta) => {
     const props = meta.props.filter((p) => !HIDDEN_FROM_AGENT.has(p.name));
     const defaults = Object.fromEntries(meta.props.filter((p) => p.default !== undefined).map((p) => [p.name, p.default]));
@@ -42,7 +49,7 @@ export function actionTools(ctx: ActionContext, allowed?: string[]): AgentTool[]
       description: `${meta.displayName}: ${meta.description}`,
       input_schema: {
         type: "object",
-        properties: Object.fromEntries(props.map((p) => [p.name, propSchema(p)])),
+        properties: Object.fromEntries(props.map((p) => [p.name, propSchema(p, meta.type)])),
         required: props.filter((p) => p.required).map((p) => p.name),
       },
       run: (input) => ctx.invoke(meta.type, { ...defaults, ...input }),
@@ -62,6 +69,19 @@ export function actionTools(ctx: ActionContext, allowed?: string[]): AgentTool[]
         const { html, truncated } = await snapshotDom(page, 60_000);
         return `URL: ${page.url()}\nTitle: ${await page.title()}\n${truncated ? "(DOM truncated to 60000 characters)\n" : ""}${html}`;
       },
+    });
+  }
+  if (tools.some((t) => t.name.startsWith("desktop_"))) {
+    tools.push({
+      name: "desktop_snapshot",
+      description:
+        "Returns the UI Automation tree of a Windows application window (or the list of open windows when no window is given). Call this before choosing desktop selectors.",
+      input_schema: {
+        type: "object",
+        properties: { window: { type: "string", description: 'Window selector, e.g. window[process="notepad"]. Omit to list open windows.' } },
+        required: [],
+      },
+      run: async (input) => desktopSnapshot(ctx, input.window ? String(input.window) : undefined, 800),
     });
   }
   return tools;

@@ -1,0 +1,650 @@
+# ZamTech AI desktop driver.
+#
+# Drives Windows applications through Microsoft UI Automation (built into
+# Windows 10/11, no installation needed). The bot agent starts this script
+# with Windows PowerShell and talks to it over stdin/stdout, one JSON
+# message per line:
+#   request:  {"id": 1, "op": "click", "args": {...}}
+#   response: {"id": 1, "ok": true, "result": ...} or {"id": 1, "ok": false, "error": "..."}
+#
+# Selectors arrive already parsed (see selector.ts): a list of segments
+#   { type: "button", conditions: [{ attr: "name", op: "=", value: "Save" }], index: 1 }
+
+$ErrorActionPreference = 'Stop'
+try {
+  [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+  [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+} catch { }
+
+$script:UiaReady = $false
+$script:Serializer = $null
+$script:ProcessNames = @{}
+$script:ControlTypes = @{}
+
+$NativeSource = @'
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Windows.Automation;
+
+public static class ZtNative {
+  [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd);
+
+  public static void Init() { try { SetProcessDPIAware(); } catch { } }
+
+  public static void Click(int x, int y, bool right, bool twice) {
+    SetCursorPos(x, y);
+    Thread.Sleep(40);
+    uint down = right ? 0x0008u : 0x0002u, up = right ? 0x0010u : 0x0004u;
+    for (int i = 0; i < (twice ? 2 : 1); i++) {
+      mouse_event(down, 0, 0, 0, UIntPtr.Zero);
+      mouse_event(up, 0, 0, 0, UIntPtr.Zero);
+      Thread.Sleep(60);
+    }
+  }
+}
+
+/// Records clicks, typing and Enter across all applications using low-level
+/// hooks plus UI Automation focus events. Events are JSON strings.
+public static class ZtRecorder {
+  delegate IntPtr HookProc(int code, IntPtr w, IntPtr l);
+  [StructLayout(LayoutKind.Sequential)] struct POINT { public int x; public int y; }
+  [StructLayout(LayoutKind.Sequential)] struct MSLL { public POINT pt; public uint data, flags, time; public IntPtr extra; }
+  [StructLayout(LayoutKind.Sequential)] struct KBLL { public uint vk, scan, flags, time; public IntPtr extra; }
+  [StructLayout(LayoutKind.Sequential)] struct MSG { public IntPtr hwnd; public uint message; public IntPtr w, l; public uint time; public POINT pt; }
+  [DllImport("user32.dll", SetLastError = true)] static extern IntPtr SetWindowsHookEx(int id, HookProc fn, IntPtr mod, uint tid);
+  [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr h);
+  [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr h, int code, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] static extern int GetMessage(out MSG m, IntPtr h, uint a, uint b);
+  [DllImport("user32.dll")] static extern bool PostThreadMessage(uint tid, uint msg, IntPtr w, IntPtr l);
+  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+  [DllImport("kernel32.dll")] static extern IntPtr GetModuleHandle(string name);
+
+  static HookProc mouseProc, keyProc;
+  static IntPtr mouseHook, keyHook;
+  static uint hookThreadId;
+  static BlockingCollection<int[]> pending;
+  static ConcurrentQueue<string> events = new ConcurrentQueue<string>();
+  static volatile bool running;
+  static readonly object gate = new object();
+  static int ownPid = Process.GetCurrentProcess().Id;
+  static AutomationFocusChangedEventHandler focusHandler;
+  static AutomationElement field;
+  static string fieldChain, fieldInitial;
+  static bool fieldSecret;
+  static int keysInField;
+
+  public static void Start() {
+    if (running) return;
+    running = true;
+    events = new ConcurrentQueue<string>();
+    pending = new BlockingCollection<int[]>();
+    new Thread(Work) { IsBackground = true }.Start();
+    new Thread(HookLoop) { IsBackground = true }.Start();
+    focusHandler = new AutomationFocusChangedEventHandler(OnFocus);
+    Automation.AddAutomationFocusChangedEventHandler(focusHandler);
+  }
+
+  public static void Stop() {
+    if (!running) return;
+    Flush();
+    running = false;
+    try { Automation.RemoveAutomationFocusChangedEventHandler(focusHandler); } catch { }
+    PostThreadMessage(hookThreadId, 0x0012, IntPtr.Zero, IntPtr.Zero);
+    pending.CompleteAdding();
+  }
+
+  public static string[] Drain() {
+    var list = new List<string>();
+    string e;
+    while (events.TryDequeue(out e)) list.Add(e);
+    return list.ToArray();
+  }
+
+  static void HookLoop() {
+    hookThreadId = GetCurrentThreadId();
+    mouseProc = MouseHook;
+    keyProc = KeyHook;
+    IntPtr mod = GetModuleHandle(null);
+    mouseHook = SetWindowsHookEx(14, mouseProc, mod, 0);
+    keyHook = SetWindowsHookEx(13, keyProc, mod, 0);
+    MSG m;
+    while (GetMessage(out m, IntPtr.Zero, 0, 0) > 0) { }
+    UnhookWindowsHookEx(mouseHook);
+    UnhookWindowsHookEx(keyHook);
+  }
+
+  static IntPtr MouseHook(int code, IntPtr w, IntPtr l) {
+    if (code >= 0 && running) {
+      int msg = w.ToInt32();
+      if (msg == 0x201 || msg == 0x204) {
+        var d = (MSLL)Marshal.PtrToStructure(l, typeof(MSLL));
+        pending.TryAdd(new[] { d.pt.x, d.pt.y, msg == 0x204 ? 1 : 0 });
+      }
+    }
+    return CallNextHookEx(mouseHook, code, w, l);
+  }
+
+  static IntPtr KeyHook(int code, IntPtr w, IntPtr l) {
+    if (code >= 0 && running) {
+      int msg = w.ToInt32();
+      if (msg == 0x100 || msg == 0x104) {
+        var d = (KBLL)Marshal.PtrToStructure(l, typeof(KBLL));
+        Interlocked.Increment(ref keysInField);
+        if (d.vk == 0x0D) pending.TryAdd(new[] { 0, 0, 2 });
+      }
+    }
+    return CallNextHookEx(keyHook, code, w, l);
+  }
+
+  static void Work() {
+    foreach (var p in pending.GetConsumingEnumerable()) {
+      try {
+        if (p[2] == 2) {
+          string chain;
+          lock (gate) { chain = fieldChain; }
+          Flush();
+          if (chain != null) events.Enqueue("{\"kind\":\"enter\",\"chain\":" + chain + "}");
+          continue;
+        }
+        Flush();
+        var el = AutomationElement.FromPoint(new System.Windows.Point(p[0], p[1]));
+        if (el == null || el.Current.ProcessId == ownPid) continue;
+        events.Enqueue("{\"kind\":\"" + (p[2] == 1 ? "rightclick" : "click") + "\",\"chain\":" + Chain(el) + "}");
+      } catch (Exception ex) {
+        events.Enqueue("{\"kind\":\"error\",\"message\":" + Json(ex.Message) + "}");
+      }
+    }
+  }
+
+  static void OnFocus(object sender, AutomationFocusChangedEventArgs e) {
+    try {
+      Flush();
+      var el = sender as AutomationElement;
+      if (el == null || el.Current.ProcessId == ownPid || !IsField(el)) {
+        lock (gate) { field = null; fieldChain = null; }
+        return;
+      }
+      lock (gate) {
+        field = el;
+        fieldChain = Chain(el);
+        fieldSecret = el.Current.IsPassword;
+        fieldInitial = fieldSecret ? "" : ValueOf(el);
+        keysInField = 0;
+      }
+    } catch { }
+  }
+
+  /// Emits a "type" event when the focused field's text changed.
+  static void Flush() {
+    lock (gate) {
+      if (field == null) return;
+      try {
+        if (fieldSecret) {
+          if (keysInField > 0) events.Enqueue("{\"kind\":\"type\",\"secret\":true,\"value\":\"\",\"chain\":" + fieldChain + "}");
+        } else {
+          string now = ValueOf(field);
+          if (now != fieldInitial) events.Enqueue("{\"kind\":\"type\",\"value\":" + Json(now) + ",\"chain\":" + fieldChain + "}");
+          fieldInitial = now;
+        }
+        keysInField = 0;
+      } catch { }
+    }
+  }
+
+  static bool IsField(AutomationElement el) {
+    var type = el.Current.ControlType;
+    if (type == ControlType.Edit || type == ControlType.Document) return true;
+    object p;
+    if (el.TryGetCurrentPattern(ValuePattern.Pattern, out p)) return !((ValuePattern)p).Current.IsReadOnly && type != ControlType.ComboBox;
+    return false;
+  }
+
+  public static string ValueOf(AutomationElement el) {
+    object p;
+    if (el.TryGetCurrentPattern(ValuePattern.Pattern, out p)) return ((ValuePattern)p).Current.Value ?? "";
+    if (el.TryGetCurrentPattern(TextPattern.Pattern, out p)) return ((TextPattern)p).DocumentRange.GetText(100000) ?? "";
+    return "";
+  }
+
+  public static string Chain(AutomationElement el) {
+    var walker = TreeWalker.ControlViewWalker;
+    var root = AutomationElement.RootElement;
+    var items = new List<string>();
+    var node = el;
+    for (int i = 0; node != null && i < 40 && !Automation.Compare(node, root); i++) {
+      items.Insert(0, Describe(node, false));
+      var parent = walker.GetParent(node);
+      if (parent == null || Automation.Compare(parent, root)) {
+        items[0] = Describe(node, true);
+        break;
+      }
+      node = parent;
+    }
+    return "[" + string.Join(",", items.ToArray()) + "]";
+  }
+
+  static string Describe(AutomationElement el, bool top) {
+    var c = el.Current;
+    string type = c.ControlType.ProgrammaticName.Replace("ControlType.", "").ToLowerInvariant();
+    var sb = new StringBuilder("{\"type\":" + Json(type) + ",\"name\":" + Json(c.Name) + ",\"id\":" + Json(c.AutomationId) + ",\"class\":" + Json(c.ClassName));
+    if (c.IsPassword) sb.Append(",\"isPassword\":true");
+    if (top) {
+      try { sb.Append(",\"process\":" + Json(Process.GetProcessById(c.ProcessId).ProcessName)); } catch { }
+    }
+    return sb.Append("}").ToString();
+  }
+
+  public static string Json(string s) {
+    if (s == null) return "\"\"";
+    var sb = new StringBuilder("\"");
+    foreach (char ch in s) {
+      switch (ch) {
+        case '"': sb.Append("\\\""); break;
+        case '\\': sb.Append("\\\\"); break;
+        case '\n': sb.Append("\\n"); break;
+        case '\r': sb.Append("\\r"); break;
+        case '\t': sb.Append("\\t"); break;
+        default:
+          if (ch < 0x20) sb.Append("\\u" + ((int)ch).ToString("x4")); else sb.Append(ch);
+          break;
+      }
+    }
+    return sb.Append("\"").ToString();
+  }
+}
+'@
+
+function Initialize-Uia {
+  if ($script:UiaReady) { return }
+  if ($PSVersionTable.PSEdition -eq 'Core' -and -not $IsWindows) { throw 'Desktop automation needs Windows.' }
+  Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase, System.Windows.Forms, System.Drawing
+  $refs = @(
+    [System.Windows.Automation.AutomationElement].Assembly.Location,
+    [System.Windows.Automation.ControlType].Assembly.Location,
+    [System.Windows.Point].Assembly.Location
+  )
+  Add-Type -TypeDefinition $NativeSource -ReferencedAssemblies $refs -Language CSharp
+  [ZtNative]::Init()
+  foreach ($field in [System.Windows.Automation.ControlType].GetFields([System.Reflection.BindingFlags]'Public,Static')) {
+    $script:ControlTypes[$field.Name.ToLowerInvariant()] = $field.GetValue($null)
+  }
+  $script:UiaReady = $true
+}
+
+function ConvertTo-JsonLine($value) {
+  # Windows PowerShell 5.1: ConvertTo-Json is slow and mangles nested lists, so use JavaScriptSerializer.
+  # PowerShell 7+ has a good ConvertTo-Json and no System.Web.Extensions.
+  if ($null -eq $script:Serializer) {
+    $script:Serializer = $false
+    if ($PSVersionTable.PSVersion.Major -lt 6) {
+      try {
+        Add-Type -AssemblyName System.Web.Extensions
+        $s = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+        $s.MaxJsonLength = [int]::MaxValue
+        [void]$s.Serialize(@{ probe = 1 })
+        $script:Serializer = $s
+      } catch { $script:Serializer = $false }
+    }
+  }
+  if ($script:Serializer) { return $script:Serializer.Serialize($value) }
+  return ($value | ConvertTo-Json -Depth 12 -Compress)
+}
+
+function Get-ProcessName([int]$processId) {
+  if (-not $script:ProcessNames.ContainsKey($processId)) {
+    try { $script:ProcessNames[$processId] = (Get-Process -Id $processId).ProcessName } catch { $script:ProcessNames[$processId] = '' }
+  }
+  return $script:ProcessNames[$processId]
+}
+
+function Test-Condition($element, $condition) {
+  $current = $element.Current
+  $actual = switch ($condition.attr) {
+    'name' { $current.Name }
+    'id' { $current.AutomationId }
+    'class' { $current.ClassName }
+    'process' { Get-ProcessName $current.ProcessId }
+  }
+  if ($null -eq $actual) { $actual = '' }
+  $expected = [string]$condition.value
+  $cmp = [System.StringComparison]::OrdinalIgnoreCase
+  switch ($condition.op) {
+    '=' { return [string]::Equals($actual, $expected, $cmp) }
+    '~=' { return $actual.IndexOf($expected, $cmp) -ge 0 }
+    '^=' { return $actual.StartsWith($expected, $cmp) }
+    '$=' { return $actual.EndsWith($expected, $cmp) }
+  }
+  return $false
+}
+
+function Find-Segment($parents, $segment, [bool]$topLevel) {
+  $scope = if ($topLevel) { [System.Windows.Automation.TreeScope]::Children } else { [System.Windows.Automation.TreeScope]::Descendants }
+  $condition = [System.Windows.Automation.Condition]::TrueCondition
+  if ($segment.type -ne '*') {
+    $ct = $script:ControlTypes[[string]$segment.type]
+    if ($null -eq $ct) { throw "Unknown control type '$($segment.type)'" }
+    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, $ct)
+  }
+  $found = New-Object System.Collections.Generic.List[object]
+  foreach ($parent in $parents) {
+    foreach ($el in $parent.FindAll($scope, $condition)) {
+      $ok = $true
+      foreach ($c in $segment.conditions) { if (-not (Test-Condition $el $c)) { $ok = $false; break } }
+      if ($ok) { $found.Add($el) }
+    }
+  }
+  if ($segment.index) {
+    $i = [int]$segment.index - 1
+    if ($i -lt $found.Count) { return , @($found[$i]) }
+    return , @()
+  }
+  return , $found.ToArray()
+}
+
+function Resolve-Selector($segments) {
+  $current = @([System.Windows.Automation.AutomationElement]::RootElement)
+  $top = $true
+  foreach ($segment in $segments) {
+    $current = Find-Segment $current $segment $top
+    $top = $false
+    if ($current.Count -eq 0) { return , @() }
+  }
+  return , $current
+}
+
+function Wait-Element($selector, [int]$timeoutMs) {
+  $deadline = [DateTime]::UtcNow.AddMilliseconds([Math]::Max(0, $timeoutMs))
+  do {
+    $found = Resolve-Selector $selector
+    if ($found.Count -gt 0) { return $found[0] }
+    Start-Sleep -Milliseconds 250
+  } while ([DateTime]::UtcNow -lt $deadline)
+  throw 'Element not found'
+}
+
+function Get-Pattern($element, $pattern) {
+  $p = $null
+  if ($element.TryGetCurrentPattern($pattern, [ref]$p)) { return $p }
+  return $null
+}
+
+function Get-Info($element) {
+  $c = $element.Current
+  $r = $c.BoundingRectangle
+  return @{
+    type = $c.ControlType.ProgrammaticName.Replace('ControlType.', '').ToLowerInvariant()
+    name = $c.Name; id = $c.AutomationId; class = $c.ClassName
+    process = (Get-ProcessName $c.ProcessId); enabled = $c.IsEnabled
+    rect = @{ x = [int]$r.X; y = [int]$r.Y; width = [int]$r.Width; height = [int]$r.Height }
+  }
+}
+
+function Focus-Element($element) {
+  try {
+    $hwnd = $element.Current.NativeWindowHandle
+    $node = $element
+    while ($hwnd -eq 0 -and $null -ne $node) {
+      $node = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($node)
+      if ($null -ne $node) { $hwnd = $node.Current.NativeWindowHandle }
+    }
+    if ($hwnd -ne 0) { [void][ZtNative]::SetForegroundWindow([IntPtr]$hwnd) }
+  } catch { }
+  try { $element.SetFocus() } catch { }
+}
+
+function Invoke-MouseClick($element, [bool]$right, [bool]$double) {
+  Focus-Element $element
+  $point = New-Object System.Windows.Point
+  if (-not $element.TryGetClickablePoint([ref]$point)) {
+    $r = $element.Current.BoundingRectangle
+    if ($r.IsEmpty) { throw 'The element is not on screen' }
+    $point = New-Object System.Windows.Point(($r.X + $r.Width / 2), ($r.Y + $r.Height / 2))
+  }
+  [ZtNative]::Click([int]$point.X, [int]$point.Y, $right, $double)
+}
+
+function ConvertTo-SendKeysText([string]$text) {
+  $sb = New-Object System.Text.StringBuilder
+  foreach ($ch in $text.ToCharArray()) {
+    switch -CaseSensitive ($ch) {
+      "`n" { [void]$sb.Append('{ENTER}'); continue }
+      "`r" { continue }
+      "`t" { [void]$sb.Append('{TAB}'); continue }
+      default {
+        if ('+^%~(){}[]'.IndexOf($ch) -ge 0) { [void]$sb.Append('{' + $ch + '}') } else { [void]$sb.Append($ch) }
+      }
+    }
+  }
+  return $sb.ToString()
+}
+
+function Get-ElementText($element) {
+  $value = Get-Pattern $element ([System.Windows.Automation.ValuePattern]::Pattern)
+  if ($value -and $value.Current.Value) { return $value.Current.Value }
+  $text = Get-Pattern $element ([System.Windows.Automation.TextPattern]::Pattern)
+  if ($text) { return $text.DocumentRange.GetText(-1) }
+  return $element.Current.Name
+}
+
+function Get-Tree($element, [int]$depth, [int]$maxNodes) {
+  $lines = New-Object System.Collections.Generic.List[string]
+  $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+  $walk = {
+    param($node, $level)
+    if ($lines.Count -ge $maxNodes -or $level -gt $depth) { return }
+    $c = $node.Current
+    $type = $c.ControlType.ProgrammaticName.Replace('ControlType.', '').ToLowerInvariant()
+    $line = ('  ' * $level) + $type
+    if ($c.Name) { $line += ' name="' + ($c.Name -replace '"', '\"' -replace "`r?`n", ' ') + '"' }
+    if ($c.AutomationId) { $line += ' id="' + $c.AutomationId + '"' }
+    if ($c.ClassName) { $line += ' class="' + $c.ClassName + '"' }
+    if ($level -eq 0) { $line += ' process="' + (Get-ProcessName $c.ProcessId) + '"' }
+    $lines.Add($line)
+    $child = $walker.GetFirstChild($node)
+    while ($null -ne $child -and $lines.Count -lt $maxNodes) {
+      & $walk $child ($level + 1)
+      $child = $walker.GetNextSibling($child)
+    }
+  }
+  & $walk $element 0
+  return ($lines -join "`n")
+}
+
+function Invoke-Op([string]$op, $a) {
+  Initialize-Uia
+  $timeout = if ($a.timeoutMs) { [int]$a.timeoutMs } else { 10000 }
+  switch ($op) {
+    'launch' {
+      $params = @{ FilePath = [string]$a.path; PassThru = $true }
+      if ($a.args) { $params.ArgumentList = [string]$a.args }
+      $proc = Start-Process @params
+      try { [void]$proc.WaitForInputIdle(10000) } catch { }
+      return @{ pid = $proc.Id }
+    }
+    'windows' {
+      $list = New-Object System.Collections.Generic.List[object]
+      $root = [System.Windows.Automation.AutomationElement]::RootElement
+      foreach ($w in $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)) {
+        if ($w.Current.Name) { $list.Add((Get-Info $w)) }
+      }
+      return , $list
+    }
+    'count' { return @{ count = (Resolve-Selector $a.selector).Count } }
+    'find' {
+      $el = Wait-Element $a.selector $timeout
+      $info = Get-Info $el
+      $info.count = (Resolve-Selector $a.selector).Count
+      return $info
+    }
+    'waitFor' {
+      if ($a.state -eq 'gone') {
+        $deadline = [DateTime]::UtcNow.AddMilliseconds($timeout)
+        while ((Resolve-Selector $a.selector).Count -gt 0) {
+          if ([DateTime]::UtcNow -gt $deadline) { throw 'Element is still there' }
+          Start-Sleep -Milliseconds 250
+        }
+        return @{ ok = $true }
+      }
+      return Get-Info (Wait-Element $a.selector $timeout)
+    }
+    'click' {
+      $el = Wait-Element $a.selector $timeout
+      $right = $a.button -eq 'right'
+      $double = [bool]$a.double
+      if (-not $right -and -not $double -and $a.mode -ne 'mouse') {
+        $invoke = Get-Pattern $el ([System.Windows.Automation.InvokePattern]::Pattern)
+        if ($invoke) { $invoke.Invoke(); return @{ method = 'invoke' } }
+        $toggle = Get-Pattern $el ([System.Windows.Automation.TogglePattern]::Pattern)
+        if ($toggle) { $toggle.Toggle(); return @{ method = 'toggle' } }
+        $select = Get-Pattern $el ([System.Windows.Automation.SelectionItemPattern]::Pattern)
+        if ($select) { $select.Select(); return @{ method = 'select' } }
+        $expand = Get-Pattern $el ([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+        if ($expand) { $expand.Expand(); return @{ method = 'expand' } }
+      }
+      Invoke-MouseClick $el $right $double
+      return @{ method = 'mouse' }
+    }
+    'type' {
+      $el = Wait-Element $a.selector $timeout
+      $text = [string]$a.text
+      $clear = $a.clear -ne $false
+      $done = $false
+      $value = Get-Pattern $el ([System.Windows.Automation.ValuePattern]::Pattern)
+      if ($clear -and $value -and -not $value.Current.IsReadOnly -and -not $el.Current.IsPassword) {
+        try {
+          $value.SetValue($text)
+          $done = ($value.Current.Value -eq $text)
+        } catch { $done = $false }
+      }
+      if (-not $done) {
+        Focus-Element $el
+        Start-Sleep -Milliseconds 100
+        if ($clear) { [System.Windows.Forms.SendKeys]::SendWait('^a{DEL}') }
+        [System.Windows.Forms.SendKeys]::SendWait((ConvertTo-SendKeysText $text))
+      }
+      if ($a.pressEnter) {
+        Focus-Element $el
+        [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+      }
+      return @{ method = $(if ($done) { 'value' } else { 'keys' }) }
+    }
+    'sendKeys' {
+      if ($a.selector) { Focus-Element (Wait-Element $a.selector $timeout); Start-Sleep -Milliseconds 100 }
+      [System.Windows.Forms.SendKeys]::SendWait([string]$a.keys)
+      return @{ ok = $true }
+    }
+    'getText' { return @{ text = (Get-ElementText (Wait-Element $a.selector $timeout)) } }
+    'select' {
+      $el = Wait-Element $a.selector $timeout
+      $wanted = [string]$a.value
+      $expand = Get-Pattern $el ([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+      if ($expand) { try { $expand.Expand(); Start-Sleep -Milliseconds 200 } catch { } }
+      $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)
+      foreach ($item in $el.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)) {
+        if ([string]::Equals($item.Current.Name, $wanted, [System.StringComparison]::OrdinalIgnoreCase)) {
+          $sel = Get-Pattern $item ([System.Windows.Automation.SelectionItemPattern]::Pattern)
+          if ($sel) { $sel.Select() } else { Invoke-MouseClick $item $false $false }
+          if ($expand) { try { $expand.Collapse() } catch { } }
+          return @{ selected = $item.Current.Name }
+        }
+      }
+      $value = Get-Pattern $el ([System.Windows.Automation.ValuePattern]::Pattern)
+      if ($value -and -not $value.Current.IsReadOnly) { $value.SetValue($wanted); return @{ selected = $wanted } }
+      if ($expand) { try { $expand.Collapse() } catch { } }
+      throw "Option '$wanted' not found"
+    }
+    'readTable' {
+      $el = Wait-Element $a.selector $timeout
+      $headers = New-Object System.Collections.Generic.List[string]
+      $rows = New-Object System.Collections.Generic.List[object]
+      $table = Get-Pattern $el ([System.Windows.Automation.TablePattern]::Pattern)
+      if ($table) { foreach ($h in $table.Current.GetColumnHeaders()) { $headers.Add($h.Current.Name) } }
+      $grid = Get-Pattern $el ([System.Windows.Automation.GridPattern]::Pattern)
+      if ($grid) {
+        for ($r = 0; $r -lt $grid.Current.RowCount; $r++) {
+          $row = New-Object System.Collections.Generic.List[string]
+          for ($c = 0; $c -lt $grid.Current.ColumnCount; $c++) {
+            $cell = $grid.GetItem($r, $c)
+            $row.Add($(if ($cell) { Get-ElementText $cell } else { '' }))
+          }
+          $rows.Add($row)
+        }
+      } else {
+        $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+        $item = $walker.GetFirstChild($el)
+        while ($null -ne $item) {
+          $row = New-Object System.Collections.Generic.List[string]
+          $cell = $walker.GetFirstChild($item)
+          if ($null -eq $cell) { $row.Add((Get-ElementText $item)) }
+          while ($null -ne $cell) { $row.Add((Get-ElementText $cell)); $cell = $walker.GetNextSibling($cell) }
+          $rows.Add($row)
+          $item = $walker.GetNextSibling($item)
+        }
+      }
+      return @{ headers = $headers; rows = $rows }
+    }
+    'close' {
+      $el = Wait-Element $a.selector $timeout
+      $window = Get-Pattern $el ([System.Windows.Automation.WindowPattern]::Pattern)
+      if ($window) { $window.Close() } else { Focus-Element $el; [System.Windows.Forms.SendKeys]::SendWait('%{F4}') }
+      return @{ ok = $true }
+    }
+    'tree' {
+      $maxNodes = if ($a.maxNodes) { [int]$a.maxNodes } else { 1500 }
+      $depth = if ($a.depth) { [int]$a.depth } else { 25 }
+      if ($a.selector) {
+        $roots = Resolve-Selector $a.selector
+        if ($roots.Count -eq 0) { throw 'Window not found' }
+        return @{ tree = (Get-Tree $roots[0] $depth $maxNodes) }
+      }
+      return @{ tree = (Get-Tree ([System.Windows.Automation.AutomationElement]::RootElement) 1 $maxNodes) }
+    }
+    'screenshot' {
+      $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+      if ($a.selector) {
+        $r = (Wait-Element $a.selector $timeout).Current.BoundingRectangle
+        $bounds = New-Object System.Drawing.Rectangle([int]$r.X, [int]$r.Y, [int]$r.Width, [int]$r.Height)
+      }
+      $bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+      $g = [System.Drawing.Graphics]::FromImage($bmp)
+      $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+      $bmp.Save([string]$a.path, [System.Drawing.Imaging.ImageFormat]::Png)
+      $g.Dispose(); $bmp.Dispose()
+      return @{ path = [string]$a.path }
+    }
+    'recordStart' { [ZtRecorder]::Start(); return @{ ok = $true } }
+    'recordPoll' { return , ([ZtRecorder]::Drain()) }
+    'recordStop' { [ZtRecorder]::Stop(); return , ([ZtRecorder]::Drain()) }
+    default { throw "Unknown operation '$op'" }
+  }
+}
+
+while ($true) {
+  $line = [Console]::In.ReadLine()
+  if ($null -eq $line) { break }
+  if (-not $line.Trim()) { continue }
+  $id = $null
+  try {
+    $request = $line | ConvertFrom-Json
+    $id = $request.id
+    # ping is answered here, before Invoke-Op is compiled (that needs the Windows-only assemblies).
+    if ($request.op -eq 'ping') {
+      $result = @{ pong = $true; powershell = $PSVersionTable.PSVersion.ToString(); windows = [bool]($env:OS -eq 'Windows_NT') }
+    } else {
+      $result = Invoke-Op ([string]$request.op) $request.args
+    }
+    $out = ConvertTo-JsonLine @{ id = $id; ok = $true; result = $result }
+  } catch {
+    $out = ConvertTo-JsonLine @{ id = $id; ok = $false; error = $_.Exception.Message }
+  }
+  [Console]::Out.WriteLine($out)
+  [Console]::Out.Flush()
+}

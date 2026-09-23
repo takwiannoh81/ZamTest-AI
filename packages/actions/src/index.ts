@@ -3,6 +3,7 @@ import { BUILTIN_ACTIONS } from "@zamtest/core";
 import { aiHandlers } from "./ai.js";
 import { browserHandlers } from "./browser.js";
 import { dataHandlers } from "./data.js";
+import { desktopHandlers } from "./desktop/index.js";
 import { emailHandlers } from "./email.js";
 import { officeHandlers } from "./office.js";
 import { pdfHandlers } from "./pdf.js";
@@ -11,6 +12,7 @@ import { systemHandlers } from "./system.js";
 
 export { actionTools, getAi } from "./ai.js";
 export { snapshotDom } from "./browser.js";
+export * as desktop from "./desktop/index.js";
 export type { QueueItem, QueueItemStatus, QueueService } from "./queue.js";
 
 /**
@@ -32,6 +34,7 @@ export const builtinHandlers: Record<string, ActionHandler> = {
   ...pdfHandlers,
   ...queueHandlers,
   ...browserHandlers,
+  ...desktopHandlers,
   ...aiHandlers,
 };
 

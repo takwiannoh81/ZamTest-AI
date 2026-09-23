@@ -2,13 +2,13 @@ import { AiClient, jsonOf, textOf } from "./client.js";
 import type { ZamAIOptions } from "./client.js";
 import { runAgent } from "./agent.js";
 import type { RunAgentInput } from "./agent.js";
-import { healSelector, suggestSelectors } from "./selectors.js";
+import { healDesktopSelector, healSelector, suggestSelectors } from "./selectors.js";
 import { generateWorkflow } from "./workflow-gen.js";
 import type { GenerateWorkflowInput } from "./workflow-gen.js";
 
 export * from "./client.js";
 export type { AgentTool, RunAgentInput, RunAgentResult } from "./agent.js";
-export type { SelectorCandidate, SelectorSuggestion } from "./selectors.js";
+export type { DesktopSelectorCandidate, SelectorCandidate, SelectorSuggestion } from "./selectors.js";
 export type { GenerateWorkflowInput, GenerateWorkflowResult } from "./workflow-gen.js";
 
 /** Facade over every AI capability of the platform. */
@@ -29,6 +29,10 @@ export class ZamAI {
 
   healSelector(input: Parameters<typeof healSelector>[1]) {
     return healSelector(this.client, input);
+  }
+
+  healDesktopSelector(input: Parameters<typeof healDesktopSelector>[1]) {
+    return healDesktopSelector(this.client, input);
   }
 
   generateWorkflow(input: GenerateWorkflowInput) {

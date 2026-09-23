@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "id": "desktop-notepad",
+  "name": "Desktop demo: Notepad",
+  "description": "Windows only. Starts Notepad, types a note, reads it back and closes Notepad without saving.",
+  "variables": [
+    { "name": "note", "type": "string", "direction": "in", "default": "Hello from ZamTech AI" },
+    { "name": "readBack", "type": "string", "direction": "out" }
+  ],
+  "root": {
+    "id": "root",
+    "type": "core.sequence",
+    "props": {},
+    "slots": {
+      "body": [
+        {
+          "id": "start",
+          "type": "desktop.launch",
+          "label": "Start Notepad",
+          "props": { "path": "notepad.exe", "waitFor": "window[process=\"notepad\"]" }
+        },
+        {
+          "id": "type",
+          "type": "desktop.type",
+          "label": "Type the note",
+          "props": {
+            "selector": "window[process=\"notepad\"] > document",
+            "text": "{{ note }}",
+            "description": "The main text area of Notepad"
+          }
+        },
+        {
+          "id": "read",
+          "type": "desktop.getText",
+          "label": "Read it back",
+          "props": {
+            "selector": "window[process=\"notepad\"] > document",
+            "output": "readBack",
+            "description": "The main text area of Notepad"
+          }
+        },
+        {
+          "id": "log",
+          "type": "core.log",
+          "props": { "message": "Notepad contains: {{ readBack }}" }
+        },
+        {
+          "id": "clear",
+          "type": "desktop.type",
+          "label": "Clear the text",
+          "props": { "selector": "window[process=\"notepad\"] > document", "text": "", "description": "The main text area of Notepad" }
+        },
+        {
+          "id": "close",
+          "type": "desktop.closeWindow",
+          "props": { "selector": "window[process=\"notepad\"]" }
+        },
+        {
+          "id": "dontSave",
+          "type": "desktop.click",
+          "label": "Don't save (if asked)",
+          "continueOnError": true,
+          "props": {
+            "selector": "window[process=\"notepad\"] > button[name^=\"Don\"]",
+            "timeoutMs": 3000,
+            "aiHeal": false,
+            "description": "The Don't Save button of the save prompt"
+          }
+        }
+      ]
+    }
+  }
+}

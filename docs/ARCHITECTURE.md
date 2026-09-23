@@ -19,7 +19,8 @@
  ┌──────────────┐        ┌──────────────┐
  │  Bot Agent   │  ...   │  Bot Agent   │    Node process on each robot machine
  │ core engine  │        │              │──── Claude (self-healing, AI actions, AI agents)
- │ + actions │        │              │──── Playwright browsers, HTTP, files
+ │ + actions    │        │              │──── Playwright browsers, HTTP, files
+ │              │        │              │──── Windows apps (UI Automation, via PowerShell)
  └──────────────┘        └──────────────┘
 ```
 
@@ -70,6 +71,7 @@ The handlers are grouped as follows:
 | `system` | `core.log`, `core.assign`, `core.delay`, `core.getAsset`, `core.runScript`, `core.throw` |
 | `data` | HTTP, JSON, files |
 | `browser` | Playwright (loaded lazily, so agents without browsers still work) |
+| `desktop` | Windows desktop applications through Microsoft UI Automation (see below) |
 | `ai` | AI Prompt, AI Extract Data, AI Agent |
 
 An `ActionPackage` bundles metadata and handlers. This is the extension point for custom action packages (Excel, SAP, email, desktop UI...).
@@ -83,6 +85,27 @@ An `ActionPackage` bundles metadata and handlers. This is the extension point fo
 3. Check each candidate against the live page. A candidate is only used if it matches exactly one element.
 4. Retry the action with the first candidate that passes. Log the change and emit a `selectorHealed` event.
 5. The orchestrator stores healed selectors on the job. The Portal lists them, and the Designer offers **Apply fix**.
+
+### Desktop automation (`packages/actions/src/desktop`)
+
+Desktop actions run only on Windows agents:
+
+- **Driver.** On first use, the agent starts `driver.ps1` with the built-in Windows PowerShell 5.1. It is one process per job and is closed with the job. Requests and responses are JSON lines over stdin/stdout.
+- **What the script does.** It loads the .NET UI Automation client and compiles a small C# helper for real mouse clicks, DPI awareness and the recorder's low-level mouse/keyboard hooks. Nothing needs to be installed.
+- **Selectors** (`selector.ts`) read like CSS: `window[process="notepad"] > menuitem[name="File"]`.
+  - Segments are separated by `>`. Each segment is a control type (or `*`) with `[name|id|class|process op "value"]` attributes and an optional `[index=N]`.
+  - Operators are `=`, `~=`, `^=` and `$=`, all case-insensitive.
+  - The first segment matches top-level windows, and each later segment searches the descendants of the previous match.
+  - The Node side parses selectors, so syntax errors are reported before anything runs.
+- **Clicks** use UI Automation patterns first (Invoke, Toggle, SelectionItem, ExpandCollapse), so they work even when the window is covered. `mode: mouse` moves the real pointer instead.
+- **Typing** uses ValuePattern and falls back to keystrokes (SendKeys).
+- **Self-healing** mirrors the browser version:
+  1. On "not found", the bot sends the window's UI Automation tree (at most 1,500 nodes) and the step description to Claude.
+  2. It checks each suggested selector with `count == 1` before retrying.
+  3. It then emits `selectorHealed`.
+- **AI agents** get `desktop_*` tools plus `desktop_snapshot` on Windows agents.
+- **Recorder** (`agent record-desktop`): hooks produce click, right-click, Enter and typed-value events with the element's ancestor chain. `selectorFromChain` turns each chain into a stable selector, preferring AutomationId, then Name, then ClassName, anchored on the window's process.
+- **Testing without Windows:** the protocol and a static C# 5 compile check (against stub UI Automation types) run in CI with PowerShell 7 on Linux. The handlers and healing are tested with a fake driver.
 
 ### AI agents
 

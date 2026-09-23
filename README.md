@@ -24,6 +24,10 @@ ZamTech AI is a low-code, AI-native automation (RPA) platform, in the same space
 - **Actions**:
   - **Control flow and basics:** control flow, log, assign, delay, JavaScript, get asset, HTTP, JSON and files.
   - **Browser:** automation through Playwright: open, navigate, click, type, select option, get text, wait, screenshot, close.
+  - **Desktop (Windows):** automates desktop applications through Microsoft UI Automation: start application, click, type, send keys, get text, select item, read table, wait, screenshot, close window.
+    - **Selectors** look like `window[process="notepad"] > menuitem[name="File"]`.
+    - **Self-healing:** broken selectors are healed by AI, as they are in the browser.
+    - **Requirements:** a Windows bot agent running in a signed-in session. No extra software is needed.
   - **Excel & CSV:** read and write `.xlsx` sheets and CSV files.
   - **Email:** send over SMTP and read over IMAP, with attachments. The password comes from a credential asset.
   - **PDF:** read text, which pairs well with **AI Extract Data**, and merge files.
@@ -33,7 +37,7 @@ ZamTech AI is a low-code, AI-native automation (RPA) platform, in the same space
   - **Duplicates:** a duplicate reference is rejected.
   - **Crashed jobs:** items locked by a job that crashed go back into the queue.
   - **Management:** the Portal has a **Queues** page for managing them.
-- **Recorder**: run `pnpm --filter @zamtest/agent exec tsx src/cli.ts record https://your-app` on your own computer and click through the process once.
+- **Recorder**: run `pnpm --filter @zamtest/agent exec tsx src/cli.ts record https://your-app` on your own computer and click through the process once. For Windows applications, use `record-desktop [program.exe]` instead. `desktop-test` checks that desktop automation works on a machine.
   - **Output:** the recorder writes the workflow for you, with robust selectors and descriptions that AI self-healing can use.
   - **Passwords:** anything typed into a password field is never stored.
   - **Upload:** `--upload` sends the workflow straight to the Designer.
@@ -103,9 +107,9 @@ Without a key, every non-AI feature still works, and the AI buttons are disabled
 
 ```
 packages/
-  i18n/         Translations (13 languages) for the UI and the action catalog
+  i18n/         Translations (14 languages) for the UI and the action catalog
   core/         Workflow schema (zod), action catalog, expression language, execution engine
-  actions/   Runtime implementations: system, data, files, browser (Playwright), AI
+  actions/      Runtime implementations: system, data, files, browser (Playwright), desktop (Windows UI Automation), Excel, email, PDF, queues, AI
   ai/           Claude integration: selectors, self-healing, workflow generation, extraction, agents
 apps/
   orchestrator/ Fastify REST API, JSON-file persistence, cron scheduler

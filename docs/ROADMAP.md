@@ -21,8 +21,7 @@ v0.1 is a working vertical slice: Designer → Orchestrator → Bot Agent, with 
   - SFTP
   - Office 365
   - SAP GUI scripting
-- **Desktop UI automation**:
-  - Windows UIA
+- **Desktop UI automation** (Windows UI Automation actions and the desktop recorder are done in v0.1):
   - Java Access Bridge
   - Citrix/image-based automation with AI vision (Claude computer use)
 - **Recorder**: capture browser clicks and typing into steps, with AI-generated descriptions and selectors.

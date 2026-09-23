@@ -118,3 +118,83 @@ export async function healSelector(
 function sortCandidates(s: SelectorSuggestion): SelectorSuggestion {
   return { candidates: [...(s.candidates ?? [])].sort((a, b) => b.confidence - a.confidence) };
 }
+
+/* ------------------------------------------------------------------ */
+/* Desktop (Windows UI Automation) selectors                           */
+/* ------------------------------------------------------------------ */
+
+export interface DesktopSelectorCandidate {
+  selector: string;
+  confidence: number;
+  reason: string;
+}
+
+const DESKTOP_SCHEMA = {
+  type: "object",
+  properties: {
+    candidates: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { selector: { type: "string" }, confidence: { type: "number" }, reason: { type: "string" } },
+        required: ["selector", "confidence", "reason"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["candidates"],
+  additionalProperties: false,
+} as const;
+
+const DESKTOP_SYSTEM = `You write selectors for Windows desktop applications in an RPA platform that uses Microsoft UI Automation.
+
+Selector grammar (CSS-like):
+- Segments separated by ">" ; each segment is searched among all descendants of the previous match. The first segment matches top-level windows.
+- A segment is a lower-case control type (window, pane, button, edit, document, text, checkbox, radiobutton, combobox, list, listitem, menu, menubar, menuitem, tab, tabitem, tree, treeitem, datagrid, dataitem, table, header, headeritem, hyperlink, image, group, toolbar, statusbar, titlebar, custom, ...) or *.
+- Attributes: [name="..."] (UI Automation Name), [id="..."] (AutomationId), [class="..."] (ClassName), [process="..."] (process name without .exe, first segment only), [index=N] (1-based among matches).
+- Operators: = exact, ~= contains, ^= starts with, $= ends with. Case-insensitive.
+
+Examples:
+  window[process="notepad"] > document
+  window[name$=" - Notepad"] > menuitem[name="File"]
+  window[process="calculatorapp"] > button[id="num7Button"]
+  window[process="saplogon"] > edit[name="User"]
+
+Rank candidates by how likely they are to keep working:
+1. A stable AutomationId (not a number, not a GUID).
+2. The Name of the element, anchored in a window matched by process.
+3. ClassName or an ancestor with a stable id, then [index=N] only as a last resort.
+Window titles often contain a document name ("report.txt - Notepad"): match the stable part with $= or use process.
+Each selector must match exactly one element in the tree shown. Confidence is 0..1. Return 1-4 candidates, best first.`;
+
+/** Desktop self-healing: proposes replacements for a broken desktop selector from the live UI Automation tree. */
+export async function healDesktopSelector(
+  ai: AiClient,
+  input: { failedSelector: string; description?: string; tree: string; error?: string },
+): Promise<{ candidates: DesktopSelectorCandidate[] }> {
+  const message = await ai.create({
+    max_tokens: 16000,
+    system: DESKTOP_SYSTEM,
+    output_config: { effort: "medium", format: { type: "json_schema", schema: DESKTOP_SCHEMA } },
+    messages: [
+      {
+        role: "user",
+        content: [
+          "A selector in a running desktop automation no longer finds its element. Find the element it was meant to target in the current UI Automation tree and propose replacement selectors.",
+          `Broken selector: ${input.failedSelector}`,
+          input.description ? `The element is described as: ${input.description}` : "",
+          input.error ? `Error: ${input.error}` : "",
+          "If no element plausibly matches, return an empty candidates list.",
+          "UI Automation tree (indentation = nesting; top-level lines are windows with their process):",
+          "<tree>",
+          input.tree,
+          "</tree>",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      },
+    ],
+  });
+  const result = jsonOf<{ candidates: DesktopSelectorCandidate[] }>(message);
+  return { candidates: [...(result.candidates ?? [])].sort((a, b) => b.confidence - a.confidence) };
+}

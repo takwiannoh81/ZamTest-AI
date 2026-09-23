@@ -113,6 +113,34 @@ pnpm --filter @zamtest/agent exec tsx src/cli.ts record https://erp.example.com 
 2. **Finish:** close the window, or press Enter in the terminal.
 3. **Upload:** sign in with your ZamTech AI email and password when asked. The workflow appears in the Designer, where you can review it, test it and publish it.
 
+**Windows desktop bots (desktop applications such as SAP GUI, ERP clients, Excel or Notepad):**
+
+Desktop actions (**Desktop** category in the Designer) drive Windows applications through Microsoft UI Automation. They use the Windows PowerShell and UI Automation that come with every Windows 10/11 PC, so there is nothing extra to install. They only run on a Windows bot agent, and the agent must run **inside a signed-in desktop session**: start it from a normal user session, not as a Windows service, and keep the session unlocked. With RDP, keep the session open rather than minimised, or use a console session.
+
+1. Install Node 20+ and pnpm, then clone the repo as above.
+2. Check that desktop automation works on the machine:
+   ```powershell
+   pnpm install
+   pnpm --filter @zamtest/agent exec tsx src/cli.ts desktop-test
+   ```
+   This test opens Notepad and Calculator, types, clicks and reads text back. It writes `desktop-test-report.txt`; send that file along if anything fails.
+3. Start the agent in PowerShell:
+   ```powershell
+   $env:ZAMTEST_SERVER = "https://api.zamtechai.com"
+   $env:ZAMTEST_AGENT_KEY = "<value from deploy/.env>"
+   $env:ZAMTEST_AGENT_NAME = "finance-pc-01"
+   pnpm --filter @zamtest/agent start
+   ```
+4. To run desktop processes on this bot, pick it as the target agent when starting a process or creating a schedule. The cloud bot on the Linux server cannot run desktop actions.
+
+**Recording a desktop workflow (Windows):**
+```powershell
+pnpm --filter @zamtest/agent exec tsx src/cli.ts record-desktop notepad.exe --upload --server https://api.zamtechai.com
+```
+1. **Record:** the program starts (leave the program name out to record whatever is already open). Work through the process once.
+2. **Finish:** return to the terminal and press Enter.
+3. **Upload:** the result is a workflow of **Start Application**, **Click (Desktop)** and **Type Into (Desktop)** steps, with selectors such as `window[process="notepad"] > document`. Anything typed into a password field becomes a `password` input rather than being stored.
+
 ## 5. User accounts
 
 People sign in with their own email and password. Each account has one role:

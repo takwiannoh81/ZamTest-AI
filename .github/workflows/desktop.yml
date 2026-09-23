@@ -1,0 +1,47 @@
+name: Desktop automation (Windows)
+
+# Runs the desktop driver against real Windows applications on a GitHub-hosted
+# Windows runner (which has an interactive desktop session).
+on:
+  push:
+    paths:
+      - "packages/actions/src/desktop/**"
+      - "apps/agent/src/desktop-*.ts"
+      - "packages/actions/test/desktop.test.ts"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "packages/actions/src/desktop/**"
+      - "apps/agent/src/desktop-*.ts"
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Unit and protocol tests
+        run: pnpm exec vitest run packages/actions/test/desktop.test.ts apps/agent/test/desktop-recorder.test.ts
+      - name: Desktop self-test (Notepad, Calculator)
+        working-directory: apps/agent
+        run: pnpm exec tsx src/cli.ts desktop-test
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-test-report
+          path: apps/agent/desktop-test-report.txt
+          if-no-files-found: ignore
+      - name: Print report
+        if: always()
+        shell: pwsh
+        run: if (Test-Path apps/agent/desktop-test-report.txt) { Get-Content apps/agent/desktop-test-report.txt }

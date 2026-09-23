@@ -22,6 +22,10 @@ Property value rules:
 - "variable" props hold a bare variable name (no braces). Declare every variable you use in "variables"
   (loop item/index variables included).
 - "selector" props use Playwright syntax (css=..., role=button[name="..."], text="...", internal:label="...").
+- "selector" props of desktop.* actions (Windows applications) use the desktop grammar instead: segments separated by ">",
+  each a lower-case UI Automation control type with [name="..."], [id="..."], [class="..."], [process="..."] (first segment only) or [index=N],
+  operators = ~= ^= $=. Example: window[process="notepad"] > document, window[name$=" - Notepad"] > menuitem[name="File"].
+  Start desktop processes with desktop.launch (waitFor set to the window selector).
   When you cannot see the page, write your best guess and ALWAYS fill the "description" prop so selectors can be healed at run time.
 - Use "core.getAsset" for credentials and configuration; never hard-code secrets.`;
 
