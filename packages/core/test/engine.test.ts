@@ -127,3 +127,22 @@ describe("engine", () => {
     expect(result.status).toBe("cancelled");
   });
 });
+
+describe("after each step (screenshots)", () => {
+  it("is called after action steps only, with their outcome and the run's resources, and never breaks a run", async () => {
+    const seen: string[] = [];
+    const first = step("core.log", { message: "one" });
+    const loop = step("core.if", { condition: "true" }, { then: [step("core.log", { message: "two" })] });
+    const bad = { ...step("core.throw", { message: "boom" }), continueOnError: true };
+    const result = await runWorkflow(wf([first, loop, bad]), {
+      handlers: { ...handlers, "core.log": (_p, ctx) => void ctx.resources.set("page", "open") },
+      afterStep: ({ step: s, status, error, resources }) => {
+        seen.push(`${s.type}:${status}${error ? `:${error}` : ""}:${String(resources.get("page"))}`);
+        throw new Error("the camera broke");
+      },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe("succeeded");
+    expect(seen).toEqual(["core.log:ok:open", "core.log:ok:open", "core.throw:error:boom:open"]);
+  });
+});

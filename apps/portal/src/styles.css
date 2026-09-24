@@ -255,3 +255,21 @@ code, pre, .mono, .log, .log-line { direction: ltr; unicode-bidi: isolate; }
 .job-actions .icon-btn { display: inline-flex; padding: 6px; }
 .icon-btn.danger:hover:not(:disabled) { color: var(--danger); }
 .icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Step screenshots on the job page */
+.failure-shot { margin: 12px 0 0; }
+.failure-shot figcaption { font-weight: 600; margin-bottom: 6px; color: var(--danger); }
+.failure-shot img { max-width: min(100%, 900px); border: 2px solid var(--danger); border-radius: 8px; cursor: zoom-in; display: block; }
+.shot-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.shot-thumb { display: flex; flex-direction: column; gap: 4px; padding: 6px; text-align: start; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; cursor: zoom-in; color: var(--text); }
+.shot-thumb:hover { border-color: var(--accent); }
+.shot-thumb.shot-error { border: 2px solid var(--danger); }
+.shot-thumb img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; border-radius: 4px; background: var(--surface-2); }
+.shot-caption { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shot-n { display: inline-block; min-width: 18px; font-weight: 700; color: var(--muted); }
+.shot-time { font-size: 11px; color: var(--muted); }
+.lightbox { position: fixed; inset: 0; z-index: 200; background: rgba(0, 0, 0, 0.8); display: grid; place-items: center; padding: 16px; }
+.lightbox-inner { background: var(--surface); border-radius: 10px; padding: 10px; max-width: 96vw; max-height: 94vh; display: flex; flex-direction: column; gap: 8px; }
+.lightbox-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lightbox-head .spacer { flex: 1; }
+.lightbox-inner img { max-width: 100%; max-height: calc(94vh - 70px); object-fit: contain; border-radius: 6px; }

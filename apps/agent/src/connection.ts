@@ -1,7 +1,8 @@
 import { hostname, platform, release } from "node:os";
 import { parseWorkflow, sleep } from "@zamtest/core";
+import { captureStep } from "@zamtest/actions";
 import type { QueueItem } from "@zamtest/actions";
-import type { EngineEvent } from "@zamtest/core";
+import type { AfterStepInfo, EngineEvent } from "@zamtest/core";
 import { execute } from "./runtime.js";
 
 export interface AgentOptions {
@@ -58,6 +59,19 @@ export class AgentConnection {
     const data = (await res.json().catch(() => ({}))) as T & { error?: string };
     if (!res.ok) throw Object.assign(new Error(data.error ?? `HTTP ${res.status}`), { status: res.status });
     return data;
+  }
+
+  /** Sends a JPEG (step screenshot). */
+  private async upload(path: string, data: Buffer): Promise<void> {
+    const res = await fetch(new URL(path, this.options.server), {
+      method: "POST",
+      headers: {
+        "content-type": "image/jpeg",
+        ...(this.options.token ? { "x-agent-token": this.options.token } : { "x-agent-key": this.options.key ?? "" }),
+      },
+      body: new Uint8Array(data),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
   }
 
   async register(): Promise<void> {
@@ -175,6 +189,23 @@ export class AgentConnection {
     };
     const flusher = setInterval(() => void flush(), 1000);
 
+    // Step screenshots go up one at a time, in order, without holding up the run.
+    let uploads: Promise<void> = Promise.resolve();
+    let uploadFailures = 0;
+    const screenshotsOn = process.env.ZAMTEST_SCREENSHOTS !== "off";
+    const afterStep = async ({ step, status, resources }: AfterStepInfo) => {
+      if (!screenshotsOn || uploadFailures >= 5) return;
+      const shot = await captureStep(resources, step.type, status === "error");
+      if (!shot) return;
+      const query = new URLSearchParams({ stepId: step.id, status, source: shot.source, agentId: this.agentId ?? "" });
+      uploads = uploads.then(() =>
+        this.upload(`/api/agent/jobs/${job.id}/screenshots?${query}`, shot.data).catch((err: Error) => {
+          uploadFailures++;
+          this.log(`Failed to upload a screenshot: ${err.message}`);
+        }),
+      );
+    };
+
     let status: "succeeded" | "failed" | "cancelled" = "failed";
     let error: string | undefined;
     let outputs: Record<string, unknown> | undefined;
@@ -188,6 +219,7 @@ export class AgentConnection {
           if (event.type !== "stepStart") buffer.push(event);
           if (buffer.length >= 200) void flush();
         },
+        afterStep,
         getAsset: async (name) => (await this.call<{ value: unknown }>("GET", `/api/agent/assets/${encodeURIComponent(name)}`))?.value,
         queues: {
           add: async (queue, data, reference) =>
@@ -211,6 +243,7 @@ export class AgentConnection {
     } finally {
       clearInterval(flusher);
       await flush();
+      await uploads;
       this.current = undefined;
     }
 

@@ -6,6 +6,7 @@ import type { Job, JobLog } from "../api";
 import { duration, usePoll } from "../hooks";
 import { Badge, Empty, ErrorBanner, PageHeader } from "../ui";
 import { JobRowActions, RunAllButton } from "./JobActions";
+import { JobScreenshots } from "./JobScreenshots";
 
 const STATUSES = ["", "pending", "running", "succeeded", "failed", "cancelled"];
 
@@ -158,6 +159,7 @@ export function JobDetail({ id }: { id: string }) {
         </section>
       )}
       {j?.error && <div className="error-banner">{j.error}</div>}
+      {j && <JobScreenshots jobId={id} running={!final} />}
       {j && j.healedSelectors.length > 0 && (
         <>
           <h2 className="section-title">{t("jobs.healedTitle")}</h2>

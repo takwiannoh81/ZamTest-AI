@@ -12,6 +12,8 @@ import { systemHandlers } from "./system.js";
 
 export { actionTools, getAi } from "./ai.js";
 export { snapshotDom } from "./browser.js";
+export { captureStep } from "./screenshots.js";
+export type { StepScreenshot } from "./screenshots.js";
 export * as desktop from "./desktop/index.js";
 export type { QueueItem, QueueItemStatus, QueueService } from "./queue.js";
 

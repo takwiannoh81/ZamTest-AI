@@ -43,6 +43,8 @@ services:
       ZAMTEST_DESIGNER_URL: https://designer.${SITE_DOMAIN}
       # Anyone may create an account and workspace in the Portal (the hosted service).
       ZAMTEST_ALLOW_SIGNUP: ${ZAMTEST_ALLOW_SIGNUP:-false}
+      # Days to keep step screenshots of jobs (docs/DEPLOYMENT.md, 6b).
+      ZAMTEST_SCREENSHOT_DAYS: ${ZAMTEST_SCREENSHOT_DAYS:-30}
       # Confirm-your-email and password-reset emails (see docs/DEPLOYMENT.md, 5c).
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}

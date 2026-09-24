@@ -50,7 +50,23 @@ export interface RunOptions {
   services?: EngineServices;
   signal?: AbortSignal;
   onEvent?: (event: EngineEvent) => void;
+  /**
+   * Called after each action (not control-flow) step, before the next step and before
+   * the run's resources close: e.g. to take a screenshot. Errors are ignored.
+   */
+  afterStep?: (info: AfterStepInfo) => unknown | Promise<unknown>;
 }
+
+export interface AfterStepInfo {
+  step: Step;
+  status: "ok" | "error";
+  error?: string;
+  /** The run's shared resources (open browser page, desktop driver...). */
+  resources: Map<string, unknown>;
+}
+
+/** How long afterStep may take before the run moves on. */
+const AFTER_STEP_TIMEOUT_MS = 10_000;
 
 export interface RunResult {
   status: "succeeded" | "failed" | "cancelled";
@@ -182,6 +198,21 @@ export async function runWorkflow(workflow: Workflow, options: RunOptions): Prom
     }
   };
 
+  const afterStep = async (step: Step, status: "ok" | "error", error?: string) => {
+    if (!options.afterStep || signal.aborted) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.resolve(options.afterStep({ step, status, error, resources })),
+        new Promise((resolve) => (timer = setTimeout(resolve, AFTER_STEP_TIMEOUT_MS))),
+      ]);
+    } catch {
+      /* a failed screenshot never fails the run */
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   const runSteps = async (steps: Step[] | undefined): Promise<void> => {
     for (const step of steps ?? []) {
       await runStep(step);
@@ -198,7 +229,13 @@ export async function runWorkflow(workflow: Workflow, options: RunOptions): Prom
       if (CONTROL_FLOW_TYPES.has(step.type)) {
         await runControl(step);
       } else {
-        await runLeafWithPolicies(step);
+        try {
+          await runLeafWithPolicies(step);
+        } catch (err) {
+          if (!(err instanceof CancelledError) && !(err instanceof BreakSignal)) await afterStep(step, "error", errorMessage(err));
+          throw err;
+        }
+        await afterStep(step, "ok");
       }
       emit({ type: "stepEnd", time: now(), stepId: step.id, stepType: step.type, status: "ok", durationMs: Date.now() - t0 });
     } catch (err) {

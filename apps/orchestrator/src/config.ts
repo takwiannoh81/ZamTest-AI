@@ -22,6 +22,8 @@ export interface OrchestratorConfig {
   agentOfflineMs: number;
   /** Running jobs whose agent has been offline this long are failed. */
   jobLostMs: number;
+  /** Step screenshots of jobs are deleted after this many days. */
+  screenshotDays: number;
 }
 
 export function loadConfig(env = process.env): OrchestratorConfig {
@@ -41,6 +43,7 @@ export function loadConfig(env = process.env): OrchestratorConfig {
     production: env.NODE_ENV === "production",
     agentOfflineMs: 30_000,
     jobLostMs: 120_000,
+    screenshotDays: Math.max(1, Number(env.ZAMTEST_SCREENSHOT_DAYS) || 30),
   };
 }
 

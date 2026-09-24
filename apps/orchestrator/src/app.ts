@@ -5,7 +5,7 @@ import { z } from "zod";
 import { AiClient, AiNotConfiguredError, AiRefusalError, ZamAI } from "@zamtest/ai";
 import { BUILTIN_ACTIONS, WorkflowSchema } from "@zamtest/core";
 import { languageName } from "@zamtest/i18n";
-import type { EngineEvent } from "@zamtest/core";
+import type { EngineEvent, Step } from "@zamtest/core";
 import {
   clearedSessionCookie,
   createSession,
@@ -40,6 +40,7 @@ import type { OrchestratorConfig } from "./config.js";
 import { parse } from "./errors.js";
 import { apiTokenPrincipal, effectiveEnv, ENV_NAMES, environmentsOn, isIn, publishWorkflow, registerCicd } from "./cicd.js";
 import { GitRepos } from "./git.js";
+import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
 import { checkBots, checkBuilders, checkFeature, currentUsage, FREE_LIMITS, isBuilder, limitsOf, PlanLimitError, PRO, useAi } from "./plans.js";
@@ -72,6 +73,8 @@ export interface AppOptions {
   oidc?: OidcClient;
   /** Workspaces' Git repositories (tests allow local file:// ones). */
   git?: GitRepos;
+  /** Step screenshots of jobs (files next to the database). */
+  screenshots?: ScreenshotStore;
 }
 
 
@@ -79,6 +82,18 @@ function maskAsset(asset: Asset): Asset {
   if (asset.type !== "credential") return asset;
   const value = (asset.value ?? {}) as { username?: string };
   return { ...asset, value: { username: value.username ?? "", password: "********" } };
+}
+
+/** A step anywhere in a workflow, by its id. */
+function findStep(step: Step, id: string): Step | undefined {
+  if (step.id === id) return step;
+  for (const children of Object.values(step.slots ?? {})) {
+    for (const child of children) {
+      const found = findStep(child, id);
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
 
 function jobSummary(job: Job) {
@@ -126,6 +141,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   const app = Fastify({ logger: options.logger ?? false, bodyLimit: 10 * 1024 * 1024, trustProxy: config.production });
   const scheduler = new Scheduler(store, (msg) => app.log.info(msg));
   let ai: ZamAI | null | undefined = options.ai;
+  const screenshots = options.screenshots ?? new ScreenshotStore(config.dataDir);
   const getAi = () => {
     if (ai === undefined) ai = AiClient.isConfigured() ? new ZamAI() : null;
     if (!ai) throw new AiNotConfiguredError();
@@ -889,8 +905,22 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     if (!isFinal(job)) throw new HttpError(409, "Stop the job before deleting it");
     delete store.data.jobs[job.id];
     delete store.data.jobLogs[job.id];
+    screenshots.remove(job.id);
     store.save();
     return reply.status(204).send();
+  });
+
+  /** The job's step screenshots, in order. */
+  app.get<{ Params: { id: string } }>("/api/jobs/:id/screenshots", async (req) => {
+    const job = own(store.data.jobs, req.params.id, "Job", req);
+    return screenshots.list(job.id);
+  });
+  app.get<{ Params: { id: string; seq: string } }>("/api/jobs/:id/screenshots/:seq", async (req, reply) => {
+    const job = own(store.data.jobs, req.params.id, "Job", req);
+    const image = screenshots.read(job.id, Number(req.params.seq));
+    if (!image) throw new HttpError(404, "Screenshot not found");
+    // Never changes once taken.
+    return reply.header("content-type", "image/jpeg").header("cache-control", "private, max-age=86400, immutable").send(image);
   });
 
   app.post<{ Params: { id: string } }>("/api/jobs/:id/cancel", async (req) => {
@@ -1110,7 +1140,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   /* --------------------------- bot agent API ------------------------ */
   /** The calling agent: from its own credential, or (shared key) from the agentId it sends. */
   const agentFor = (req: FastifyRequest): Agent => {
-    const agentId = req.agent?.id ?? (req.body as { agentId?: unknown } | undefined)?.agentId;
+    // Approved PCs are known by their credential; shared-key agents name themselves (in the JSON body, or the query for uploads).
+    const agentId = req.agent?.id ?? (Buffer.isBuffer(req.body) ? undefined : (req.body as { agentId?: unknown } | undefined)?.agentId) ?? (req.query as { agentId?: unknown } | undefined)?.agentId;
     const agent = store.data.agents[String(agentId ?? "")];
     if (!agent) throw new HttpError(404, "Unknown agent; register again");
     agent.lastHeartbeat = nowIso();
@@ -1205,6 +1236,27 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     if (logs.length) store.appendLogs(job.id, logs);
     store.save();
     return { cancel: job.status === "cancelling" };
+  });
+
+  // The PC sends the screen after a step as a JPEG body; the step's name comes from the job.
+  await app.register(async (scope) => {
+    scope.addContentTypeParser("image/jpeg", { parseAs: "buffer", bodyLimit: MAX_SCREENSHOT_BYTES }, (_req, body, done) => done(null, body));
+    scope.post<{ Params: { id: string }; Querystring: { stepId?: string; status?: string; source?: string } }>(
+      "/api/agent/jobs/:id/screenshots",
+      async (req, reply) => {
+        const job = agentJob(req);
+        const data = req.body;
+        if (!Buffer.isBuffer(data) || data.length < 4 || data[0] !== 0xff || data[1] !== 0xd8) throw new HttpError(400, "Send a JPEG image");
+        const q = parse(
+          z.object({ stepId: z.string().min(1).max(100), status: z.enum(["ok", "error"]).default("ok"), source: z.enum(["browser", "desktop"]).default("browser") }),
+          req.query,
+        );
+        const step = findStep(job.definition.root, q.stepId);
+        const saved = screenshots.add(job.id, { stepId: q.stepId, stepType: step?.type, label: step?.label, status: q.status, source: q.source, time: nowIso() }, data);
+        if (!saved) return reply.status(409).send({ error: "This job has as many screenshots as it may keep" });
+        return reply.status(201).send(saved);
+      },
+    );
   });
 
   app.post<{ Params: { id: string } }>("/api/agent/jobs/:id/complete", async (req) => {
@@ -1751,8 +1803,17 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* ---------------------------- lifecycle --------------------------- */
+  let lastScreenshotPrune = 0;
   const sweeper = setInterval(() => {
     sweep(store, config);
+    if (Date.now() - lastScreenshotPrune > 60 * 60 * 1000) {
+      lastScreenshotPrune = Date.now();
+      try {
+        screenshots.prune((id) => Boolean(store.data.jobs[id]), config.screenshotDays);
+      } catch (err) {
+        app.log.warn(`Screenshots: cleanup failed: ${(err as Error).message}`);
+      }
+    }
     pruneSessions(store);
     for (const e of Object.values(store.data.enrollments)) {
       if (Date.parse(e.expiresAt) < Date.now()) delete store.data.enrollments[e.id];

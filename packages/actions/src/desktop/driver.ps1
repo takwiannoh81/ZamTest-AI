@@ -801,6 +801,33 @@ function Invoke-Op([string]$op, $a) {
       $g.Dispose(); $bmp.Dispose()
       return @{ path = [string]$a.path }
     }
+    'snapshot' {
+      # The whole screen as a small JPEG (base64), for the job's step screenshots.
+      $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+      $bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+      $g = [System.Drawing.Graphics]::FromImage($bmp)
+      $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+      $g.Dispose()
+      $maxWidth = if ($a.maxWidth) { [int]$a.maxWidth } else { 1600 }
+      if ($bmp.Width -gt $maxWidth) {
+        $height = [int]($bmp.Height * $maxWidth / $bmp.Width)
+        $small = New-Object System.Drawing.Bitmap($maxWidth, $height)
+        $gs = [System.Drawing.Graphics]::FromImage($small)
+        $gs.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $gs.DrawImage($bmp, 0, 0, $maxWidth, $height)
+        $gs.Dispose(); $bmp.Dispose(); $bmp = $small
+      }
+      $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
+      $params = New-Object System.Drawing.Imaging.EncoderParameters(1)
+      $quality = if ($a.quality) { [long]$a.quality } else { [long]60 }
+      $params.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, $quality)
+      $ms = New-Object System.IO.MemoryStream
+      $bmp.Save($ms, $codec, $params)
+      $bmp.Dispose()
+      $data = [Convert]::ToBase64String($ms.ToArray())
+      $ms.Dispose()
+      return @{ data = $data }
+    }
     'recordStart' { [ZtRecorder]::Start(); return @{ ok = $true } }
     'recordPoll' { return , ([ZtRecorder]::Drain()) }
     'recordStop' { [ZtRecorder]::Stop(); return , ([ZtRecorder]::Drain()) }

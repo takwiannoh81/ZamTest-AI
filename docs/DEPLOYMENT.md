@@ -326,6 +326,14 @@ sudo docker compose start orchestrator
 ```
 To restore an older copy, replace `latest` with an object key from S3, for example `zamtest/db-2026-09-20T03-00-00-000Z.json.gz`. The database that was replaced is kept next to it as `db.json.before-restore-<time>`.
 
+## 6b. Step screenshots
+
+Bot PCs take a screenshot after every browser and desktop step, and whenever a step fails. The screenshot shows the browser page or the Windows screen at that moment. The job's page in the Portal shows them as a timeline, with the screen of the failure under the error. They are small JPEG files (about 15–150 KB each, at most 300 per job) stored in the data volume under `screenshots/`, not in the database. The nightly S3 backups contain the database only, not the screenshots.
+
+- They are deleted with their job, and after 30 days. To keep them longer or shorter, set `ZAMTEST_SCREENSHOT_DAYS` with `set-env.sh`.
+- To turn them off on a PC, set the environment variable `ZAMTEST_SCREENSHOTS=off` for its agent. Consider this for PCs whose screens show confidential data.
+- Bot PCs need the agent version with this feature: the cloud bot updates with `install.sh`, and Windows PCs with the next agent installer release.
+
 ## 7. Operations
 
 | Task | Command |
