@@ -130,7 +130,7 @@ pnpm test          # unit + API tests (set ZAMTEST_BROWSER_EXECUTABLE to also ru
 pnpm build         # production builds of the web apps
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together, and [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next.
+See [docs/SOURCE-CONTROL.md](docs/SOURCE-CONTROL.md) for environments, Git and CI/CD for automations, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together, and [docs/ROADMAP.md](docs/ROADMAP.md) for what comes next.
 
 ## Security notes
 

@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../api";
 import type { Agent, InstallKey } from "../api";
+import { EnvironmentBadge, EnvironmentSelect, useEnvironmentsOn } from "../env";
 import { usePoll } from "../hooks";
 import { AGENT_DOWNLOAD_URL } from "../links";
 import { atLeast, useMe } from "../session";
@@ -15,6 +16,13 @@ export function Agents() {
   const { t, timeAgo } = useI18n();
   const me = useMe();
   const { data, error, reload } = usePoll<Agent[]>("/api/agents");
+  const envsOn = useEnvironmentsOn();
+  const [failure, setFailure] = useState<string>();
+  const setEnvironment = async (a: Agent, environment: string) => {
+    setFailure(undefined);
+    await api(`/api/agents/${a.id}/environment`, { method: "PUT", body: { environment } }).catch((e: Error) => setFailure(e.message));
+    reload();
+  };
 
   const remove = async (a: Agent) => {
     if (!confirm(t("agents.confirmRemove", { name: a.name }))) return;
@@ -33,13 +41,14 @@ export function Agents() {
           </a>
         }
       />
-      <ErrorBanner error={error} />
+      <ErrorBanner error={error ?? failure} />
       {data?.length ? (
         <table>
           <thead>
             <tr>
               <th>{t("common.name")}</th>
               <th>{t("common.status")}</th>
+              {envsOn && <th>{t("processes.environment")}</th>}
               <th>{t("agents.machine")}</th>
               <th>{t("agents.os")}</th>
               <th>{t("common.version")}</th>
@@ -62,6 +71,15 @@ export function Agents() {
                 <td>
                   <Badge status={a.status} />
                 </td>
+                {envsOn && (
+                  <td>
+                    {atLeast(me, "admin") ? (
+                      <EnvironmentSelect value={a.environment ?? "prod"} onChange={(env) => void setEnvironment(a, env)} />
+                    ) : (
+                      <EnvironmentBadge env={a.environment ?? "prod"} />
+                    )}
+                  </td>
+                )}
                 <td>{a.machine}</td>
                 <td>{a.os}</td>
                 <td>{a.version}</td>

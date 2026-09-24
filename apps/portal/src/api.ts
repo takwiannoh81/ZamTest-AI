@@ -58,6 +58,62 @@ export interface Agent {
   currentJobId?: string;
   lastHeartbeat: string;
   approvedBy?: string;
+  environment?: EnvironmentId;
+}
+
+/** Development, Test, Production (Source control). */
+export type EnvironmentId = "dev" | "test" | "prod";
+export const ENVIRONMENT_IDS: EnvironmentId[] = ["dev", "test", "prod"];
+
+/** GET /api/environments: what runs where. */
+export interface EnvironmentsView {
+  enabled: boolean;
+  requireApproval: boolean;
+  environments: Array<{ id: EnvironmentId; agents: number; processes: Array<Package & { deployedAt: string; deployedBy: string }> }>;
+}
+
+export interface Promotion {
+  id: string;
+  packageId: string;
+  name: string;
+  version: number;
+  to: EnvironmentId;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  requestedBy: string;
+  requestedById: string;
+  requestedAt: string;
+  note?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  decisionNote?: string;
+}
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  role: "viewer" | "operator" | "developer";
+  createdBy: string;
+  createdAt: string;
+  expiresAt?: string;
+  lastUsedAt?: string;
+  /** Only in the answer to creating the token. */
+  token?: string;
+}
+
+/** GET /api/git/settings. */
+export interface GitSettingsView {
+  available: boolean;
+  connected: boolean;
+  url?: string;
+  branch?: string;
+  folder?: string;
+  username?: string;
+  tokenSet?: boolean;
+  autoPublish?: boolean;
+  webhookUrl?: string;
+  /** Admins only. */
+  webhookSecret?: string;
+  lastSync?: { at: string; commit?: string; error?: string; changed?: number };
 }
 
 export interface Limits {
@@ -67,6 +123,8 @@ export interface Limits {
   aiPerMonth: number;
   schedules: boolean;
   installKeys: boolean;
+  sso?: boolean;
+  sourceControl?: boolean;
 }
 
 export type PlanId = "free" | "pro" | "enterprise";
@@ -134,6 +192,8 @@ export interface Package {
   releaseNotes?: string;
   publishedAt: string;
   variables: VariableDef[];
+  deployments?: Partial<Record<EnvironmentId, { at: string; by: string }>>;
+  source?: { commit: string; path: string };
 }
 
 export type JobStatus = "pending" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
@@ -173,6 +233,7 @@ export interface Schedule {
   timezone?: string;
   inputs: Record<string, unknown>;
   targetAgentId?: string;
+  environment?: EnvironmentId;
   enabled: boolean;
   lastRunAt?: string;
   nextRunAt?: string;
@@ -184,6 +245,7 @@ export interface Asset {
   type: "text" | "number" | "boolean" | "credential";
   value: unknown;
   description?: string;
+  environment?: EnvironmentId;
   updatedAt: string;
 }
 

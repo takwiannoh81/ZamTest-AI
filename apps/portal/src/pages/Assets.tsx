@@ -2,12 +2,14 @@ import { useI18n } from "@zamtest/i18n/react";
 import { useState } from "react";
 import { api } from "../api";
 import type { Asset } from "../api";
+import { EnvironmentBadge, EnvironmentSelect, useEnvironmentsOn } from "../env";
 import { usePoll } from "../hooks";
 import { Empty, ErrorBanner, Field, Modal, PageHeader } from "../ui";
 
 export function Assets() {
   const { t, timeAgo } = useI18n();
   const { data, error, reload } = usePoll<Asset[]>("/api/assets", 0);
+  const envsOn = useEnvironmentsOn();
   const [editing, setEditing] = useState<Partial<Asset> | null>(null);
 
   const remove = async (a: Asset) => {
@@ -42,6 +44,7 @@ export function Assets() {
             <tr>
               <th>{t("common.name")}</th>
               <th>{t("common.type")}</th>
+              {envsOn && <th>{t("processes.environment")}</th>}
               <th>{t("common.value")}</th>
               <th>{t("common.updated")}</th>
               <th />
@@ -55,6 +58,7 @@ export function Assets() {
                   {a.description && <div className="muted">{a.description}</div>}
                 </td>
                 <td>{typeLabel(a.type)}</td>
+                {envsOn && <td>{a.environment ? <EnvironmentBadge env={a.environment} /> : <span className="muted">{t("assets.allEnvironments")}</span>}</td>}
                 <td>
                   <code>{show(a)}</code>
                 </td>
@@ -91,6 +95,7 @@ export function Assets() {
 function AssetModal({ initial, onClose, onSaved }: { initial: Partial<Asset>; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
   const [form, setForm] = useState<Partial<Asset>>(initial);
+  const envsOn = useEnvironmentsOn();
   const [error, setError] = useState<string>();
   const cred = (form.value ?? {}) as { username?: string; password?: string };
 
@@ -98,7 +103,7 @@ function AssetModal({ initial, onClose, onSaved }: { initial: Partial<Asset>; on
     let value = form.value;
     if (form.type === "number") value = Number(value);
     if (form.type === "boolean") value = value === true || value === "true";
-    const body = { name: form.name, type: form.type, value, description: form.description };
+    const body = { name: form.name, type: form.type, value, description: form.description, environment: form.environment ?? null };
     try {
       if (initial.id) await api(`/api/assets/${initial.id}`, { method: "PUT", body });
       else await api("/api/assets", { method: "POST", body });
@@ -127,6 +132,11 @@ function AssetModal({ initial, onClose, onSaved }: { initial: Partial<Asset>; on
       <Field label={t("common.name")}>
         <input value={form.name ?? ""} disabled={Boolean(initial.id)} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       </Field>
+      {envsOn && (
+        <Field label={t("processes.environment")} hint={t("assets.environmentHint")}>
+          <EnvironmentSelect value={form.environment ?? ""} anyLabel={t("assets.allEnvironments")} onChange={(env) => setForm({ ...form, environment: env || undefined })} />
+        </Field>
+      )}
       <Field label={t("common.type")}>
         <select
           value={form.type}

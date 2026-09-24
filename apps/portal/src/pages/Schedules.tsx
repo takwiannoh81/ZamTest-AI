@@ -3,6 +3,7 @@ import type { MessageKey } from "@zamtest/i18n";
 import { useState } from "react";
 import { api } from "../api";
 import type { Agent, Package, Schedule } from "../api";
+import { EnvironmentBadge, EnvironmentSelect, useEnvironmentsOn } from "../env";
 import { usePoll } from "../hooks";
 import { Empty, ErrorBanner, Field, Modal, PageHeader } from "../ui";
 import { collectInputs, formatInput, InputsEditor } from "./StartJobModal";
@@ -19,6 +20,7 @@ export function Schedules() {
   const { t, timeAgo, dateTime } = useI18n();
   const { data, error, reload } = usePoll<Schedule[]>("/api/schedules", 10_000);
   const packages = usePoll<Package[]>("/api/packages", 0);
+  const envsOn = useEnvironmentsOn();
   const [editing, setEditing] = useState<Partial<Schedule> | null>(null);
   const pkgName = (id: string) => {
     const p = packages.data?.find((x) => x.id === id);
@@ -68,7 +70,7 @@ export function Schedules() {
             {data.map((s) => (
               <tr key={s.id}>
                 <td>
-                  <strong>{s.name}</strong>
+                  <strong>{s.name}</strong> {envsOn && <EnvironmentBadge env={s.environment ?? "prod"} />}
                 </td>
                 <td>{pkgName(s.packageId)}</td>
                 <td>
@@ -126,6 +128,7 @@ function ScheduleModal({
   const { t } = useI18n();
   const agents = usePoll<Agent[]>("/api/agents", 0);
   const [form, setForm] = useState<Partial<Schedule>>(initial);
+  const envsOn = useEnvironmentsOn();
   const [inputs, setInputs] = useState<Record<string, string>>(
     Object.fromEntries(Object.entries(initial.inputs ?? {}).map(([k, v]) => [k, formatInput(v)])),
   );
@@ -185,10 +188,15 @@ function ScheduleModal({
       <Field label={t("schedules.timezone")} hint={t("schedules.timezoneHint")}>
         <input value={form.timezone ?? ""} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
       </Field>
+      {envsOn && (
+        <Field label={t("processes.environment")}>
+          <EnvironmentSelect value={form.environment ?? "prod"} onChange={(env) => setForm({ ...form, environment: env || undefined, targetAgentId: undefined })} />
+        </Field>
+      )}
       <Field label={t("common.runOn")}>
         <select value={form.targetAgentId ?? ""} onChange={(e) => setForm({ ...form, targetAgentId: e.target.value })}>
           <option value="">{t("common.anyAgent")}</option>
-          {agents.data?.map((a) => (
+          {agents.data?.filter((a) => !envsOn || (a.environment ?? "prod") === (form.environment ?? "prod")).map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}
             </option>

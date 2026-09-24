@@ -127,3 +127,7 @@
 .lang-select { width: auto; padding: 5px 8px; font-size: 12.5px; }
 :root { font-family: "Inter", system-ui, -apple-system, "Segoe UI", "Noto Sans", "Noto Sans JP", "Noto Sans SC", "Noto Sans Thai", "Hiragino Sans", "PingFang SC", "Microsoft YaHei", "Leelawadee UI", sans-serif; }
 .user-inline { display: inline-flex; gap: 10px; align-items: center; font-size: 13px; }
+
+/* Git history */
+.git-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.git-history li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }

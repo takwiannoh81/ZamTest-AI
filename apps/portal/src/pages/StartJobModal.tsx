@@ -1,7 +1,7 @@
 import { useI18n } from "@zamtest/i18n/react";
 import { useState } from "react";
 import { api } from "../api";
-import type { Agent, Job, Package } from "../api";
+import type { Agent, EnvironmentId, Job, Package } from "../api";
 import { usePoll } from "../hooks";
 import { ErrorBanner, Field, Modal } from "../ui";
 
@@ -46,7 +46,8 @@ export function collectInputs(values: Record<string, string>): Record<string, un
   return Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "").map(([k, v]) => [k, parseInput(v)]));
 }
 
-export function StartJobModal({ pkg, onClose }: { pkg: Package; onClose: () => void }) {
+/** Starts a version; with environments on, in one environment and on its PCs. */
+export function StartJobModal({ pkg, environment, onClose }: { pkg: Package; environment?: EnvironmentId; onClose: () => void }) {
   const { t } = useI18n();
   const agents = usePoll<Agent[]>("/api/agents", 0);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -59,7 +60,7 @@ export function StartJobModal({ pkg, onClose }: { pkg: Package; onClose: () => v
     try {
       const job = await api<Job>("/api/jobs", {
         method: "POST",
-        body: { packageId: pkg.id, inputs: collectInputs(values), targetAgentId: agentId || undefined, source: "manual" },
+        body: { packageId: pkg.id, inputs: collectInputs(values), targetAgentId: agentId || undefined, environment, source: "manual" },
       });
       window.location.hash = `/jobs/${job.id}`;
       onClose();
@@ -85,10 +86,11 @@ export function StartJobModal({ pkg, onClose }: { pkg: Package; onClose: () => v
       }
     >
       <ErrorBanner error={error} />
+      {environment && <p className="muted">{t("startJob.inEnv", { env: t(`env.${environment}`) })}</p>}
       <Field label={t("common.runOn")}>
         <select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
           <option value="">{t("common.anyAgent")}</option>
-          {agents.data?.map((a) => (
+          {agents.data?.filter((a) => !environment || (a.environment ?? "prod") === environment).map((a) => (
             <option key={a.id} value={a.id}>
               {a.name} ({t(`status.${a.status}`)})
             </option>

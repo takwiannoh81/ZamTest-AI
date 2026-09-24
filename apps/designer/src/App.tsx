@@ -4,6 +4,7 @@ import { LanguageSelect, useI18n } from "@zamtest/i18n/react";
 import { api } from "./api";
 import type { Job, WorkflowDraft, WorkflowSummary } from "./api";
 import { AiGenerateModal, JsonModal, SelectorAssistModal } from "./components/AiModals";
+import { GitHistoryModal } from "./components/GitHistory";
 import { Canvas } from "./components/Canvas";
 import { Palette } from "./components/Palette";
 import { Properties, WorkflowSettings } from "./components/Properties";
@@ -153,7 +154,14 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
   const [dirty, setDirty] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
   const [status, setStatus] = useState<string>();
-  const [modal, setModal] = useState<null | "ai" | "json" | { selectorProp: string }>(null);
+  const [modal, setModal] = useState<null | "ai" | "json" | "history" | { selectorProp: string }>(null);
+  // Source control: whether the workspace has a Git repository, and uses Development/Test/Production.
+  const [gitConnected, setGitConnected] = useState(false);
+  const [envsOn, setEnvsOn] = useState(false);
+  useEffect(() => {
+    api<{ connected: boolean }>("/api/git/settings").then((g) => setGitConnected(g.connected)).catch(() => undefined);
+    api<{ enabled: boolean }>("/api/environments").then((e) => setEnvsOn(e.enabled)).catch(() => undefined);
+  }, []);
   const [run, setRun] = useState<RunState>();
   const [runStatus, setRunStatus] = useState<Record<string, "running" | "ok" | "error">>({});
   const [showIssues, setShowIssues] = useState(false);
@@ -260,9 +268,21 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
     const releaseNotes = prompt(t("toolbar.releaseNotes")) ?? undefined;
     try {
       const pkg = await api<{ version: number }>(`/api/workflows/${id}/publish`, { method: "POST", body: { releaseNotes } });
-      setStatus(t("toolbar.published", { version: pkg.version }));
+      setStatus(envsOn ? t("toolbar.publishedDev", { version: pkg.version }) : t("toolbar.published", { version: pkg.version }));
     } catch (e) {
       setStatus(t("toolbar.publishFailed", { error: (e as Error).message }));
+    }
+  };
+
+  const commit = async () => {
+    if (!(await save())) return;
+    const message = prompt(t("git.commitMessage"), t("git.commitDefault", { name: workflow.name }));
+    if (!message) return;
+    try {
+      const result = await api<{ commit: string | null }>(`/api/workflows/${id}/commit`, { method: "POST", body: { message } });
+      setStatus(result.commit ? t("git.committed", { sha: result.commit.slice(0, 7) }) : t("git.nothingToCommit"));
+    } catch (e) {
+      setStatus(t("git.commitFailed", { error: (e as Error).message }));
     }
   };
 
@@ -322,6 +342,16 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
         <button className="btn-ghost" onClick={() => void testRun()}>
           {t("toolbar.run")}
         </button>
+        {gitConnected && (
+          <>
+            <button className="btn-ghost" onClick={() => setModal("history")}>
+              {t("git.history")}
+            </button>
+            <button className="btn-ghost" onClick={() => void commit()}>
+              {t("git.commit")}
+            </button>
+          </>
+        )}
         <button className="btn" onClick={() => void publish()}>
           {t("toolbar.publish")}
         </button>
@@ -403,6 +433,18 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
             setSelectedId(undefined);
             setModal(null);
             setStatus(t("toolbar.aiApplied"));
+          }}
+        />
+      )}
+      {modal === "history" && (
+        <GitHistoryModal
+          workflowId={id}
+          onClose={() => setModal(null)}
+          onOpen={(definition, sha) => {
+            update({ ...definition, id: workflow.id });
+            setSelectedId(undefined);
+            setModal(null);
+            setStatus(t("git.opened", { sha: sha.slice(0, 7) }));
           }}
         />
       )}

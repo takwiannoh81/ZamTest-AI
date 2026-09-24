@@ -13,12 +13,13 @@ import { Processes } from "./pages/Processes";
 import { QueueDetail, Queues } from "./pages/Queues";
 import { Schedules } from "./pages/Schedules";
 import { Security } from "./pages/Security";
+import { SourceControl } from "./pages/SourceControl";
 import { Settings } from "./pages/Settings";
 import { Users } from "./pages/Users";
 import { AGENT_DOWNLOAD_URL, DESIGNER_URL } from "./links";
 import { atLeast, signOut, useMe } from "./session";
 
-const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolean; platform?: boolean }> = [
+const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolean; developer?: boolean; platform?: boolean }> = [
   { path: "/", label: "nav.dashboard", icon: "◎" },
   { path: "/processes", label: "nav.processes", icon: "▣" },
   { path: "/jobs", label: "nav.jobs", icon: "▶" },
@@ -26,6 +27,7 @@ const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolea
   { path: "/queues", label: "nav.queues", icon: "☷" },
   { path: "/agents", label: "nav.agents", icon: "⚙" },
   { path: "/assets", label: "nav.assets", icon: "🔑" },
+  { path: "/source-control", label: "nav.sourceControl", icon: "⎇", developer: true },
   { path: "/users", label: "nav.users", icon: "👥", admin: true },
   { path: "/billing", label: "nav.billing", icon: "💳", admin: true },
   { path: "/security", label: "nav.security", icon: "🛡" },
@@ -57,6 +59,7 @@ export function App() {
   else if (route === "/assets") page = <Assets />;
   else if (route === "/settings") page = <Settings />;
   else if (route === "/security") page = <Security />;
+  else if (route === "/source-control") page = <SourceControl />;
   else if (route === "/users") page = <Users />;
   else page = <Dashboard />;
 
@@ -71,7 +74,7 @@ export function App() {
           </div>
         </div>
         <nav>
-          {NAV.filter((n) => (!n.admin || atLeast(me, "admin")) && (!n.platform || me?.platformAdmin)).map((n) => (
+          {NAV.filter((n) => (!n.admin || atLeast(me, "admin")) && (!n.developer || atLeast(me, "developer")) && (!n.platform || me?.platformAdmin)).map((n) => (
             <a key={n.path} href={`#${n.path}`} className={active === n.path ? "active" : ""}>
               <span className="nav-icon">{n.icon}</span>
               {t(n.label)}

@@ -225,6 +225,7 @@ Each customer company has its own **workspace**: its people, workflows, processe
 | Schedules | no (kept, paused) | yes | yes |
 | Install keys | no | no | yes |
 | Company sign-in (SSO) | no | no | yes |
+| Environments, Git, API tokens for CI | no | yes | yes |
 
 The server enforces them: when a limit is reached the request is refused with *402 Payment Required* and the Portal (or Designer) shows the reason with a **View plans** link. Nothing is deleted when a workspace moves to a smaller plan; its schedules simply stop running. Workspace Admins see their plan and this month's usage under **Billing**. You (the master token, or an Admin of the default workspace) see every workspace under **Customers**, where you can change a plan, set Pro seats by hand, or give an Enterprise customer agreed limits.
 
@@ -278,6 +279,8 @@ New accounts must confirm their email before they can use the Portal or Designer
 Only verified company addresses of the workspace's domains are accepted. The provider's own checks (its MFA, disabled accounts) apply, so ZamTech AI's two-step sign-in is not asked of SSO accounts.
 
 **Data export.** A workspace Admin can download everything in the workspace as JSON under **Security > Export your data** (people, workflows, processes, schedules, assets (secret values hidden), queues, jobs and logs). Password hashes, secrets and other workspaces are never included.
+
+**Source control and CI/CD.** Pro and Enterprise customers can use Development, Test and Production environments with approvals, keep workflows in their own Git repository, and publish from CI pipelines with API tokens. It needs nothing on the server beyond this version (the orchestrator image includes `git`); customers set it up in the Portal under **Source control**. The Git webhook address is `https://portal.zamtechai.com/api/git/webhook/<workspace>`. See [SOURCE-CONTROL.md](SOURCE-CONTROL.md).
 
 ## 6. Backups to Amazon S3
 
