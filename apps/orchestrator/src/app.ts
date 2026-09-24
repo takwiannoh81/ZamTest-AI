@@ -865,6 +865,34 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     return (store.data.jobLogs[req.params.id] ?? []).filter((l) => l.seq > after);
   });
 
+  /** Runs a job again: the same process version (or tested workflow), inputs, PC and environment. */
+  app.post<{ Params: { id: string } }>("/api/jobs/:id/rerun", async (req, reply) => {
+    const old = own(store.data.jobs, req.params.id, "Job", req);
+    const p = me(req);
+    if (!old.packageId && !hasRole(p, "developer")) throw new HttpError(403, "Test runs of unpublished workflows need the developer role");
+    const job = createJob(store, {
+      workspaceId: old.workspaceId,
+      packageId: old.packageId,
+      definition: old.packageId ? undefined : old.definition,
+      inputs: old.inputs,
+      targetAgentId: old.targetAgentId && store.data.agents[old.targetAgentId] ? old.targetAgentId : undefined,
+      environment: old.environment,
+      source: old.source === "schedule" ? "manual" : old.source,
+      startedBy: p.email || p.name,
+    });
+    return reply.status(201).send(jobSummary(job));
+  });
+
+  /** Removes a finished job and its log. */
+  app.delete<{ Params: { id: string } }>("/api/jobs/:id", async (req, reply) => {
+    const job = own(store.data.jobs, req.params.id, "Job", req);
+    if (!isFinal(job)) throw new HttpError(409, "Stop the job before deleting it");
+    delete store.data.jobs[job.id];
+    delete store.data.jobLogs[job.id];
+    store.save();
+    return reply.status(204).send();
+  });
+
   app.post<{ Params: { id: string } }>("/api/jobs/:id/cancel", async (req) => {
     const job = own(store.data.jobs, req.params.id, "Job", req);
     if (isFinal(job)) throw new HttpError(409, `Job is already ${job.status}`);

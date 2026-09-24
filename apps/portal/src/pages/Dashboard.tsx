@@ -2,6 +2,7 @@ import { useI18n } from "@zamtest/i18n/react";
 import type { Job, Stats } from "../api";
 import { usePoll } from "../hooks";
 import { Badge, Empty, ErrorBanner, PageHeader } from "../ui";
+import { JobRowActions, RunAllButton } from "./JobActions";
 
 export function Dashboard() {
   const { t, timeAgo } = useI18n();
@@ -37,7 +38,10 @@ export function Dashboard() {
           </div>
         ))}
       </section>
-      <h2 className="section-title">{t("dashboard.recentJobs")}</h2>
+      <div className="section-head">
+        <h2 className="section-title">{t("dashboard.recentJobs")}</h2>
+        {jobs.data?.length ? <RunAllButton jobs={jobs.data} onDone={jobs.reload} /> : null}
+      </div>
       {jobs.data?.length ? (
         <table>
           <thead>
@@ -46,6 +50,7 @@ export function Dashboard() {
               <th>{t("common.status")}</th>
               <th>{t("common.source")}</th>
               <th>{t("common.created")}</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -57,6 +62,9 @@ export function Dashboard() {
                 </td>
                 <td>{t(`source.${j.source}` as "source.manual")}</td>
                 <td>{timeAgo(j.createdAt)}</td>
+                <td>
+                  <JobRowActions job={j} onChanged={jobs.reload} />
+                </td>
               </tr>
             ))}
           </tbody>

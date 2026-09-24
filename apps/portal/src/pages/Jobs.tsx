@@ -5,13 +5,14 @@ import { api } from "../api";
 import type { Job, JobLog } from "../api";
 import { duration, usePoll } from "../hooks";
 import { Badge, Empty, ErrorBanner, PageHeader } from "../ui";
+import { JobRowActions, RunAllButton } from "./JobActions";
 
 const STATUSES = ["", "pending", "running", "succeeded", "failed", "cancelled"];
 
 export function Jobs() {
   const { t, timeAgo } = useI18n();
   const [status, setStatus] = useState("");
-  const { data, error } = usePoll<Job[]>(`/api/jobs?limit=200${status ? `&status=${status}` : ""}`);
+  const { data, error, reload } = usePoll<Job[]>(`/api/jobs?limit=200${status ? `&status=${status}` : ""}`);
 
   return (
     <>
@@ -19,13 +20,16 @@ export function Jobs() {
         title={t("jobs.title")}
         subtitle={t("jobs.subtitle")}
         actions={
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s ? t(`status.${s}` as MessageKey) : t("jobs.allStatuses")}
-              </option>
-            ))}
-          </select>
+          <>
+            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s ? t(`status.${s}` as MessageKey) : t("jobs.allStatuses")}
+                </option>
+              ))}
+            </select>
+            {data?.length ? <RunAllButton jobs={data} onDone={reload} /> : null}
+          </>
         }
       />
       <ErrorBanner error={error} />
@@ -39,6 +43,7 @@ export function Jobs() {
               <th>{t("common.created")}</th>
               <th>{t("common.duration")}</th>
               <th>{t("jobs.healed")}</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -55,6 +60,9 @@ export function Jobs() {
                 <td>{timeAgo(j.createdAt)}</td>
                 <td>{duration(j.startedAt, j.finishedAt)}</td>
                 <td>{j.healedSelectors.length || ""}</td>
+                <td>
+                  <JobRowActions job={j} onChanged={reload} />
+                </td>
               </tr>
             ))}
           </tbody>
