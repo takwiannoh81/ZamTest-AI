@@ -26,6 +26,74 @@ export interface Workspace {
    * platform owner (after checking the customer owns them), never by the customer.
    */
   ssoDomains?: string[];
+  /** Environments, promotion and Git (Pro and Enterprise). */
+  cicd?: WorkspaceCicd;
+}
+
+/** Where automations run: built and tried in Development, checked in Test, used for real in Production. */
+export type EnvironmentId = "dev" | "test" | "prod";
+export const ENVIRONMENTS: EnvironmentId[] = ["dev", "test", "prod"];
+
+export interface WorkspaceCicd {
+  /**
+   * On: publishing puts a version in Development, and it is promoted to Test,
+   * then Production. Off: everything is Production (as before environments existed).
+   */
+  environments: boolean;
+  /** Promotions to Production wait for an admin's approval (someone other than who asked). */
+  requireApproval: boolean;
+  git?: GitSettings;
+}
+
+/** The workspace's Git repository for its workflows (one JSON file per workflow). */
+export interface GitSettings {
+  /** https://github.com/acme/automations.git (GitHub, GitLab, Azure DevOps, ...). */
+  url: string;
+  branch: string;
+  /** Folder in the repository that holds the workflow files. */
+  folder: string;
+  username: string;
+  /** Personal access token with read/write access to the repository. Never returned by the API. */
+  token: string;
+  /** Publish changed workflows to Development when the repository's webhook reports a push. */
+  autoPublish: boolean;
+  /** Proves webhook calls come from the repository's host. */
+  webhookSecret: string;
+  lastSync?: { at: string; commit?: string; error?: string; changed?: number };
+}
+
+/** A request to put a version into Test or Production, and its outcome. */
+export interface Promotion {
+  id: string;
+  workspaceId: string;
+  packageId: string;
+  name: string;
+  version: number;
+  to: EnvironmentId;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  requestedBy: string;
+  /** Principal id of who asked (they cannot approve it themselves). */
+  requestedById: string;
+  requestedAt: string;
+  note?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  decisionNote?: string;
+}
+
+/** Lets a CI pipeline (GitHub Actions, Azure Pipelines, ...) call the API without a person signing in. */
+export interface ApiToken {
+  id: string;
+  workspaceId: string;
+  name: string;
+  /** What the pipeline may do: never admin. */
+  role: "viewer" | "operator" | "developer";
+  /** SHA-256 of the token; the token itself is shown once, when it is created. */
+  tokenHash: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt?: string;
+  lastUsedAt?: string;
 }
 
 export interface WorkspaceSso {
@@ -78,6 +146,8 @@ export interface WorkflowDraft {
   definition: Workflow;
   createdAt: string;
   updatedAt: string;
+  /** Its file in the workspace's Git repository, and the last commit of it. */
+  git?: { path: string; commit?: string; committedAt?: string; committedBy?: string };
 }
 
 /** An immutable, versioned snapshot of a workflow that can be run by agents ("process"). */
@@ -92,6 +162,10 @@ export interface Package {
   releaseNotes?: string;
   definition: Workflow;
   publishedAt: string;
+  /** The environments this version is in, and when it got there (the newest one there is what runs). */
+  deployments?: Partial<Record<EnvironmentId, { at: string; by: string }>>;
+  /** Published from Git: the commit and file it came from. */
+  source?: { commit: string; path: string };
 }
 
 export type AgentStatus = "online" | "busy" | "offline";
@@ -112,6 +186,8 @@ export interface Agent {
   tokenHash?: string;
   /** Who approved this PC: a user ("Name <email>") or an install key. */
   approvedBy?: string;
+  /** The environment whose jobs this PC runs (Production when unset). */
+  environment?: EnvironmentId;
 }
 
 /** A PC asking to become a bot agent, waiting for a signed-in user to approve it in the Portal. */
@@ -165,6 +241,8 @@ export interface Job {
   scheduleId?: string;
   targetAgentId?: string;
   agentId?: string;
+  /** Only PCs of this environment take the job (Production when unset). */
+  environment?: EnvironmentId;
   error?: string;
   healedSelectors: Array<{ stepId?: string; oldSelector: string; newSelector: string; reason?: string }>;
   /** Who started the job (user email, "access token", or "schedule"). */
@@ -193,6 +271,8 @@ export interface Schedule {
   timezone?: string;
   inputs: Record<string, unknown>;
   targetAgentId?: string;
+  /** Production when unset. */
+  environment?: EnvironmentId;
   enabled: boolean;
   lastRunAt?: string;
   createdAt: string;
@@ -209,6 +289,8 @@ export interface Asset {
   /** For credentials: { username, password }. */
   value: unknown;
   description?: string;
+  /** Used only by that environment's PCs; unset = every environment (an environment's own asset of the same name wins). */
+  environment?: EnvironmentId;
   updatedAt: string;
 }
 
@@ -280,7 +362,8 @@ export interface Principal {
   name: string;
   email: string;
   role: Role;
-  kind: "user" | "token" | "open";
+  /** "api": a CI pipeline's API token. */
+  kind: "user" | "token" | "open" | "api";
   /** The workspace the request acts in (the default workspace for the master token). */
   workspaceId: string;
   /** Signed in, but may only use their own account until this is resolved. */

@@ -5,7 +5,8 @@ import type { Store } from "./store.js";
 import { releaseJobItems } from "./queues.js";
 import { HttpError } from "./errors.js";
 import { useRun } from "./plans.js";
-import type { Job } from "./types.js";
+import { effectiveEnv, ENV_NAMES, environmentsOn, isIn } from "./cicd.js";
+import type { EnvironmentId, Job } from "./types.js";
 import { FINAL_JOB_STATUSES } from "./types.js";
 
 export { HttpError };
@@ -17,6 +18,8 @@ export interface CreateJobInput {
   definition?: Workflow;
   inputs?: Record<string, unknown>;
   targetAgentId?: string;
+  /** Where it runs (with environments on): the target PC's by default, else Production; test runs of unpublished workflows run in Development. */
+  environment?: EnvironmentId;
   source: Job["source"];
   scheduleId?: string;
   startedBy?: string;
@@ -26,16 +29,27 @@ export function createJob(store: Store, input: CreateJobInput): Job {
   let definition = input.definition;
   let name = definition?.name ?? "Ad-hoc job";
   let version: number | undefined;
+  const pkg = input.packageId ? store.data.packages[input.packageId] : undefined;
   if (input.packageId) {
-    const pkg = store.data.packages[input.packageId];
     if (!pkg || pkg.workspaceId !== input.workspaceId) throw new HttpError(404, `Package ${input.packageId} not found`);
     definition = pkg.definition;
     name = pkg.name;
     version = pkg.version;
   }
   if (!definition) throw new HttpError(400, "Either packageId or definition is required");
-  if (input.targetAgentId && store.data.agents[input.targetAgentId]?.workspaceId !== input.workspaceId) {
+  const target = input.targetAgentId ? store.data.agents[input.targetAgentId] : undefined;
+  if (input.targetAgentId && target?.workspaceId !== input.workspaceId) {
     throw new HttpError(404, `Agent ${input.targetAgentId} not found`);
+  }
+  let environment: EnvironmentId = "prod";
+  if (environmentsOn(store, input.workspaceId)) {
+    const targetEnv = target ? effectiveEnv(store, input.workspaceId, target.environment) : undefined;
+    environment = input.environment ?? targetEnv ?? (pkg ? "prod" : "dev");
+    if (targetEnv && targetEnv !== environment) {
+      throw new HttpError(409, `${target!.name} runs ${ENV_NAMES[targetEnv]} jobs, not ${ENV_NAMES[environment]}`);
+    }
+    if (pkg && !isIn(pkg, environment)) throw new HttpError(409, `Version ${pkg.version} of ${pkg.name} is not in ${ENV_NAMES[environment]}`);
+    if (!pkg && environment !== "dev") throw new HttpError(409, "Test runs of unpublished workflows run in Development");
   }
   // Counts against the plan's monthly runs (402 when they are used up).
   useRun(store, input.workspaceId);
@@ -52,6 +66,7 @@ export function createJob(store: Store, input: CreateJobInput): Job {
     startedBy: input.startedBy,
     scheduleId: input.scheduleId,
     targetAgentId: input.targetAgentId,
+    environment,
     healedSelectors: [],
     createdAt: nowIso(),
   };

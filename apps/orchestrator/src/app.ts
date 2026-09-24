@@ -37,6 +37,9 @@ import { hashRecoveryCode, newRecoveryCodes, newTotpSecret, otpauthUrl, verifyTo
 import { emailDomain, OidcClient, SsoError } from "./sso.js";
 import type { Mail, Mailer } from "./mailer.js";
 import type { OrchestratorConfig } from "./config.js";
+import { parse } from "./errors.js";
+import { apiTokenPrincipal, effectiveEnv, ENV_NAMES, environmentsOn, isIn, publishWorkflow, registerCicd } from "./cicd.js";
+import { GitRepos } from "./git.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
 import { checkBots, checkBuilders, checkFeature, currentUsage, FREE_LIMITS, isBuilder, limitsOf, PlanLimitError, PRO, useAi } from "./plans.js";
@@ -67,16 +70,10 @@ export interface AppOptions {
   mailer?: Mailer | null;
   /** OpenID Connect client for company sign-in (tests point it at a fake identity provider). */
   oidc?: OidcClient;
+  /** Workspaces' Git repositories (tests allow local file:// ones). */
+  git?: GitRepos;
 }
 
-
-function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
-  const result = schema.safeParse(value);
-  if (!result.success) {
-    throw new HttpError(400, result.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; "));
-  }
-  return result.data;
-}
 
 function maskAsset(asset: Asset): Asset {
   if (asset.type !== "credential") return asset;
@@ -100,6 +97,7 @@ const JobBody = z.object({
   definition: WorkflowSchema.optional(),
   inputs: z.record(z.unknown()).optional(),
   targetAgentId: z.string().optional(),
+  environment: z.enum(["dev", "test", "prod"]).optional(),
   source: z.enum(["manual", "designer", "api"]).default("manual"),
 });
 
@@ -110,6 +108,7 @@ const ScheduleBody = z.object({
   timezone: z.string().optional(),
   inputs: z.record(z.unknown()).default({}),
   targetAgentId: z.string().optional(),
+  environment: z.enum(["dev", "test", "prod"]).optional(),
   enabled: z.boolean().default(true),
 });
 
@@ -118,6 +117,7 @@ const AssetBody = z.object({
   type: z.enum(["text", "number", "boolean", "credential"]),
   value: z.unknown(),
   description: z.string().optional(),
+  environment: z.enum(["dev", "test", "prod"]).nullish(),
 });
 
 export async function buildApp(options: AppOptions): Promise<{ app: FastifyInstance; store: Store; scheduler: Scheduler }> {
@@ -190,10 +190,11 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       if (!config.agentKey || !safeEqual(key, config.agentKey)) return reply.status(401).send({ error: "Invalid agent key" });
       return;
     }
-    // Stripe's webhook proves itself with its signature (checked in the route).
-    if (PUBLIC_ROUTES.has(url)) return;
+    // Stripe's webhook proves itself with its signature (checked in the route); Git webhooks likewise.
+    if (PUBLIC_ROUTES.has(url) || url.startsWith("/api/git/webhook/")) return;
     const cookieToken = req.headers.authorization ? undefined : readCookie(req.headers.cookie, SESSION_COOKIE);
-    const principal = resolvePrincipal(store, config.adminToken, req.headers.authorization, cookieToken);
+    // A CI pipeline's API token, or a person (or the master token).
+    const principal = apiTokenPrincipal(store, bearer(req)) ??resolvePrincipal(store, config.adminToken, req.headers.authorization, cookieToken);
     if (!principal) return reply.status(401).send({ error: "Sign in required", code: "unauthorized" });
     // Browsers send cookies on their own, so changes made with the sign-in cookie must carry a
     // header that other sites cannot add without CORS permission (cross-site request forgery).
@@ -201,6 +202,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       return reply.status(403).send({ error: "Requests signed in with the cookie need the x-zamtech-client header", code: "csrf" });
     }
     req.principal = principal;
+    if (principal.kind === "api") checkFeature(store, principal.workspaceId, "sourceControl");
     if (principal.restriction && !RESTRICTED_ALLOWED.has(url)) {
       const message = principal.restriction === "email_unverified" ? "Confirm your email address first" : "Set up two-step sign-in first";
       return reply.status(403).send({ error: message, code: principal.restriction });
@@ -237,7 +239,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   const mine = <T extends { workspaceId: string }>(collection: Record<string, T>, req: FastifyRequest): T[] =>
     Object.values(collection).filter((item) => item.workspaceId === ws(req));
   /** The platform owner (not customers): the master token, local open mode, or an admin of the default workspace. */
-  const platformAdmin = (p: Principal) => p.kind !== "user" || (p.workspaceId === DEFAULT_WORKSPACE && p.role === "admin");
+  const platformAdmin = (p: Principal) => p.kind === "token" || p.kind === "open" || (p.kind === "user" && p.workspaceId === DEFAULT_WORKSPACE && p.role === "admin");
   const signupLimiter = new LoginLimiter(10, 60 * 60 * 1000);
   const mailLimiter = new LoginLimiter(5, 60 * 60 * 1000);
 
@@ -803,20 +805,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.post<{ Params: { id: string } }>("/api/workflows/:id/publish", async (req, reply) => {
     const wf = own(store.data.workflows, req.params.id, "Workflow", req);
     const body = parse(z.object({ releaseNotes: z.string().optional() }).default({}), req.body ?? {});
-    const previous = Object.values(store.data.packages).filter((p) => p.workflowId === wf.id);
-    const pkg: Package = {
-      id: newId("pkg"),
-      workspaceId: wf.workspaceId,
-      workflowId: wf.id,
-      name: wf.name,
-      description: wf.description,
-      version: previous.reduce((max, p) => Math.max(max, p.version), 0) + 1,
-      releaseNotes: body.releaseNotes,
-      definition: structuredClone(wf.definition),
-      publishedAt: nowIso(),
-    };
-    store.data.packages[pkg.id] = pkg;
-    store.save();
+    const pkg = publishWorkflow(store, wf, { releaseNotes: body.releaseNotes, by: who(me(req)) });
     return reply.status(201).send(pkg);
   });
 
@@ -894,8 +883,10 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   /* ----------------------------- schedules -------------------------- */
   const withNextRun = (s: Schedule) => ({ ...s, nextRunAt: scheduler.nextRun(s.id) });
   const checkSchedule = (body: z.infer<typeof ScheduleBody>, req: FastifyRequest) => {
-    own(store.data.packages, body.packageId, "Package", req);
+    const pkg = own(store.data.packages, body.packageId, "Package", req);
     if (body.targetAgentId) own(store.data.agents, body.targetAgentId, "Agent", req);
+    const env = effectiveEnv(store, pkg.workspaceId, body.environment);
+    if (environmentsOn(store, pkg.workspaceId) && !isIn(pkg, env)) throw new HttpError(409, `Version ${pkg.version} of ${pkg.name} is not in ${ENV_NAMES[env]}`);
     const cronError = validateCron(body.cron, body.timezone);
     if (cronError) throw new HttpError(400, `Invalid cron expression: ${cronError}`);
   };
@@ -1009,10 +1000,10 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.get("/api/assets", async (req) => mine(store.data.assets, req).map(maskAsset));
   app.post("/api/assets", async (req, reply) => {
     const body = parse(AssetBody, req.body);
-    if (mine(store.data.assets, req).some((a) => a.name === body.name)) {
+    if (mine(store.data.assets, req).some((a) => a.name === body.name && a.environment === (body.environment ?? undefined))) {
       throw new HttpError(409, `Asset "${body.name}" already exists`);
     }
-    const asset: Asset = { id: newId("ast"), workspaceId: ws(req), ...body, value: body.value ?? null, updatedAt: nowIso() };
+    const asset: Asset = { id: newId("ast"), workspaceId: ws(req), ...body, environment: body.environment ?? undefined, value: body.value ?? null, updatedAt: nowIso() };
     store.data.assets[asset.id] = asset;
     store.save();
     return reply.status(201).send(maskAsset(asset));
@@ -1020,10 +1011,12 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.put<{ Params: { id: string } }>("/api/assets/:id", async (req) => {
     const existing = own(store.data.assets, req.params.id, "Asset", req);
     const body = parse(AssetBody.partial(), req.body);
-    if (body.name && body.name !== existing.name && mine(store.data.assets, req).some((a) => a.name === body.name)) {
-      throw new HttpError(409, `Asset "${body.name}" already exists`);
+    const name = body.name ?? existing.name;
+    const environment = body.environment === undefined ? existing.environment : (body.environment ?? undefined);
+    if (mine(store.data.assets, req).some((a) => a.id !== existing.id && a.name === name && a.environment === environment)) {
+      throw new HttpError(409, `Asset "${name}" already exists`);
     }
-    const asset: Asset = { ...existing, ...body, value: body.value ?? existing.value, updatedAt: nowIso() };
+    const asset: Asset = { ...existing, ...body, environment, value: body.value ?? existing.value, updatedAt: nowIso() };
     // Masked credential passwords sent back by the UI mean "unchanged".
     if (asset.type === "credential" && (body.value as { password?: string } | undefined)?.password === "********") {
       asset.value = { ...(body.value as object), password: (existing.value as { password?: string }).password };
@@ -1127,7 +1120,14 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       return reply.status(204).send();
     }
     const job = Object.values(store.data.jobs)
-      .filter((j) => j.workspaceId === agent.workspaceId && j.status === "pending" && (!j.targetAgentId || j.targetAgentId === agent.id))
+      .filter(
+        (j) =>
+          j.workspaceId === agent.workspaceId &&
+          j.status === "pending" &&
+          (!j.targetAgentId || j.targetAgentId === agent.id) &&
+          // A PC takes only its environment's jobs.
+          effectiveEnv(store, j.workspaceId, j.environment) === effectiveEnv(store, agent.workspaceId, agent.environment),
+      )
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
     if (!job) {
       agent.status = "online";
@@ -1216,7 +1216,10 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.get<{ Params: { name: string } }>("/api/agent/assets/:name", async (req) => {
     // Shared-key agents send no agentId here; they work for the default workspace.
     const workspaceId = req.agent?.workspaceId ?? DEFAULT_WORKSPACE;
-    const asset = Object.values(store.data.assets).find((a) => a.workspaceId === workspaceId && a.name === req.params.name);
+    // The PC's environment's own asset of that name, else the one for every environment.
+    const env = effectiveEnv(store, workspaceId, req.agent?.environment);
+    const named = Object.values(store.data.assets).filter((a) => a.workspaceId === workspaceId && a.name === req.params.name);
+    const asset = named.find((a) => a.environment === env) ?? named.find((a) => !a.environment);
     if (!asset) throw new HttpError(404, `Asset "${req.params.name}" not found`);
     return { name: asset.name, type: asset.type, value: asset.value };
   });
@@ -1499,6 +1502,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
         security: workspace.security,
         sso: workspace.sso ? sso : undefined,
         ssoDomains: workspace.ssoDomains,
+        cicd: workspace.cicd ? { ...workspace.cicd, git: workspace.cicd.git ? { ...workspace.cicd.git, token: undefined, webhookSecret: undefined } : undefined } : undefined,
       },
       users: mine(store.data.users, req).map(publicUser),
       workflows: mine(store.data.workflows, req),
@@ -1509,6 +1513,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       assets: mine(store.data.assets, req).map(maskAsset),
       agents: mine(store.data.agents, req).map(({ tokenHash: _t, ...agent }) => agent),
       installKeys: mine(store.data.installKeys, req).map(({ keyHash: _k, ...key }) => key),
+      apiTokens: mine(store.data.apiTokens, req).map(({ tokenHash: _h, ...token }) => token),
+      promotions: mine(store.data.promotions, req),
       jobs: jobs.map((job) => ({ ...job, logs: store.data.jobLogs[job.id] ?? [] })),
       usage: Object.fromEntries(
         Object.entries(store.data.usage)
@@ -1686,6 +1692,24 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       if (state) applySubscription(state);
       return { received: true };
     });
+  });
+
+  /* ---------------------- source control and CI/CD ------------------ */
+  registerCicd(app, {
+    store,
+    portalUrl: config.portalUrl,
+    apiUrl: config.portalUrl,
+    git: options.git ?? new GitRepos(config.dataDir),
+    me,
+    own,
+    mine,
+    who,
+    workspace: (req) => get(store.data.workspaces, ws(req), "Workspace"),
+    requireAdmin,
+    notify: (to, mail) => {
+      if (mailer) void mailer.send({ to, ...mail }).catch((err: Error) => app.log.error(`Email to ${to} failed: ${err.message}`));
+    },
+    log: (message) => app.log.warn(message),
   });
 
   /* ---------------------------- lifecycle --------------------------- */

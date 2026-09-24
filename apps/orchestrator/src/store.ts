@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Agent, Asset, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Queue, QueueItem, Schedule, Session, User, WorkflowDraft, Workspace } from "./types.js";
+import type { Agent, ApiToken, Asset, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, User, WorkflowDraft, Workspace } from "./types.js";
 import { DEFAULT_WORKSPACE } from "./types.js";
 
 export interface Data {
@@ -23,6 +23,8 @@ export interface Data {
   emailTokens: Record<string, EmailToken>;
   mfaChallenges: Record<string, MfaChallenge>;
   ssoStates: Record<string, SsoState>;
+  promotions: Record<string, Promotion>;
+  apiTokens: Record<string, ApiToken>;
 }
 
 const MAX_LOGS_PER_JOB = 5000;
@@ -46,6 +48,8 @@ const empty = (): Data => ({
   emailTokens: {},
   mfaChallenges: {},
   ssoStates: {},
+  promotions: {},
+  apiTokens: {},
 });
 
 /**
@@ -79,9 +83,11 @@ export class Store {
     for (const workspace of Object.values(this.data.workspaces)) workspace.plan ??= "free";
     // Accounts from before email confirmation existed were made by an admin: treat them as confirmed.
     for (const user of Object.values(this.data.users)) user.emailVerified ??= true;
+    // Versions from before environments existed are in Production.
+    for (const pkg of Object.values(this.data.packages)) pkg.deployments ??= { prod: { at: pkg.publishedAt, by: "ZamTech AI" } };
     const owned = [
       this.data.workflows, this.data.packages, this.data.agents, this.data.jobs, this.data.schedules, this.data.assets,
-      this.data.users, this.data.queues, this.data.queueItems, this.data.installKeys,
+      this.data.users, this.data.queues, this.data.queueItems, this.data.installKeys, this.data.promotions, this.data.apiTokens,
     ] as Array<Record<string, { workspaceId?: string }>>;
     for (const collection of owned) {
       for (const record of Object.values(collection)) record.workspaceId ??= DEFAULT_WORKSPACE;

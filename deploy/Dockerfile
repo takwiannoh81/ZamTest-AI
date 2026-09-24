@@ -15,6 +15,8 @@ RUN pnpm install --frozen-lockfile
 
 # ---------------------------------------------------------------- orchestrator
 FROM base AS orchestrator
+# Git: customers' workflow repositories (Source control).
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production ZAMTEST_HOST=0.0.0.0 ZAMTEST_PORT=4000 ZAMTEST_DATA_DIR=/data
 VOLUME /data
 EXPOSE 4000

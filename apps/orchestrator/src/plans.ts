@@ -29,9 +29,11 @@ export interface Limits {
   installKeys: boolean;
   /** Company sign-in (SSO) with the customer's identity provider. */
   sso: boolean;
+  /** Environments with promotion, Git for workflows, and API tokens for CI pipelines. */
+  sourceControl: boolean;
 }
 
-export const FREE_LIMITS: Limits = { builders: 1, bots: 1, runsPerMonth: 100, aiPerMonth: 20, schedules: false, installKeys: false, sso: false };
+export const FREE_LIMITS: Limits = { builders: 1, bots: 1, runsPerMonth: 100, aiPerMonth: 20, schedules: false, installKeys: false, sso: false, sourceControl: false };
 
 /** Pro: what each paid seat adds. */
 export const PRO = {
@@ -48,6 +50,7 @@ export const UNLIMITED: Limits = {
   schedules: true,
   installKeys: true,
   sso: true,
+  sourceControl: true,
 };
 
 export function limitsOf(workspace: Workspace): Limits {
@@ -55,7 +58,7 @@ export function limitsOf(workspace: Workspace): Limits {
   if (workspace.plan === "pro") {
     const builders = Math.max(1, workspace.seats?.builders ?? 1);
     const bots = Math.max(1, workspace.seats?.bots ?? 1);
-    return { builders, bots, runsPerMonth: bots * PRO.runsPerBot, aiPerMonth: builders * PRO.aiPerBuilder, schedules: true, installKeys: false, sso: false };
+    return { builders, bots, runsPerMonth: bots * PRO.runsPerBot, aiPerMonth: builders * PRO.aiPerBuilder, schedules: true, installKeys: false, sso: false, sourceControl: true };
   }
   return FREE_LIMITS;
 }
@@ -149,9 +152,9 @@ export function checkBuilders(store: Store, workspaceId: string) {
   }
 }
 
-export function checkFeature(store: Store, workspaceId: string, feature: "schedules" | "installKeys" | "sso") {
+export function checkFeature(store: Store, workspaceId: string, feature: "schedules" | "installKeys" | "sso" | "sourceControl") {
   if (limitsOf(workspaceOf(store, workspaceId))[feature]) return;
-  const what = { schedules: "Schedules are", installKeys: "Install keys are", sso: "Company sign-in (SSO) is" }[feature];
+  const what = { schedules: "Schedules are", installKeys: "Install keys are", sso: "Company sign-in (SSO) is", sourceControl: "Environments, Git and API tokens are" }[feature];
   throw new PlanLimitError(feature, `${what} not included in your plan. ${UPGRADE}`);
 }
 

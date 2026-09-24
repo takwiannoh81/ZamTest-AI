@@ -51,6 +51,7 @@ export class Scheduler {
         packageId: schedule.packageId,
         inputs: schedule.inputs,
         targetAgentId: schedule.targetAgentId,
+        environment: schedule.environment,
         source: "schedule",
         startedBy: "schedule",
         scheduleId: schedule.id,

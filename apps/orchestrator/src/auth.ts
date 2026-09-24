@@ -181,7 +181,7 @@ export function hasRole(principal: Principal, needed: Role): boolean {
  * users, backups and removing agents need Admin.
  */
 export function requiredRole(method: string, path: string): Role {
-  if (path.startsWith("/api/users") || path.startsWith("/api/admin/") || path.startsWith("/api/billing/") || path.startsWith("/api/platform/")) return "admin";
+  if (path.startsWith("/api/users") || path.startsWith("/api/admin/") || path.startsWith("/api/billing/") || path.startsWith("/api/platform/") || path.startsWith("/api/api-tokens")) return "admin";
   if (method === "GET" || method === "HEAD") return "viewer";
   if (method === "DELETE" && path.startsWith("/api/agents/")) return "admin";
   if (method === "POST" && path === "/api/jobs") return "operator"; // ad-hoc definitions need developer (checked in the route)

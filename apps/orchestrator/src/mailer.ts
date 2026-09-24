@@ -49,4 +49,8 @@ export const emails = {
     subject: "Reset your ZamTech AI password",
     text: `Hello ${name},\n\nSomeone (hopefully you) asked to reset your ZamTech AI password. Choose a new one here:\n\n${link}\n\nThe link works for 1 hour. If you did not ask for this, ignore this email; your password stays the same.\n\nZamTech AI`,
   }),
+  approval: (name: string, what: string, requestedBy: string, link: string): Omit<Mail, "to"> => ({
+    subject: `Approval needed: ${what} to Production`,
+    text: `Hello ${name},\n\n${requestedBy} asks to put ${what} into Production. Review it here:\n\n${link}\n\nZamTech AI`,
+  }),
 };
