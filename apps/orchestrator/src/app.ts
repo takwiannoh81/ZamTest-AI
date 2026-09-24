@@ -1475,6 +1475,54 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     return { ok: true };
   });
 
+  /**
+   * Everything the workspace holds, as one JSON file (the customer's copy of
+   * their data). Secrets stay out: credential passwords are masked, and no
+   * password hashes, two-step secrets, bot credentials or SSO client secret.
+   */
+  app.get("/api/workspace/export", async (req, reply) => {
+    requireAdmin(req);
+    const workspace = get(store.data.workspaces, ws(req), "Workspace");
+    const jobs = mine(store.data.jobs, req);
+    const { clientSecret: _secret, ...sso } = workspace.sso ?? ({} as NonNullable<Workspace["sso"]>);
+    const data = {
+      format: "zamtech-ai-workspace-export",
+      version: 1,
+      exportedAt: nowIso(),
+      exportedBy: who(me(req)),
+      workspace: {
+        id: workspace.id,
+        name: workspace.name,
+        createdAt: workspace.createdAt,
+        plan: workspace.plan,
+        seats: workspace.seats,
+        security: workspace.security,
+        sso: workspace.sso ? sso : undefined,
+        ssoDomains: workspace.ssoDomains,
+      },
+      users: mine(store.data.users, req).map(publicUser),
+      workflows: mine(store.data.workflows, req),
+      packages: mine(store.data.packages, req),
+      schedules: mine(store.data.schedules, req),
+      queues: mine(store.data.queues, req),
+      queueItems: mine(store.data.queueItems, req),
+      assets: mine(store.data.assets, req).map(maskAsset),
+      agents: mine(store.data.agents, req).map(({ tokenHash: _t, ...agent }) => agent),
+      installKeys: mine(store.data.installKeys, req).map(({ keyHash: _k, ...key }) => key),
+      jobs: jobs.map((job) => ({ ...job, logs: store.data.jobLogs[job.id] ?? [] })),
+      usage: Object.fromEntries(
+        Object.entries(store.data.usage)
+          .filter(([key]) => key.startsWith(`${workspace.id}:`))
+          .map(([key, value]) => [key.slice(workspace.id.length + 1), value]),
+      ),
+    };
+    const fileName = `zamtech-ai-${workspace.name.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "workspace"}-${nowIso().slice(0, 10)}.json`;
+    return reply
+      .header("content-type", "application/json; charset=utf-8")
+      .header("content-disposition", `attachment; filename="${fileName}"`)
+      .send(JSON.stringify(data, null, 2));
+  });
+
   app.get("/api/workspace/security", async (req) => get(store.data.workspaces, ws(req), "Workspace").security ?? {});
   app.put("/api/workspace/security", async (req) => {
     if (me(req).role !== "admin") throw new HttpError(403, "This needs the admin role");

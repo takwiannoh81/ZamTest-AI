@@ -183,3 +183,38 @@ describe("workspaces", () => {
     expect((await app.inject({ method: "GET", url: "/api/workflows", headers: master })).json()).toHaveLength(1);
   });
 });
+
+describe("data export", () => {
+  it("gives a workspace admin all of the workspace's data, without secrets or other workspaces", async () => {
+    await setup();
+    const acme = await signUp("Acme");
+    const globex = await signUp("Globex");
+    await call(globex, "POST", "/api/assets", { name: "globex-only", type: "text", value: "x" });
+    const wf = (await call(acme, "POST", "/api/workflows", workflow("Invoices"))).json();
+    const pkg = (await call(acme, "POST", `/api/workflows/${wf.id}/publish`, {})).json();
+    await call(acme, "POST", "/api/assets", { name: "erp", type: "credential", value: { username: "u", password: "acme-secret" } });
+    const job = (await call(acme, "POST", "/api/jobs", { packageId: pkg.id })).json();
+
+    const res = await call(acme, "GET", "/api/workspace/export");
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-disposition"]).toMatch(/^attachment; filename="zamtech-ai-acme-\d{4}-\d{2}-\d{2}\.json"$/);
+    const data = res.json();
+    expect(data).toMatchObject({ format: "zamtech-ai-workspace-export", version: 1, workspace: { name: "Acme", plan: "free" } });
+    expect(data.workflows.map((w: { id: string }) => w.id)).toEqual([wf.id]);
+    expect(data.packages.map((p: { id: string }) => p.id)).toEqual([pkg.id]);
+    expect(data.jobs[0]).toMatchObject({ id: job.id });
+    expect(data.jobs[0].logs.length).toBeGreaterThan(0);
+    expect(data.assets).toEqual([expect.objectContaining({ name: "erp", value: { username: "u", password: "********" } })]);
+    expect(data.users).toEqual([expect.objectContaining({ email: "admin@acme.example" })]);
+    expect(Object.values(data.usage)).toEqual([{ runs: 1, ai: 0 }]);
+    expect(res.body).not.toContain("acme-secret");
+    expect(res.body).not.toContain("passwordHash");
+    expect(res.body).not.toContain("globex");
+
+    // Only admins may take it.
+    await call(acme, "POST", "/api/users", { email: "op@acme.example", name: "Op", role: "operator", password: PASSWORD });
+    const opLogin = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "op@acme.example", password: PASSWORD } });
+    const op = { cookie: cookieOf(opLogin), "x-zamtech-client": "test" };
+    expect((await call(op, "GET", "/api/workspace/export")).statusCode).toBe(403);
+  });
+});
