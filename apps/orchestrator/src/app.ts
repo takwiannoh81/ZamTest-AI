@@ -308,7 +308,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   /* --------------------------- auth + users ------------------------- */
   // Public: whether the Portal offers "Create an account".
-  app.get("/api/auth/config", async () => ({ signup: config.allowSignup }));
+  // Sign-up is offered only when it can work: a production server needs email for the confirmation link.
+  app.get("/api/auth/config", async () => ({ signup: config.allowSignup && (Boolean(mailer) || !config.production) }));
 
   // A new customer: creates their workspace, with them as its administrator, and signs them in.
   app.post("/api/auth/signup", async (req, reply) => {
