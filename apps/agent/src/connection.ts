@@ -24,7 +24,7 @@ interface JobPayload {
   inputs: Record<string, unknown>;
 }
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 /** A timer that does not keep the process alive. */
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref());

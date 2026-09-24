@@ -112,5 +112,5 @@ jobs:
           $stable = Join-Path $setup.DirectoryName 'ZamTechAI-Agent-Setup.exe'
           Copy-Item $setup.FullName $stable
           $version = "${{ github.ref_name }}".Substring('agent-v'.Length)
-          $notes = "ZamTech AI Agent $version for Windows 10/11 (x64), signed by ZAMTECH&HOME LLC.`n`nDownload **ZamTechAI-Agent-Setup.exe**, run it and enter your server address and agent key.`n`nSilent install: ``ZamTechAI-Agent-Setup.exe /VERYSILENT /SERVER=https://api.zamtechai.com /KEY=<agent key>``"
+          $notes = "ZamTech AI Agent $version for Windows 10/11 (x64), signed by ZAMTECH&HOME LLC.`n`nSign in to the Portal (https://portal.zamtechai.com) and click **Download for Windows**, or download **ZamTechAI-Agent-Setup.exe** below. Run it: when it finishes, approve the PC in the Portal (the code matches the one on the tray icon).`n`nSilent install for IT (with an install key from the Portal): ``ZamTechAI-Agent-Setup.exe /VERYSILENT /INSTALLKEY=<install key>``"
           gh release create "${{ github.ref_name }}" $setup.FullName $stable --title "ZamTech AI Agent $version" --notes $notes
