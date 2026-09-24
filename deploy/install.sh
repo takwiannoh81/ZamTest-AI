@@ -70,9 +70,10 @@ if [ ! -f .env ]; then
   # init-env.sh is interactive; read from the terminal even when piped from curl.
   bash ./init-env.sh < /dev/tty
 fi
-set -a
-. ./.env
-set +a
+# Only what this script needs. .env is not run as a script: values may contain
+# spaces or <> (MAIL_FROM, passwords); Docker Compose reads the file itself.
+SITE_DOMAIN=$(grep -m1 '^SITE_DOMAIN=' .env | cut -d= -f2- | tr -d "\"'\r")
+[ -n "$SITE_DOMAIN" ] || { echo "SITE_DOMAIN is missing in $INSTALL_DIR/deploy/.env" >&2; exit 1; }
 
 say "Checking DNS for $SITE_DOMAIN"
 public_ip=$(curl -fsS -4 https://checkip.amazonaws.com 2>/dev/null | tr -d '[:space:]' || true)
