@@ -36,7 +36,8 @@ export function loadConfig(env = process.env): OrchestratorConfig {
     portalUrl: (env.ZAMTEST_PORTAL_URL || "http://localhost:5173").replace(/\/+$/, ""),
     designerUrl: (env.ZAMTEST_DESIGNER_URL || "http://localhost:5174").replace(/\/+$/, ""),
     cookieDomain: env.ZAMTEST_COOKIE_DOMAIN || undefined,
-    allowSignup: env.ZAMTEST_ALLOW_SIGNUP === "true",
+    // "true", "True", "yes", "1" (with stray quotes or spaces) all mean on.
+    allowSignup: /^(true|yes|1|on)$/i.test((env.ZAMTEST_ALLOW_SIGNUP ?? "").replace(/["'\s]/g, "")),
     corsOrigins: env.ZAMTEST_CORS_ORIGINS
       ? env.ZAMTEST_CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
       : true,

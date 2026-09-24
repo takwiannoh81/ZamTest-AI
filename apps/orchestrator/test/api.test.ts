@@ -104,3 +104,11 @@ describe("production safety", () => {
     expect(productionProblems(loadConfig({}))).toEqual([]);
   });
 });
+
+describe("configuration", () => {
+  it("reads the sign-up switch forgivingly", () => {
+    for (const on of ["true", "True", " yes ", '"true"', "1", "on"]) expect(loadConfig({ ZAMTEST_ALLOW_SIGNUP: on }).allowSignup).toBe(true);
+    for (const off of ["false", "", "no", "ZAMTEST_ALLOW_SIGNUP=true"]) expect(loadConfig({ ZAMTEST_ALLOW_SIGNUP: off }).allowSignup).toBe(false);
+    expect(loadConfig({}).allowSignup).toBe(false);
+  });
+});
