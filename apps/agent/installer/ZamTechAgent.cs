@@ -46,7 +46,7 @@ static class Program {
   // One running instance per install folder; setup stops the one in its own folder.
   static string MutexName;
   public static string QuitEventName, QuitNowEventName, ShowEventName;
-  public const string Version = "0.2.0";
+  public const string Version = "0.3.0";
 
   static void NameInstance(string dir) {
     string id;
