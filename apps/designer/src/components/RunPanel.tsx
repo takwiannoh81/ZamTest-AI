@@ -15,12 +15,15 @@ export function RunPanel({
   onStepStatus,
   onApplyHealed,
   onSelectStep,
+  onFixWithAi,
 }: {
   run: RunState;
   onClose: () => void;
   onStepStatus: (s: Record<string, "running" | "ok" | "error">) => void;
   onApplyHealed: (stepId: string, selector: string) => void;
   onSelectStep: (id: string) => void;
+  /** Offered when the run failed (disabled without AI). */
+  onFixWithAi?: (error: string, stepId?: string) => void;
 }) {
   const { t, time } = useI18n();
   const [job, setJob] = useState<Job>();
@@ -75,6 +78,14 @@ export function RunPanel({
         <span className={`badge badge-${job?.status ?? "pending"}`}>{t(job ? (`status.${job.status}` as MessageKey) : "status.queued")}</span>
         {job?.status === "pending" && <span className="muted tiny">{t("run.waiting", { command: "pnpm dev:agent" })}</span>}
         <span className="spacer" />
+        {job?.status === "failed" && onFixWithAi && (
+          <button
+            className="btn small ai-btn"
+            onClick={() => onFixWithAi(job.error ?? "", [...logs].reverse().find((l) => l.level === "error" && l.stepId)?.stepId)}
+          >
+            {t("fix.withAi")}
+          </button>
+        )}
         {!final && (
           <button className="btn-ghost small danger" onClick={cancel}>
             {t("run.stop")}

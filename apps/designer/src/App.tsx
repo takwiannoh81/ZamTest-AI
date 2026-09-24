@@ -5,6 +5,7 @@ import { api } from "./api";
 import type { Job, WorkflowDraft, WorkflowSummary } from "./api";
 import { AiGenerateModal, JsonModal, SelectorAssistModal } from "./components/AiModals";
 import { GitHistoryModal } from "./components/GitHistory";
+import { TestCases } from "./components/TestCases";
 import { Canvas } from "./components/Canvas";
 import { Palette } from "./components/Palette";
 import { Properties, WorkflowSettings } from "./components/Properties";
@@ -13,6 +14,8 @@ import type { RunState } from "./components/RunPanel";
 import { cloneWithNewIds, createStep, findStep, insertStep, locate, mapStep, moveStep, removeStep } from "./tree";
 import type { Location } from "./tree";
 import { validate } from "./validate";
+import type { Issue } from "./validate";
+import { fileSlug, isProjectFile, saveJson } from "./files";
 import { signOut, useMe } from "./components/session";
 import type { MessageKey } from "@zamtest/i18n";
 
@@ -72,9 +75,26 @@ export function App() {
 function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
   const { t, dateTime } = useI18n();
   const [list, setList] = useState<WorkflowSummary[]>();
-  useEffect(() => {
+  const [tab, setTab] = useState<"workflows" | "tests">(() => (window.location.hash === "#/tests" ? "tests" : "workflows"));
+  const [notice, setNotice] = useState<string>();
+  const loadList = useCallback(() => {
     api<WorkflowSummary[]>("/api/workflows").then(setList).catch(() => setList([]));
   }, []);
+  useEffect(() => loadList(), [loadList]);
+  const showTab = (next: "workflows" | "tests") => {
+    setTab(next);
+    window.history.replaceState(null, "", next === "tests" ? "#/tests" : "#/");
+  };
+
+  /** Everything (workflows, test folders and test cases) as one file on this PC. */
+  const exportProject = async () => {
+    try {
+      const project = await api<unknown>("/api/project/export");
+      if (await saveJson(`zamtech-ai-project-${new Date().toISOString().slice(0, 10)}.json`, project, t("files.projectKind"))) setNotice(t("files.savedToPc"));
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  };
 
   const create = async () => {
     try {
@@ -85,10 +105,17 @@ function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
     }
   };
 
+  /** A workflow file opens in the editor; a project file adds all its workflows and test cases. */
   const importFile = async (file: File) => {
     try {
-      const definition = JSON.parse(await file.text()) as Workflow;
-      const wf = await api<WorkflowDraft>("/api/workflows", { method: "POST", body: { definition } });
+      const data = JSON.parse(await file.text()) as unknown;
+      if (isProjectFile(data)) {
+        const r = await api<{ workflows: number; testCases: number }>("/api/project/import", { method: "POST", body: data });
+        setNotice(t("files.projectImported", { workflows: r.workflows, tests: r.testCases }));
+        loadList();
+        return;
+      }
+      const wf = await api<WorkflowDraft>("/api/workflows", { method: "POST", body: { definition: data as Workflow } });
       onOpen(wf.id);
     } catch (e) {
       alert(t("designer.importFailed", { error: (e as Error).message }));
@@ -115,17 +142,39 @@ function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
           {t("designer.newWorkflow")}
         </button>
         <label className="btn-ghost">
-          {t("designer.importJson")}
-          <input type="file" accept=".json" hidden onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])} />
+          {t("files.import")}
+          <input
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void importFile(file);
+            }}
+          />
         </label>
+        <button className="btn-ghost" onClick={() => void exportProject()} title={t("files.exportProjectHint")}>
+          {t("files.exportProject")}
+        </button>
         <a className="btn-ghost" href={PORTAL_URL} target="_blank" rel="noreferrer">
           {t("designer.openPortal")}
         </a>
         <LanguageSelect className="lang-select" />
         <UserMenu />
       </div>
-      <h2 className="section-title">{t("designer.workflows")}</h2>
-      {list?.length ? (
+      {notice && <p className="notice">{notice}</p>}
+      <div className="segmented start-tabs" role="tablist">
+        <button role="tab" className={tab === "workflows" ? "on" : ""} onClick={() => showTab("workflows")}>
+          {t("designer.workflows")}
+        </button>
+        <button role="tab" className={tab === "tests" ? "on" : ""} onClick={() => showTab("tests")}>
+          {t("tests.title")}
+        </button>
+      </div>
+      {tab === "tests" ? (
+        <TestCases workflows={list ?? []} />
+      ) : list?.length ? (
         <div className="wf-grid">
           {list.map((w) => (
             <div key={w.id} className="wf-card" onClick={() => onOpen(w.id)}>
@@ -155,6 +204,8 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
   const [selectedId, setSelectedId] = useState<string>();
   const [status, setStatus] = useState<string>();
   const [modal, setModal] = useState<null | "ai" | "json" | "history" | { selectorProp: string }>(null);
+  // Fix with AI: the request prepared for the AI dialog (issues, or a failed run's error).
+  const [fixPrompt, setFixPrompt] = useState<string>();
   // Source control: whether the workspace has a Git repository, and uses Development/Test/Production.
   const [gitConnected, setGitConnected] = useState(false);
   const [envsOn, setEnvsOn] = useState(false);
@@ -296,14 +347,40 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
     }
   };
 
-  const download = () => {
-    const blob = new Blob([JSON.stringify(workflow, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${workflow.name.replace(/[^\w-]+/g, "-").toLowerCase() || "workflow"}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+  /** Saves the workflow as a file on this PC, where the person chooses. */
+  const saveToPc = async () => {
+    if (await saveJson(`${fileSlug(workflow.name)}.json`, workflow, t("files.workflowKind"))) setStatus(t("files.savedToPc"));
   };
+
+  const deleteWorkflow = async () => {
+    if (!confirm(t("designer.confirmDeleteWorkflow", { name: workflow.name }))) return;
+    try {
+      await api(`/api/workflows/${id}`, { method: "DELETE" });
+      setDirty(false);
+      onExit();
+    } catch (e) {
+      setStatus((e as Error).message);
+    }
+  };
+
+  /** Selects the step of an issue and puts the cursor in the field to fill in. */
+  const goToIssue = (issue: Issue) => {
+    setSelectedId(issue.stepId);
+    if (!issue.prop) return;
+    setTimeout(() => {
+      const row = document.querySelector<HTMLElement>(`.inspector [data-prop="${CSS.escape(issue.prop!)}"]`);
+      const input = row?.querySelector<HTMLElement>("input, textarea, select");
+      row?.scrollIntoView({ block: "center", behavior: "smooth" });
+      input?.focus();
+      row?.classList.add("flash");
+      setTimeout(() => row?.classList.remove("flash"), 1500);
+    }, 60);
+  };
+
+  const fixIssuesWithAi = () =>
+    setFixPrompt(`${t("fix.issuesPrompt")}\n${issues.map((i) => `- ${i.message} (step ${i.stepId})`).join("\n")}`);
+  const fixRunWithAi = (error: string, stepId?: string) =>
+    setFixPrompt(`${t("fix.runPrompt")}\n${stepId ? `Step ${stepId}: ` : ""}${error}`);
 
   const selectorModal = modal && typeof modal === "object" ? modal : undefined;
 
@@ -330,8 +407,8 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
         <button className="btn-ghost" onClick={() => setModal("json")}>
           {"{ }"} JSON
         </button>
-        <button className="btn-ghost" onClick={download}>
-          {t("toolbar.export")}
+        <button className="btn-ghost" onClick={() => void saveToPc()} title={t("files.saveToPcHint")}>
+          {t("files.saveToPc")}
         </button>
         <button className="btn-ghost ai" disabled={!aiEnabled} title={aiEnabled ? "" : t("toolbar.aiNeedsKey")} onClick={() => setModal("ai")}>
           {t("toolbar.buildWithAi")}
@@ -355,15 +432,21 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
         <button className="btn" onClick={() => void publish()}>
           {t("toolbar.publish")}
         </button>
+        <button className="icon-btn danger" title={t("designer.deleteWorkflow")} aria-label={t("designer.deleteWorkflow")} onClick={() => void deleteWorkflow()}>
+          🗑
+        </button>
         <LanguageSelect className="lang-select" />
       </header>
       {showIssues && issues.length > 0 && (
         <div className="issues">
           {issues.map((i, n) => (
-            <button key={n} className="issue" onClick={() => setSelectedId(i.stepId)}>
+            <button key={n} className="issue" onClick={() => goToIssue(i)} title={t("fix.goTo")}>
               ⚠ {i.message}
             </button>
           ))}
+          <button className="issue issue-fix" disabled={!aiEnabled} title={aiEnabled ? t("fix.withAiHint") : t("toolbar.aiNeedsKey")} onClick={fixIssuesWithAi}>
+            {t("fix.withAi")}
+          </button>
         </div>
       )}
       <div className="workspace">
@@ -402,6 +485,7 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
               }}
               onStepStatus={setRunStatus}
               onSelectStep={setSelectedId}
+              onFixWithAi={aiEnabled ? fixRunWithAi : undefined}
               onApplyHealed={(stepId, selector) => {
                 setRoot(mapStep(root, stepId, (s) => ({ ...s, props: { ...s.props, selector } })));
                 setStatus(t("toolbar.healedApplied"));
@@ -433,6 +517,20 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
             setSelectedId(undefined);
             setModal(null);
             setStatus(t("toolbar.aiApplied"));
+          }}
+        />
+      )}
+      {fixPrompt && (
+        <AiGenerateModal
+          current={workflow}
+          initialPrompt={fixPrompt}
+          autoStart
+          onClose={() => setFixPrompt(undefined)}
+          onApply={(w) => {
+            update({ ...w, name: w.name || workflow.name });
+            setSelectedId(undefined);
+            setFixPrompt(undefined);
+            setStatus(t("fix.applied"));
           }}
         />
       )}

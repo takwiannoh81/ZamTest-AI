@@ -1,6 +1,6 @@
 import { useI18n } from "@zamtest/i18n/react";
 import type { MessageKey } from "@zamtest/i18n";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { safeParseWorkflow } from "@zamtest/core";
 import type { Workflow } from "@zamtest/core";
 import { api } from "../api";
@@ -8,11 +8,24 @@ import { ErrorBanner, Field, Modal } from "./ui";
 
 const EXAMPLES: MessageKey[] = ["ai.example1", "ai.example2", "ai.example3"];
 
-export function AiGenerateModal({ current, onApply, onClose }: { current: Workflow; onApply: (w: Workflow) => void; onClose: () => void }) {
+/** Builds or changes the workflow with AI; `initialPrompt` + `autoStart` open it already working (Fix with AI). */
+export function AiGenerateModal({
+  current,
+  onApply,
+  onClose,
+  initialPrompt,
+  autoStart,
+}: {
+  current: Workflow;
+  onApply: (w: Workflow) => void;
+  onClose: () => void;
+  initialPrompt?: string;
+  autoStart?: boolean;
+}) {
   const { t, locale } = useI18n();
   const hasSteps = (current.root.slots?.body ?? []).length > 0;
-  const [prompt, setPrompt] = useState("");
-  const [mode, setMode] = useState<"new" | "edit">(hasSteps ? "edit" : "new");
+  const [prompt, setPrompt] = useState(initialPrompt ?? "");
+  const [mode, setMode] = useState<"new" | "edit">(hasSteps || initialPrompt ? "edit" : "new");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [result, setResult] = useState<{ workflow: Workflow; notes: string }>();
@@ -32,6 +45,14 @@ export function AiGenerateModal({ current, onApply, onClose }: { current: Workfl
       setBusy(false);
     }
   };
+
+  const started = useRef(false);
+  useEffect(() => {
+    if (autoStart && !started.current) {
+      started.current = true;
+      void generate();
+    }
+  }); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Modal

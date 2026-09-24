@@ -5,6 +5,8 @@ import type { Translator } from "@zamtest/i18n";
 export interface Issue {
   stepId: string;
   message: string;
+  /** The property to fill in (the Properties panel focuses it). */
+  prop?: string;
 }
 
 /** Design-time checks shown in the toolbar before publishing. */
@@ -31,7 +33,7 @@ export function validate(workflow: Workflow, metas: Map<string, ActionMeta>, tr:
     for (const p of meta.props) {
       const v = step.props[p.name];
       if (p.required && (v === undefined || v === "") && p.default === undefined) {
-        issues.push({ stepId: step.id, message: t("validate.required", { step: stepName, prop: tr.propLabel(step.type, p) }) });
+        issues.push({ stepId: step.id, prop: p.name, message: t("validate.required", { step: stepName, prop: tr.propLabel(step.type, p) }) });
       }
       if (
         p.type === "variable" &&
@@ -40,11 +42,11 @@ export function validate(workflow: Workflow, metas: Map<string, ActionMeta>, tr:
         !declared.has(v) &&
         !["itemVariable", "indexVariable", "errorVariable"].includes(p.name)
       ) {
-        issues.push({ stepId: step.id, message: t("validate.undeclared", { step: stepName, name: v }) });
+        issues.push({ stepId: step.id, prop: p.name, message: t("validate.undeclared", { step: stepName, name: v }) });
       }
     }
     if (meta.type.startsWith("browser.") && meta.props.some((p) => p.name === "description") && !step.props.description) {
-      issues.push({ stepId: step.id, message: t("validate.needsDescription", { step: stepName }) });
+      issues.push({ stepId: step.id, prop: "description", message: t("validate.needsDescription", { step: stepName }) });
     }
   });
   return issues;

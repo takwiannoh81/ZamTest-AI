@@ -110,7 +110,7 @@ export function Properties({ step, meta, variables, aiEnabled, onChange, onSelec
       </Field>
       {meta?.props.map((def) => (
         <Field key={def.name} label={`${propLabel(step.type, def)}${def.required ? " *" : ""}`} hint={propDescription(step.type, def)}>
-          <div className="prop-row">
+          <div className="prop-row" data-prop={def.name}>
             <PropInput def={def} value={step.props[def.name]} variables={variables} onChange={(v) => setProp(def.name, v)} />
             {def.type === "selector" && step.type.startsWith("browser.") && (
               <button className="btn-ghost ai-btn" disabled={!aiEnabled} title={aiEnabled ? t("props.aiSuggest") : t("props.aiUnavailable")} onClick={() => onSelectorAssist(def.name)}>
