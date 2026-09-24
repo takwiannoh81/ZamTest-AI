@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Agent, Asset, Enrollment, InstallKey, Job, JobLog, Package, Queue, QueueItem, Schedule, Session, User, WorkflowDraft, Workspace } from "./types.js";
+import type { Agent, Asset, EmailToken, Enrollment, InstallKey, MfaChallenge, Job, JobLog, Package, Queue, QueueItem, Schedule, Session, User, WorkflowDraft, Workspace } from "./types.js";
 import { DEFAULT_WORKSPACE } from "./types.js";
 
 export interface Data {
@@ -20,6 +20,8 @@ export interface Data {
   installKeys: Record<string, InstallKey>;
   /** Runs and AI requests per workspace and month, keyed "<workspaceId>:<YYYY-MM>". */
   usage: Record<string, { runs: number; ai: number }>;
+  emailTokens: Record<string, EmailToken>;
+  mfaChallenges: Record<string, MfaChallenge>;
 }
 
 const MAX_LOGS_PER_JOB = 5000;
@@ -40,6 +42,8 @@ const empty = (): Data => ({
   enrollments: {},
   installKeys: {},
   usage: {},
+  emailTokens: {},
+  mfaChallenges: {},
 });
 
 /**
@@ -71,6 +75,8 @@ export class Store {
     // The platform owner's own workspace has no limits.
     this.data.workspaces[DEFAULT_WORKSPACE] ??= { id: DEFAULT_WORKSPACE, name: "Default workspace", createdAt: nowIso(), plan: "enterprise" };
     for (const workspace of Object.values(this.data.workspaces)) workspace.plan ??= "free";
+    // Accounts from before email confirmation existed were made by an admin: treat them as confirmed.
+    for (const user of Object.values(this.data.users)) user.emailVerified ??= true;
     const owned = [
       this.data.workflows, this.data.packages, this.data.agents, this.data.jobs, this.data.schedules, this.data.assets,
       this.data.users, this.data.queues, this.data.queueItems, this.data.installKeys,

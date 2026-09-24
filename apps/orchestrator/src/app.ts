@@ -32,6 +32,9 @@ import {
 import type { BackupService } from "./backup.js";
 import { PAID_STATUSES } from "./billing.js";
 import type { BillingProvider, SubscriptionState } from "./billing.js";
+import { emails } from "./mailer.js";
+import { hashRecoveryCode, newRecoveryCodes, newTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
+import type { Mail, Mailer } from "./mailer.js";
 import type { OrchestratorConfig } from "./config.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
@@ -59,6 +62,8 @@ export interface AppOptions {
   backup?: BackupService | null;
   /** Online payments (Stripe); null/undefined when not configured. */
   billing?: BillingProvider | null;
+  /** Sends confirmation and password-reset emails; null/undefined when SMTP is not configured. */
+  mailer?: Mailer | null;
 }
 
 
@@ -142,6 +147,20 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   const cookieOptions = { domain: config.cookieDomain, secure: config.production };
   // A PC asking to be connected has no credential yet.
   const PUBLIC_AGENT_ROUTES = new Set(["/api/agent/enroll/start", "/api/agent/enroll/poll"]);
+  // Stripe's webhook proves itself with its signature (checked in the route); email links carry their own token.
+  const PUBLIC_ROUTES = new Set([
+    "/api/auth/login",
+    "/api/auth/token",
+    "/api/auth/signup",
+    "/api/auth/config",
+    "/api/auth/verify",
+    "/api/auth/password-reset/request",
+    "/api/auth/password-reset",
+    "/api/auth/login/mfa",
+    "/api/billing/webhook",
+  ]);
+  // What a signed-in person may still do while their account is restricted (email not confirmed, ...).
+  const RESTRICTED_ALLOWED = new Set(["/api/auth/me", "/api/auth/logout", "/api/auth/verify/resend", "/api/auth/mfa", "/api/auth/mfa/setup", "/api/auth/mfa/enable"]);
   const agentByToken = (token: string): Agent | undefined => {
     const hash = hashToken(token);
     return Object.values(store.data.agents).find((a) => a.tokenHash !== undefined && safeEqual(a.tokenHash, hash));
@@ -166,7 +185,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       return;
     }
     // Stripe's webhook proves itself with its signature (checked in the route).
-    if (url === "/api/auth/login" || url === "/api/auth/token" || url === "/api/auth/signup" || url === "/api/auth/config" || url === "/api/billing/webhook") return;
+    if (PUBLIC_ROUTES.has(url)) return;
     const cookieToken = req.headers.authorization ? undefined : readCookie(req.headers.cookie, SESSION_COOKIE);
     const principal = resolvePrincipal(store, config.adminToken, req.headers.authorization, cookieToken);
     if (!principal) return reply.status(401).send({ error: "Sign in required", code: "unauthorized" });
@@ -176,6 +195,10 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       return reply.status(403).send({ error: "Requests signed in with the cookie need the x-zamtech-client header", code: "csrf" });
     }
     req.principal = principal;
+    if (principal.restriction && !RESTRICTED_ALLOWED.has(url)) {
+      const message = principal.restriction === "email_unverified" ? "Confirm your email address first" : "Set up two-step sign-in first";
+      return reply.status(403).send({ error: message, code: principal.restriction });
+    }
     if (url.startsWith("/api/auth/")) return;
     const needed = requiredRole(req.method, url);
     if (!hasRole(principal, needed)) {
@@ -210,6 +233,42 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   /** The platform owner (not customers): the master token, local open mode, or an admin of the default workspace. */
   const platformAdmin = (p: Principal) => p.kind !== "user" || (p.workspaceId === DEFAULT_WORKSPACE && p.role === "admin");
   const signupLimiter = new LoginLimiter(10, 60 * 60 * 1000);
+  const mailLimiter = new LoginLimiter(5, 60 * 60 * 1000);
+
+  /* Email: single-use links to confirm an address or reset a password. */
+  const mailer = options.mailer ?? null;
+  const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
+  const RESET_TTL_MS = 60 * 60 * 1000;
+  const issueEmailToken = (user: User, purpose: "verify" | "reset") => {
+    for (const t of Object.values(store.data.emailTokens)) {
+      if (t.userId === user.id && t.purpose === purpose) delete store.data.emailTokens[t.id];
+    }
+    const token = newSecret();
+    const ttl = purpose === "verify" ? VERIFY_TTL_MS : RESET_TTL_MS;
+    store.data.emailTokens[hashToken(token)] = { id: hashToken(token), userId: user.id, purpose, expiresAt: new Date(Date.now() + ttl).toISOString() };
+    store.save();
+    return token;
+  };
+  const takeEmailToken = (token: string, purpose: "verify" | "reset"): User => {
+    const entry = store.data.emailTokens[hashToken(token)];
+    const user = entry && entry.purpose === purpose && Date.parse(entry.expiresAt) > Date.now() ? store.data.users[entry.userId] : undefined;
+    if (!entry || !user || user.disabled) {
+      throw new HttpError(400, purpose === "verify" ? "This confirmation link has expired or was already used." : "This reset link has expired or was already used.");
+    }
+    delete store.data.emailTokens[entry.id];
+    return user;
+  };
+  const sendMail = async (to: string, mail: Omit<Mail, "to">) => {
+    if (!mailer) throw new HttpError(503, "Email is not set up on this server");
+    try {
+      await mailer.send({ to, ...mail });
+    } catch (err) {
+      app.log.error(`Email to ${to} failed: ${(err as Error).message}`);
+      throw new HttpError(502, "The email could not be sent; try again later");
+    }
+  };
+  const sendVerification = (user: User) =>
+    sendMail(user.email, emails.verify(user.name, `${config.portalUrl}/#/verify?token=${issueEmailToken(user, "verify")}`));
 
   /* --------------------------- auth + users ------------------------- */
   // Public: whether the Portal offers "Create an account".
@@ -218,6 +277,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   // A new customer: creates their workspace, with them as its administrator, and signs them in.
   app.post("/api/auth/signup", async (req, reply) => {
     if (!config.allowSignup) throw new HttpError(403, "Sign-up is not open on this server; ask an administrator for an account");
+    // Without email, addresses cannot be confirmed: a public server must not accept unconfirmed sign-ups.
+    if (!mailer && config.production) throw new HttpError(503, "Sign-up needs email to be set up on this server (SMTP_URL)");
     const ipKey = `signup:${req.ip}`;
     if (signupLimiter.blocked(ipKey)) return reply.status(429).send({ error: "Too many sign-ups; try again later", code: "rate_limited" });
     signupLimiter.fail(ipKey);
@@ -234,13 +295,59 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       name: body.name,
       role: "admin",
       passwordHash: await hashPassword(body.password),
+      // With email set up, the address is confirmed by a link before the workspace can be used.
+      emailVerified: !mailer,
       createdAt: nowIso(),
       lastLoginAt: nowIso(),
     };
     store.data.workspaces[workspace.id] = workspace;
     store.data.users[user.id] = user;
+    if (mailer) await sendVerification(user).catch((err) => app.log.error(err));
     reply.header("set-cookie", sessionCookie(createSession(store, user), cookieOptions));
-    return reply.status(201).send({ user: publicUser(user), workspace });
+    return reply.status(201).send({ user: publicUser(user), workspace, verifyEmail: Boolean(mailer) });
+  });
+
+  app.post("/api/auth/verify", async (req) => {
+    const body = parse(z.object({ token: z.string().min(10) }), req.body);
+    const user = takeEmailToken(body.token, "verify");
+    user.emailVerified = true;
+    store.save();
+    return { ok: true, email: user.email };
+  });
+
+  app.post("/api/auth/verify/resend", async (req, reply) => {
+    const p = me(req);
+    const user = p.kind === "user" ? store.data.users[p.id] : undefined;
+    if (!user || user.emailVerified !== false) return { ok: true };
+    if (mailLimiter.blocked(`verify:${user.id}`)) return reply.status(429).send({ error: "Too many emails; try again later", code: "rate_limited" });
+    mailLimiter.fail(`verify:${user.id}`);
+    await sendVerification(user);
+    return { ok: true };
+  });
+
+  // Always answers the same, so it does not reveal which emails have accounts.
+  app.post("/api/auth/password-reset/request", async (req, reply) => {
+    const body = parse(z.object({ email: z.string().trim().toLowerCase() }), req.body);
+    const keys = [`reset:${req.ip}`, `reset:${body.email}`];
+    if (mailLimiter.blocked(...keys)) return reply.status(429).send({ error: "Too many requests; try again later", code: "rate_limited" });
+    mailLimiter.fail(...keys);
+    const user = findByEmail(body.email);
+    if (user && !user.disabled && mailer) {
+      const link = `${config.portalUrl}/#/reset-password?token=${issueEmailToken(user, "reset")}`;
+      await sendMail(user.email, emails.reset(user.name, link)).catch((err) => app.log.error(err));
+    }
+    return { ok: true, email: Boolean(mailer) };
+  });
+
+  app.post("/api/auth/password-reset", async (req) => {
+    const body = parse(z.object({ token: z.string().min(10), password: passwordSchema }), req.body);
+    const user = takeEmailToken(body.token, "reset");
+    user.passwordHash = await hashPassword(body.password);
+    // Receiving the email proves the address; every other session ends.
+    user.emailVerified = true;
+    deleteUserSessions(store, user.id);
+    store.save();
+    return { ok: true, email: user.email };
   });
 
   app.post("/api/auth/login", async (req, reply) => {
@@ -254,10 +361,113 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       return reply.status(401).send({ error: "Email or password is incorrect", code: "invalid_login" });
     }
     limiter.reset(...keys);
+    // Two-step sign-in: the password was right; a code from the authenticator app is still needed.
+    if (user.mfa?.enabled) {
+      const mfaToken = newSecret();
+      store.data.mfaChallenges[hashToken(mfaToken)] = { id: hashToken(mfaToken), userId: user.id, attempts: 0, expiresAt: new Date(Date.now() + 5 * 60_000).toISOString() };
+      store.save();
+      return { mfaRequired: true, mfaToken };
+    }
+    return signIn(user, reply);
+  });
+
+  const signIn = (user: User, reply: FastifyReply) => {
     user.lastLoginAt = nowIso();
     const token = createSession(store, user);
     reply.header("set-cookie", sessionCookie(token, cookieOptions));
     return { token, user: publicUser(user) };
+  };
+
+  /** Checks a 6-digit code (once per step) or a recovery code (once each). */
+  const checkSecondFactor = (user: User, code?: string, recoveryCode?: string): boolean => {
+    const mfa = user.mfa;
+    if (!mfa?.enabled || !mfa.secret) return false;
+    if (code) {
+      const step = verifyTotp(mfa.secret, code, Date.now(), mfa.lastStep ?? -1);
+      if (step === null) return false;
+      mfa.lastStep = step;
+      store.save();
+      return true;
+    }
+    if (recoveryCode) {
+      const index = mfa.recoveryCodes.indexOf(hashRecoveryCode(recoveryCode));
+      if (index < 0) return false;
+      mfa.recoveryCodes.splice(index, 1);
+      store.save();
+      return true;
+    }
+    return false;
+  };
+
+  app.post("/api/auth/login/mfa", async (req, reply) => {
+    const body = parse(z.object({ mfaToken: z.string(), code: z.string().optional(), recoveryCode: z.string().optional() }), req.body);
+    const challenge = store.data.mfaChallenges[hashToken(body.mfaToken)];
+    const user = challenge && Date.parse(challenge.expiresAt) > Date.now() ? store.data.users[challenge.userId] : undefined;
+    if (!challenge || !user || user.disabled) {
+      return reply.status(401).send({ error: "The sign-in has expired; enter your password again", code: "mfa_expired" });
+    }
+    if (!checkSecondFactor(user, body.code, body.recoveryCode)) {
+      challenge.attempts++;
+      if (challenge.attempts >= 5) delete store.data.mfaChallenges[challenge.id];
+      store.save();
+      return reply.status(401).send({ error: "That code is not right", code: challenge.attempts >= 5 ? "mfa_expired" : "invalid_code" });
+    }
+    delete store.data.mfaChallenges[challenge.id];
+    return signIn(user, reply);
+  });
+
+  /* two-step sign-in: set up and manage your own */
+  const myUser = (req: FastifyRequest): User => {
+    const p = me(req);
+    const user = p.kind === "user" ? store.data.users[p.id] : undefined;
+    if (!user) throw new HttpError(400, "Only user accounts have two-step sign-in");
+    return user;
+  };
+  app.get("/api/auth/mfa", async (req) => {
+    const user = myUser(req);
+    return {
+      enabled: Boolean(user.mfa?.enabled),
+      required: Boolean(store.data.workspaces[user.workspaceId]?.security?.requireMfa) && user.authSource !== "sso",
+      recoveryCodesLeft: user.mfa?.enabled ? user.mfa.recoveryCodes.length : 0,
+    };
+  });
+  app.post("/api/auth/mfa/setup", async (req) => {
+    const user = myUser(req);
+    if (user.mfa?.enabled) throw new HttpError(409, "Two-step sign-in is already on");
+    const secret = newTotpSecret();
+    user.mfa = { enabled: false, pendingSecret: secret, recoveryCodes: [] };
+    store.save();
+    return { secret, otpauthUrl: otpauthUrl(secret, user.email) };
+  });
+  app.post("/api/auth/mfa/enable", async (req) => {
+    const user = myUser(req);
+    const body = parse(z.object({ code: z.string() }), req.body);
+    const pending = user.mfa?.pendingSecret;
+    const step = pending ? verifyTotp(pending, body.code) : null;
+    if (!pending || step === null) throw new HttpError(400, "That code is not right. Check the time on your phone and try the newest code.");
+    const recoveryCodes = newRecoveryCodes();
+    user.mfa = { enabled: true, secret: pending, recoveryCodes: recoveryCodes.map(hashRecoveryCode), lastStep: step };
+    store.save();
+    // Shown once: the person keeps them somewhere safe.
+    return { recoveryCodes };
+  });
+  app.post("/api/auth/mfa/recovery-codes", async (req) => {
+    const user = myUser(req);
+    const body = parse(z.object({ code: z.string() }), req.body);
+    if (!checkSecondFactor(user, body.code)) throw new HttpError(400, "That code is not right");
+    const recoveryCodes = newRecoveryCodes();
+    user.mfa!.recoveryCodes = recoveryCodes.map(hashRecoveryCode);
+    store.save();
+    return { recoveryCodes };
+  });
+  app.post("/api/auth/mfa/disable", async (req) => {
+    const user = myUser(req);
+    const body = parse(z.object({ password: z.string() }), req.body);
+    if (store.data.workspaces[user.workspaceId]?.security?.requireMfa) throw new HttpError(409, "Your workspace requires two-step sign-in");
+    if (!(await verifyPassword(body.password, user.passwordHash))) throw new HttpError(400, "Current password is incorrect");
+    user.mfa = undefined;
+    store.save();
+    return { ok: true };
   });
 
   // Sign-in with the master access token (emergencies, first-time setup) opens a normal cookie session.
@@ -292,6 +502,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       kind: p.kind,
       workspace: { id: p.workspaceId, name: workspace?.name ?? "" },
       platformAdmin: platformAdmin(p),
+      restriction: p.restriction,
     };
   });
 
@@ -358,6 +569,15 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     if (body.disabled !== undefined) user.disabled = body.disabled;
     if (body.password) user.passwordHash = await hashPassword(body.password);
     if (body.password || body.disabled) deleteUserSessions(store, user.id);
+    store.save();
+    return publicUser(user);
+  });
+
+  // For a lost phone without recovery codes: the person sets two-step sign-in up again.
+  app.post<{ Params: { id: string } }>("/api/users/:id/mfa/reset", async (req) => {
+    const user = own(store.data.users, req.params.id, "User", req);
+    user.mfa = undefined;
+    deleteUserSessions(store, user.id);
     store.save();
     return publicUser(user);
   });
@@ -1094,6 +1314,21 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     return workspaceSummary(workspace);
   });
 
+  app.get("/api/workspace/security", async (req) => get(store.data.workspaces, ws(req), "Workspace").security ?? {});
+  app.put("/api/workspace/security", async (req) => {
+    if (me(req).role !== "admin") throw new HttpError(403, "This needs the admin role");
+    const workspace = get(store.data.workspaces, ws(req), "Workspace");
+    const body = parse(z.object({ requireMfa: z.boolean().optional() }), req.body);
+    // Otherwise the admin would lock themselves out of this very page.
+    const admin = me(req).kind === "user" ? store.data.users[me(req).id] : undefined;
+    if (body.requireMfa && admin && !admin.mfa?.enabled && admin.authSource !== "sso") {
+      throw new HttpError(409, "Turn on two-step sign-in for your own account first");
+    }
+    workspace.security = { ...workspace.security, ...body };
+    store.save();
+    return workspace.security;
+  });
+
   /* platform owner: all customers, and plans agreed outside Stripe (Enterprise) */
   app.get("/api/platform/workspaces", async (req) => {
     requirePlatformAdmin(req);
@@ -1241,6 +1476,12 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     pruneSessions(store);
     for (const e of Object.values(store.data.enrollments)) {
       if (Date.parse(e.expiresAt) < Date.now()) delete store.data.enrollments[e.id];
+    }
+    for (const t of Object.values(store.data.emailTokens)) {
+      if (Date.parse(t.expiresAt) < Date.now()) delete store.data.emailTokens[t.id];
+    }
+    for (const c of Object.values(store.data.mfaChallenges)) {
+      if (Date.parse(c.expiresAt) < Date.now()) delete store.data.mfaChallenges[c.id];
     }
   }, 5_000);
   sweeper.unref();

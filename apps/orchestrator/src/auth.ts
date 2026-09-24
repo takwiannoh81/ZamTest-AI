@@ -83,9 +83,10 @@ export function pruneSessions(store: Store, now = Date.now()): void {
   }
 }
 
+/** A user as the API shows it: never the password hash or two-step secrets. */
 export function publicUser(user: User) {
-  const { passwordHash: _hash, ...rest } = user;
-  return rest;
+  const { passwordHash: _hash, mfa, ...rest } = user;
+  return { ...rest, mfaEnabled: Boolean(mfa?.enabled) };
 }
 
 /** The master access token administers the platform owner's own (default) workspace. */
@@ -113,7 +114,20 @@ export function resolvePrincipal(
       if (session.userId === MASTER_SESSION) return adminToken ? MASTER_PRINCIPAL : null;
       const user = store.data.users[session.userId];
       if (user && !user.disabled) {
-        return { id: user.id, name: user.name, email: user.email, role: user.role, kind: "user", workspaceId: user.workspaceId };
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          kind: "user",
+          workspaceId: user.workspaceId,
+          restriction:
+            user.emailVerified === false
+              ? "email_unverified"
+              : store.data.workspaces[user.workspaceId]?.security?.requireMfa && !user.mfa?.enabled && user.authSource !== "sso"
+                ? "mfa_setup_required"
+                : undefined,
+        };
       }
     }
   }

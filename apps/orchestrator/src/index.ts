@@ -1,6 +1,8 @@
 import { buildApp } from "./app.js";
 import { BackupService, loadBackupConfig, s3Target } from "./backup.js";
 import { loadBillingConfig, StripeBilling } from "./billing.js";
+import { loadMailer } from "./mailer.js";
+import type { Mailer } from "./mailer.js";
 import { Store } from "./store.js";
 import { loadConfig, productionProblems } from "./config.js";
 
@@ -17,7 +19,13 @@ const backup = backupConfig
   : null;
 const billingConfig = loadBillingConfig();
 const billing = billingConfig ? new StripeBilling(billingConfig) : null;
-const { app } = await buildApp({ config, store, backup, billing, logger: true });
+// Without SMTP, a development server prints the emails (with their links) to its log instead.
+let logMail: ((line: string) => void) | undefined;
+const mailer: Mailer | null =
+  loadMailer() ?? (config.production ? null : { send: async (m) => logMail?.(`Email to ${m.to}: ${m.subject}\n${m.text}`) });
+const { app } = await buildApp({ config, store, backup, billing, mailer, logger: true });
+logMail = (line) => app.log.info(line);
+if (!loadMailer()) app.log.warn(config.production ? "Email: not set up (SMTP_URL); sign-up and password reset are unavailable" : "Email: not set up; emails are written to this log");
 app.log.info(billing ? `Billing: Stripe (${billingConfig!.secretKey.startsWith("sk_live_") ? "live" : "test"} mode)` : "Billing: not set up (no STRIPE_* settings)");
 if (backupConfig) app.log.info(`Backups: s3://${backupConfig.bucket}/${backupConfig.prefix} on "${backupConfig.cron}", keeping ${backupConfig.keepDays} days`);
 

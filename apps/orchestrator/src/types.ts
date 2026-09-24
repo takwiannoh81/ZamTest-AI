@@ -18,6 +18,12 @@ export interface Workspace {
   /** Enterprise: limits agreed with the customer (unset = unlimited). */
   customLimits?: Partial<import("./plans.js").Limits>;
   billing?: WorkspaceBilling;
+  security?: WorkspaceSecurity;
+}
+
+export interface WorkspaceSecurity {
+  /** Everyone signing in with a password must use two-step sign-in. */
+  requireMfa?: boolean;
 }
 
 /** The workspace's Stripe customer and subscription, as last reported by Stripe. */
@@ -35,7 +41,6 @@ export interface WorkflowDraft {
   id: string;
   /** The customer workspace this belongs to. */
   workspaceId: string;
-
   name: string;
   description?: string;
   definition: Workflow;
@@ -48,7 +53,6 @@ export interface Package {
   id: string;
   /** The customer workspace this belongs to. */
   workspaceId: string;
-
   workflowId: string;
   name: string;
   version: number;
@@ -64,7 +68,6 @@ export interface Agent {
   id: string;
   /** The customer workspace this belongs to. */
   workspaceId: string;
-
   name: string;
   machine: string;
   os: string;
@@ -102,7 +105,6 @@ export interface InstallKey {
   id: string;
   /** The customer workspace this belongs to. */
   workspaceId: string;
-
   name: string;
   /** SHA-256 of the key; the key itself is shown once, when it is created. */
   keyHash: string;
@@ -120,7 +122,6 @@ export interface Job {
   id: string;
   /** The customer workspace this belongs to. */
   workspaceId: string;
-
   name: string;
   packageId?: string;
   packageVersion?: number;
@@ -186,15 +187,50 @@ export interface User {
   id: string;
   /** The customer workspace this belongs to. */
   workspaceId: string;
-
   email: string;
   name: string;
   role: Role;
   /** scrypt$<salt>$<hash> */
   passwordHash: string;
   disabled?: boolean;
+  /** false until the person clicks the link in the confirmation email (accounts from sign-up). */
+  emailVerified?: boolean;
+  /** Two-step sign-in with an authenticator app. */
+  mfa?: UserMfa;
+  /** "sso": the account signs in through the company's identity provider. */
+  authSource?: "password" | "sso";
   createdAt: string;
   lastLoginAt?: string;
+}
+
+export interface UserMfa {
+  enabled: boolean;
+  /** Base32 TOTP secret (never sent to clients after setup). */
+  secret?: string;
+  /** A secret being set up, until the first code confirms it. */
+  pendingSecret?: string;
+  /** SHA-256 of each unused recovery code. */
+  recoveryCodes: string[];
+  /** The last TOTP step used, so a code cannot be used twice. */
+  lastStep?: number;
+}
+
+/** A password that was right, waiting for the second step (code or recovery code). */
+export interface MfaChallenge {
+  /** SHA-256 of the token given to the client. */
+  id: string;
+  userId: string;
+  attempts: number;
+  expiresAt: string;
+}
+
+/** A single-use link sent by email: confirm the address, or reset the password. */
+export interface EmailToken {
+  /** SHA-256 of the token in the link. */
+  id: string;
+  userId: string;
+  purpose: "verify" | "reset";
+  expiresAt: string;
 }
 
 export interface Session {
@@ -215,13 +251,14 @@ export interface Principal {
   kind: "user" | "token" | "open";
   /** The workspace the request acts in (the default workspace for the master token). */
   workspaceId: string;
+  /** Signed in, but may only use their own account until this is resolved. */
+  restriction?: "email_unverified" | "mfa_setup_required";
 }
 
 export interface Queue {
   id: string;
   /** The customer workspace this belongs to. */
   workspaceId: string;
-
   name: string;
   description?: string;
   /** How many times a failed item is retried before it stays failed. */
@@ -235,7 +272,6 @@ export interface QueueItem {
   id: string;
   /** The customer workspace this belongs to. */
   workspaceId: string;
-
   queueId: string;
   reference?: string;
   data: unknown;
