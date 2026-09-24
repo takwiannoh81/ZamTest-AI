@@ -4,6 +4,8 @@ import { captureStep } from "@zamtest/actions";
 import type { QueueItem } from "@zamtest/actions";
 import type { AfterStepInfo, EngineEvent } from "@zamtest/core";
 import { execute } from "./runtime.js";
+import { runRemoteRecording } from "./remote-recording.js";
+import type { RecordingProgress, RemoteRecordingRequest } from "./remote-recording.js";
 
 export interface AgentOptions {
   server: string;
@@ -36,6 +38,8 @@ const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 export class AgentConnection {
   private agentId?: string;
   private current?: { id: string; controller: AbortController };
+  /** A recording asked for in the Designer, running next to the jobs. */
+  private recordingId?: string;
   private stopped = false;
   /** Set while shutting down: the running job may finish, but no new jobs are taken. */
   private draining = false;
@@ -102,11 +106,31 @@ export class AgentConnection {
           await this.runJob(job);
           continue;
         }
+        await this.checkRecording();
       } catch (err) {
         await this.handleError(err);
       }
       await sleep(this.options.pollMs ?? 3000).catch(() => undefined);
     }
+  }
+
+  /**
+   * Starts a recording the Designer asked this PC for, if one waits. Only where a
+   * person can use the screen (Windows, or Linux with a display): not in a server container.
+   */
+  private async checkRecording(): Promise<void> {
+    const canShowWindows = process.platform === "win32" || Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+    if (this.recordingId || !canShowWindows || process.env.ZAMTEST_RECORDING === "off") return;
+    // An older server does not know recordings: nothing to do.
+    const request = await this.call<RemoteRecordingRequest>("POST", "/api/agent/recordings/next", { agentId: this.agentId }).catch(() => undefined);
+    if (!request) return;
+    this.recordingId = request.id;
+    this.log(`Recording (${request.kind}) asked for in the Designer`);
+    const report = async (progress: RecordingProgress) =>
+      (await this.call<{ stop: boolean }>("POST", `/api/agent/recordings/${request.id}/progress`, { agentId: this.agentId, ...progress })) ?? { stop: true };
+    void runRemoteRecording(request, report, this.log).finally(() => {
+      this.recordingId = undefined;
+    });
   }
 
   stop(): void {

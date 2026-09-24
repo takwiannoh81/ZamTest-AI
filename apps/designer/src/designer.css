@@ -177,3 +177,7 @@
 .context-menu li:hover { background: var(--surface-2); }
 .context-menu li.danger { color: var(--danger); }
 .context-menu li.separator { height: 1px; padding: 0; margin: 4px 0; background: var(--border); cursor: default; }
+
+/* Recording from the Designer */
+.record-btn { color: var(--danger); font-weight: 600; }
+.recorded-steps { margin: 8px 0 0; padding-inline-start: 22px; max-height: 280px; overflow: auto; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }

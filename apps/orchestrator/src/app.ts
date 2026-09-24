@@ -41,6 +41,7 @@ import { parse } from "./errors.js";
 import { apiTokenPrincipal, effectiveEnv, ENV_NAMES, environmentsOn, isIn, publishWorkflow, registerCicd } from "./cicd.js";
 import { GitRepos } from "./git.js";
 import { registerTestCases } from "./testcases.js";
+import { registerRecordings } from "./recordings.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
@@ -1816,6 +1817,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   /* ---------------------------- test cases -------------------------- */
   registerTestCases(app, { store, me, own, mine });
+
+  /* ------------------------ recording from the Designer -------------- */
+  registerRecordings(app, { store, me, own, who, agentFor });
 
   /* ---------------------- source control and CI/CD ------------------ */
   registerCicd(app, {

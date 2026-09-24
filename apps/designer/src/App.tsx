@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ActionMeta, Step, Workflow } from "@zamtest/core";
+import type { ActionMeta, Step, VariableDef, Workflow } from "@zamtest/core";
 import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
 import { api } from "./api";
 import type { Job, WorkflowDraft, WorkflowSummary } from "./api";
 import { AiGenerateModal, JsonModal, SelectorAssistModal } from "./components/AiModals";
 import { GitHistoryModal } from "./components/GitHistory";
+import { RecordModal } from "./components/RecordModal";
 import { TestCases } from "./components/TestCases";
 import { Canvas } from "./components/Canvas";
 import { Palette } from "./components/Palette";
@@ -225,7 +226,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
   const [dirty, setDirty] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
   const [status, setStatus] = useState<string>();
-  const [modal, setModal] = useState<null | "ai" | "json" | "history" | { selectorProp: string }>(null);
+  const [modal, setModal] = useState<null | "ai" | "json" | "history" | "record" | { selectorProp: string }>(null);
   // Fix with AI: the request prepared for the AI dialog (issues, or a failed run's error).
   const [fixPrompt, setFixPrompt] = useState<string>();
   // Source control: whether the workspace has a Git repository, and uses Development/Test/Production.
@@ -338,6 +339,24 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
     setSelectedId(step.id);
   };
 
+  /** Recorded steps go in at the selected place, in order; new inputs (e.g. passwords) are added. */
+  const insertRecorded = (steps: Step[], variables: VariableDef[]) => {
+    const loc = insertionPoint();
+    let next = root;
+    steps.forEach((s, i) => (next = insertStep(next, { ...loc, index: loc.index + i }, s)));
+    const names = new Set(workflow.variables.map((v) => v.name));
+    update({ ...workflow, root: next, variables: [...workflow.variables, ...variables.filter((v) => !names.has(v.name))] });
+    if (steps.length) setSelectedId(steps.at(-1)!.id);
+    setModal(null);
+    setStatus(t("record.inserted", { count: steps.length }));
+  };
+  const describeStep = (s: Step) => {
+    const meta = metas.get(s.type);
+    const name = s.label || (meta ? i18n.actionName(meta) : s.type);
+    const what = s.props.description || s.props.url || s.props.selector || s.props.path;
+    return what ? `${name}: ${String(what)}` : name;
+  };
+
   const publish = async () => {
     if (issues.length && !confirm(t("toolbar.publishConfirm", { count: issues.length }))) return;
     if (!(await save())) return;
@@ -443,6 +462,9 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
         </button>
         <button className="btn-ghost" onClick={() => void saveToPc()} title={t("files.saveToPcHint")}>
           {t("files.saveToPc")}
+        </button>
+        <button className="btn-ghost record-btn" onClick={() => setModal("record")} title={t("record.hint")}>
+          ● {t("record.button")}
         </button>
         <button className="btn-ghost ai" disabled={!aiEnabled} title={aiEnabled ? "" : t("toolbar.aiNeedsKey")} onClick={() => setModal("ai")}>
           {t("toolbar.buildWithAi")}
@@ -550,6 +572,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
           )}
         </aside>
       </div>
+      {modal === "record" && <RecordModal describe={describeStep} onInsert={insertRecorded} onClose={() => setModal(null)} />}
       {modal === "ai" && (
         <AiGenerateModal
           current={workflow}
