@@ -192,6 +192,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     "/api/auth/sso/start",
     "/api/auth/sso/callback",
     "/api/billing/webhook",
+    "/api/public/pricing",
   ]);
   // What a signed-in person may still do while their account is restricted (email not confirmed, ...).
   const RESTRICTED_ALLOWED = new Set(["/api/auth/me", "/api/auth/logout", "/api/auth/verify/resend", "/api/auth/mfa", "/api/auth/mfa/setup", "/api/auth/mfa/enable"]);
@@ -1743,6 +1744,19 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.get("/api/billing/plans", async () => {
     if (!billing) return { configured: false, included: { free: FREE_LIMITS, pro: PRO } };
     return { configured: true, prices: await billing.prices(), included: { free: FREE_LIMITS, pro: PRO } };
+  });
+
+  // Public (the website shows it): prices from Stripe and what each plan includes; nothing about customers.
+  app.get("/api/public/pricing", async (_req, reply) => {
+    reply.header("cache-control", "public, max-age=300");
+    const included = { free: FREE_LIMITS, pro: PRO };
+    if (!billing) return { configured: false, included };
+    try {
+      return { configured: true, prices: await billing.prices(), included };
+    } catch (err) {
+      app.log.warn(`Billing: prices unavailable: ${(err as Error).message}`);
+      return { configured: false, included };
+    }
   });
 
   app.post("/api/billing/checkout", async (req) => {

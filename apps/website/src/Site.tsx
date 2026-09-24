@@ -1,6 +1,7 @@
 import { LOCALES } from "@zamtest/i18n";
 import type { MessageKey } from "@zamtest/i18n";
 import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
+import { Pricing } from "./Pricing";
 
 const PORTAL_URL = import.meta.env.VITE_PORTAL_URL ?? "http://localhost:5173";
 const DESIGNER_URL = import.meta.env.VITE_DESIGNER_URL ?? "http://localhost:5174";
@@ -58,6 +59,7 @@ export function Site() {
           <nav className="nav">
             <a href="#features">{t("site.nav.features")}</a>
             <a href="#ai">{t("site.nav.ai")}</a>
+            <a href="#pricing">{t("site.nav.pricing")}</a>
             <a href="#languages">{t("site.nav.languages")}</a>
           </nav>
           <div className="header-actions">
@@ -128,6 +130,8 @@ export function Site() {
             </ol>
           </div>
         </section>
+
+        <Pricing />
 
         <section id="languages" className="section section-alt">
           <div className="wrap">

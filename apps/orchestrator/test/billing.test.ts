@@ -191,3 +191,19 @@ describe("Stripe webhooks", () => {
     expect((await webhook("invoice.created", { id: "in_1", object: "invoice" })).json()).toEqual({ received: true });
   });
 });
+
+describe("public pricing (for the website)", () => {
+  it("shows the prices and what each plan includes, without signing in", async () => {
+    await setup();
+    const res = await app.inject({ method: "GET", url: "/api/public/pricing" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      configured: true,
+      prices: { currency: "usd", builder: { month: 3000, year: 30000 }, bot: { month: 5000 } },
+      included: { free: { builders: 1, bots: 1 }, pro: { runsPerBot: 5000, aiPerBuilder: 500 } },
+    });
+    await app.close();
+    await setup(null);
+    expect((await app.inject({ method: "GET", url: "/api/public/pricing" })).json()).toMatchObject({ configured: false, included: { free: { runsPerMonth: 100 } } });
+  });
+});
