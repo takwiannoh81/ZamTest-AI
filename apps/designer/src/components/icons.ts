@@ -21,4 +21,5 @@ export const CATEGORY_COLORS: Record<string, string> = {
   PDF: "#dc2626",
   "Work Queues": "#0d9488",
   Desktop: "#4f46e5",
+  Verify: "#059669",
 };

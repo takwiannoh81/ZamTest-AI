@@ -37,15 +37,24 @@ function UserMenu() {
 
 const PORTAL_URL = import.meta.env.VITE_PORTAL_URL ?? "http://localhost:5173";
 
-function useHashId(): [string | undefined, (id?: string) => void] {
-  const read = () => /^#\/wf\/(.+)$/.exec(window.location.hash)?.[1];
-  const [id, setId] = useState(read);
+/** What the editor has open: a workflow (#/wf/<id>) or a test case (#/test/<id>). */
+export interface Opened {
+  kind: "workflow" | "test";
+  id: string;
+}
+
+function useOpened(): [Opened | undefined, (next?: Opened) => void] {
+  const read = (): Opened | undefined => {
+    const m = /^#\/(wf|test)\/(.+)$/.exec(window.location.hash);
+    return m ? { kind: m[1] === "test" ? "test" : "workflow", id: m[2]! } : undefined;
+  };
+  const [opened, setOpened] = useState(read);
   useEffect(() => {
-    const on = () => setId(read());
+    const on = () => setOpened(read());
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
   }, []);
-  return [id, (next) => (window.location.hash = next ? `/wf/${next}` : "/")];
+  return [opened, (next) => (window.location.hash = next ? `/${next.kind === "test" ? "test" : "wf"}/${next.id}` : "/")];
 }
 
 export function App() {
@@ -53,7 +62,7 @@ export function App() {
   const [catalog, setCatalog] = useState<ActionMeta[]>([]);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [error, setError] = useState<string>();
-  const [workflowId, openWorkflow] = useHashId();
+  const [opened, open] = useOpened();
 
   useEffect(() => {
     api<ActionMeta[]>("/api/actions").then(setCatalog).catch((e: Error) => setError(t("designer.cannotReach", { error: e.message })));
@@ -68,11 +77,20 @@ export function App() {
       </div>
     );
   }
-  if (!workflowId) return <StartScreen onOpen={openWorkflow} />;
-  return <Editor key={workflowId} id={workflowId} catalog={catalog} aiEnabled={aiEnabled} onExit={() => openWorkflow(undefined)} />;
+  if (!opened) return <StartScreen onOpen={(id) => open({ kind: "workflow", id })} onOpenTest={(id) => open({ kind: "test", id })} />;
+  return (
+    <Editor
+      key={`${opened.kind}:${opened.id}`}
+      id={opened.id}
+      kind={opened.kind}
+      catalog={catalog}
+      aiEnabled={aiEnabled}
+      onExit={() => (opened.kind === "test" ? (window.location.hash = "/tests") : open(undefined))}
+    />
+  );
 }
 
-function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
+function StartScreen({ onOpen, onOpenTest }: { onOpen: (id: string) => void; onOpenTest: (id: string) => void }) {
   const { t, dateTime } = useI18n();
   const [list, setList] = useState<WorkflowSummary[]>();
   const [tab, setTab] = useState<"workflows" | "tests">(() => (window.location.hash === "#/tests" ? "tests" : "workflows"));
@@ -174,7 +192,7 @@ function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
         </button>
       </div>
       {tab === "tests" ? (
-        <TestCases workflows={list ?? []} />
+        <TestCases workflows={list ?? []} onOpen={onOpenTest} />
       ) : list?.length ? (
         <div className="wf-grid">
           {list.map((w) => (
@@ -195,7 +213,10 @@ function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
   );
 }
 
-function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: ActionMeta[]; aiEnabled: boolean; onExit: () => void }) {
+function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Opened["kind"]; catalog: ActionMeta[]; aiEnabled: boolean; onExit: () => void }) {
+  const isTest = kind === "test";
+  /** Where this workflow or test case lives on the server. */
+  const endpoint = isTest ? `/api/test-cases/${id}` : `/api/workflows/${id}`;
   const i18n = useI18n();
   const { t } = i18n;
   const metas = useMemo(() => new Map(catalog.map((m) => [m.type, m])), [catalog]);
@@ -219,10 +240,10 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
   const [showIssues, setShowIssues] = useState(false);
 
   useEffect(() => {
-    api<WorkflowDraft>(`/api/workflows/${id}`)
+    api<WorkflowDraft>(endpoint)
       .then((d) => setWorkflow(d.definition))
       .catch((e: Error) => setStatus(e.message));
-  }, [id]);
+  }, [endpoint]);
 
   const update = (next: Workflow) => {
     if (workflow) setHistory((h) => ({ past: [...h.past.slice(-99), workflow], future: [] }));
@@ -249,7 +270,10 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
   const save = useCallback(async () => {
     if (!workflow) return false;
     try {
-      await api(`/api/workflows/${id}`, { method: "PUT", body: { name: workflow.name, description: workflow.description ?? "", definition: workflow } });
+      await api(endpoint, {
+        method: "PUT",
+        body: isTest ? { name: workflow.name, definition: workflow } : { name: workflow.name, description: workflow.description ?? "", definition: workflow },
+      });
       setDirty(false);
       setStatus(t("toolbar.saved", { time: i18n.time(Date.now()) }));
       return true;
@@ -341,6 +365,14 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
   const testRun = async () => {
     await save();
     try {
+      if (isTest) {
+        // A test case runs as a test run, so its result shows in the Test cases tab too.
+        const testRunResult = await api<{ items: Array<{ jobId?: string; message?: string }> }>("/api/test-runs", { method: "POST", body: { caseIds: [id] } });
+        const item = testRunResult.items[0];
+        if (!item?.jobId) throw new Error(item?.message ?? "Not started");
+        setRun({ jobId: item.jobId });
+        return;
+      }
       const job = await api<Job>("/api/jobs", { method: "POST", body: { definition: workflow, source: "designer" } });
       setRun({ jobId: job.id });
     } catch (e) {
@@ -354,9 +386,9 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
   };
 
   const deleteWorkflow = async () => {
-    if (!confirm(t("designer.confirmDeleteWorkflow", { name: workflow.name }))) return;
+    if (!confirm(isTest ? t("tests.confirmDeleteCase", { name: workflow.name }) : t("designer.confirmDeleteWorkflow", { name: workflow.name }))) return;
     try {
-      await api(`/api/workflows/${id}`, { method: "DELETE" });
+      await api(endpoint, { method: "DELETE" });
       setDirty(false);
       onExit();
     } catch (e) {
@@ -392,6 +424,7 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
           <span className="flip-rtl">←</span>
         </button>
         <span className="logo small">Z</span>
+        {isTest && <span className="kind-badge">{t("tests.badge")}</span>}
         <input className="wf-name" value={workflow.name} onChange={(e) => update({ ...workflow, name: e.target.value })} />
         {dirty && <span className="dirty" title={t("toolbar.unsaved")}>●</span>}
         <span className="muted tiny status">{status}</span>
@@ -420,7 +453,7 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
         <button className="btn-ghost" onClick={() => void testRun()}>
           {t("toolbar.run")}
         </button>
-        {gitConnected && (
+        {gitConnected && !isTest && (
           <>
             <button className="btn-ghost" onClick={() => setModal("history")}>
               {t("git.history")}
@@ -430,10 +463,17 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
             </button>
           </>
         )}
-        <button className="btn" onClick={() => void publish()}>
-          {t("toolbar.publish")}
-        </button>
-        <button className="icon-btn danger" title={t("designer.deleteWorkflow")} aria-label={t("designer.deleteWorkflow")} onClick={() => void deleteWorkflow()}>
+        {!isTest && (
+          <button className="btn" onClick={() => void publish()}>
+            {t("toolbar.publish")}
+          </button>
+        )}
+        <button
+          className="icon-btn danger"
+          title={isTest ? t("tests.deleteCase") : t("designer.deleteWorkflow")}
+          aria-label={isTest ? t("tests.deleteCase") : t("designer.deleteWorkflow")}
+          onClick={() => void deleteWorkflow()}
+        >
           🗑
         </button>
         <LanguageSelect className="lang-select" />

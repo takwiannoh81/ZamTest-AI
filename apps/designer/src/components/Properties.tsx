@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
 import { useI18n } from "@zamtest/i18n/react";
 import type { ActionMeta, PropDef, Step, VariableDef, Workflow } from "@zamtest/core";
+import { api } from "../api";
+import type { WorkflowSummary } from "../api";
 import { Field } from "./ui";
 
 interface Props {
@@ -9,6 +12,26 @@ interface Props {
   aiEnabled: boolean;
   onChange: (step: Step) => void;
   onSelectorAssist: (propName: string) => void;
+}
+
+/** The workspace's workflows, for "Call Workflow". */
+function WorkflowSelect({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const { t } = useI18n();
+  const [workflows, setWorkflows] = useState<WorkflowSummary[]>();
+  useEffect(() => {
+    api<WorkflowSummary[]>("/api/workflows").then(setWorkflows).catch(() => setWorkflows([]));
+  }, []);
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{t("props.chooseWorkflow")}</option>
+      {workflows?.map((w) => (
+        <option key={w.id} value={w.id}>
+          {w.name}
+        </option>
+      ))}
+      {value && workflows && !workflows.some((w) => w.id === value) && <option value={value}>{t("tests.missingWorkflow")}</option>}
+    </select>
+  );
 }
 
 function PropInput({ def, value, variables, onChange }: { def: PropDef; value: unknown; variables: VariableDef[]; onChange: (v: unknown) => void }) {
@@ -51,6 +74,8 @@ function PropInput({ def, value, variables, onChange }: { def: PropDef; value: u
       return <JsonInput value={value} onChange={onChange} />;
     case "expression":
       return <input className="mono" value={String(value ?? "")} placeholder={placeholder || t("props.expressionPlaceholder")} onChange={(e) => onChange(e.target.value || undefined)} />;
+    case "workflow":
+      return <WorkflowSelect value={typeof value === "string" ? value : ""} onChange={(id) => onChange(id || undefined)} />;
     case "secret":
       return <input type="password" value={String(value ?? "")} onChange={(e) => onChange(e.target.value || undefined)} />;
     default:

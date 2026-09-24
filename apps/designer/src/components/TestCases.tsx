@@ -18,8 +18,11 @@ interface TestCase {
   id: string;
   name: string;
   folderId?: string;
-  workflowId: string;
+  /** Older test cases run a workflow; new ones have their own steps. */
+  workflowId?: string;
   workflowName?: string;
+  /** How many steps a test case with its own steps has. */
+  steps?: number;
   inputs: Record<string, unknown>;
   expectedOutputs?: Record<string, unknown>;
   targetAgentId?: string;
@@ -60,7 +63,7 @@ const parseValue = (text: string): unknown => {
 const showValue = (value: unknown) => (value === undefined ? "" : typeof value === "string" ? value : JSON.stringify(value));
 
 /** Folders of test cases (right-click for actions), a test case's settings, and test runs. */
-export function TestCases({ workflows }: { workflows: WorkflowSummary[] }) {
+export function TestCases({ workflows, onOpen }: { workflows: WorkflowSummary[]; onOpen: (testCaseId: string) => void }) {
   const { t, dateTime } = useI18n();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [cases, setCases] = useState<TestCase[]>([]);
@@ -122,12 +125,11 @@ export function TestCases({ workflows }: { workflows: WorkflowSummary[] }) {
     });
   const newCase = (folderId?: string) =>
     act(async () => {
-      if (!workflows.length) throw new Error(t("tests.needWorkflow"));
       const name = prompt(t("tests.caseName"));
       if (!name?.trim()) return;
-      const created = await api<TestCase>("/api/test-cases", { method: "POST", body: { name: name.trim(), folderId, workflowId: workflows[0]!.id } });
-      if (folderId) setOpen((o) => new Set(o).add(folderId));
-      setSelected({ kind: "case", id: created.id });
+      // A new test case starts empty and opens in the editor.
+      const created = await api<TestCase>("/api/test-cases", { method: "POST", body: { name: name.trim(), folderId } });
+      onOpen(created.id);
     });
   const rename = (target: Selection) =>
     act(async () => {
@@ -209,6 +211,7 @@ export function TestCases({ workflows }: { workflows: WorkflowSummary[] }) {
               className={`tree-row${isSelected(target) ? " selected" : ""}`}
               style={{ paddingInlineStart: 26 + depth * 16 }}
               onClick={() => setSelected(target)}
+              onDoubleClick={() => !c.workflowId && onOpen(c.id)}
               onContextMenu={(e) => openMenu(e, target)}
             >
               <span className={`test-dot status-${c.last?.status ?? "none"}`} title={c.last ? t(`tests.status.${c.last.status}` as MessageKey) : t("tests.neverRun")} />
@@ -255,7 +258,9 @@ export function TestCases({ workflows }: { workflows: WorkflowSummary[] }) {
           {!folders.length && !cases.length && <p className="muted tiny tree-empty">{t("tests.empty")}</p>}
         </nav>
         <section className="tests-detail">
-          {selectedCase ? (
+          {selectedCase && !selectedCase.workflowId ? (
+            <CaseSummary testCase={selectedCase} onOpen={() => onOpen(selectedCase.id)} onRun={() => void run({ kind: "case", id: selectedCase.id })} />
+          ) : selectedCase ? (
             <CaseEditor key={selectedCase.id} testCase={selectedCase} workflows={workflows} onSaved={load} onRun={() => void run({ kind: "case", id: selectedCase.id })} />
           ) : (
             <RunList runs={scopeRuns} dateTime={dateTime} />
@@ -270,6 +275,9 @@ export function TestCases({ workflows }: { workflows: WorkflowSummary[] }) {
               <MenuItem label={t("tests.newCase")} onClick={() => { setMenu(undefined); void newCase(folderIdOf(menu.target)); }} />
               <li className="separator" />
             </>
+          )}
+          {menu.target.kind === "case" && !cases.find((c) => c.id === (menu.target as { id: string }).id)?.workflowId && (
+            <MenuItem label={t("tests.open")} onClick={() => { setMenu(undefined); onOpen((menu.target as { id: string }).id); }} />
           )}
           <MenuItem
             label={menu.target.kind === "root" ? t("tests.runAll") : menu.target.kind === "folder" ? t("tests.runFolder") : t("tests.run")}
@@ -297,6 +305,38 @@ function pathOf(folders: Folder[], id: string): string {
     current = f.parentId;
   }
   return names.join(" / ");
+}
+
+/** A test case with its own steps: its last result, and Open (in the editor) / Run. */
+function CaseSummary({ testCase, onOpen, onRun }: { testCase: TestCase; onOpen: () => void; onRun: () => void }) {
+  const { t, dateTime } = useI18n();
+  return (
+    <div className="case-editor">
+      <div className="case-head">
+        <h2>{testCase.name}</h2>
+        <span className="spacer" />
+        <button className="btn-ghost" onClick={onOpen}>
+          {t("tests.open")}
+        </button>
+        <button className="btn" onClick={onRun}>
+          ▷ {t("tests.run")}
+        </button>
+      </div>
+      <p className="muted">{t("tests.stepCount", { count: testCase.steps ?? 0 })}</p>
+      {testCase.last ? (
+        <p className={`case-last status-${testCase.last.status}`}>
+          {STATUS_ICON[testCase.last.status]} {t(`tests.status.${testCase.last.status}` as MessageKey)} · {dateTime(testCase.last.at)}
+          {testCase.last.message && <span className="muted"> · {testCase.last.message}</span>}{" "}
+          <a href={jobLink(testCase.last.jobId)} target="_blank" rel="noreferrer">
+            {t("tests.viewJob")}
+          </a>
+        </p>
+      ) : (
+        <p className="muted">{t("tests.neverRun")}</p>
+      )}
+      <p className="muted small">{t("tests.howTo")}</p>
+    </div>
+  );
 }
 
 function MenuItem({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
