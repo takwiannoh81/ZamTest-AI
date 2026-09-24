@@ -142,6 +142,8 @@ export const nl: LocaleMessages = {
     "agents.downloadWindows": "⬇ Downloaden voor Windows",
     "agents.installHint": "Installeer de agent op elke Windows-pc die automatiseringen moet uitvoeren. Keur de pc hier in het Portaal goed zodra de installatie klaar is. Er is geen sleutel nodig.",
     "agents.fromSource": "Op Linux of macOS, of vanuit de broncode:",
+    "agents.otherOsTitle": "macOS en Linux (webautomatiseringen, voor ontwikkelaars)",
+    "agents.otherOsHelp": "Op een Mac of Linux-machine voert de agent webautomatiseringen (browsers) uit. Desktopacties hebben een Windows-pc nodig. Er is nog geen installatieprogramma: installeer Node.js 20 of nieuwer en pnpm en voer dan deze opdrachten uit in een terminal. De eerste opent dit Portaal om de machine goed te keuren; de laatste voert taken uit zolang de terminal open blijft.",
     "auth.forgot": "Wachtwoord vergeten?",
     "auth.forgotTitle": "Wachtwoord opnieuw instellen",
     "auth.forgotHelp": "Voer uw e-mailadres in; we sturen u een link om een nieuw wachtwoord te kiezen.",

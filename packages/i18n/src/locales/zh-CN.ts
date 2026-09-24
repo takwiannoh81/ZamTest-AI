@@ -142,6 +142,8 @@ export const zhCN: LocaleMessages = {
     "agents.downloadWindows": "⬇ 下载 Windows 版",
     "agents.installHint": "在每台需要运行自动化的 Windows 电脑上安装代理。安装完成后，在门户中批准这台电脑即可，无需任何密钥。",
     "agents.fromSource": "在 Linux 或 macOS 上，或从源代码运行：",
+    "agents.otherOsTitle": "macOS 和 Linux（网页自动化，面向开发者）",
+    "agents.otherOsHelp": "在 Mac 或 Linux 上，代理可运行网页自动化（浏览器）。桌面操作需要 Windows 电脑。目前还没有安装程序：请安装 Node.js 20 或更高版本和 pnpm，然后在终端中运行以下命令。第一条命令会打开此门户以批准该机器；最后一条命令会在终端保持打开时运行作业。",
     "auth.forgot": "忘记密码？",
     "auth.forgotTitle": "重置密码",
     "auth.forgotHelp": "输入你的邮箱，我们会发送一个用于设置新密码的链接。",

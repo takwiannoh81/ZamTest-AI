@@ -153,6 +153,8 @@ export const en = {
   "agents.downloadWindows": "⬇ Download for Windows",
   "agents.installHint": "Install the agent on each Windows PC that should run automations. When setup finishes, approve the PC here in the Portal. No key is needed.",
   "agents.fromSource": "On Linux or macOS, or from source code:",
+  "agents.otherOsTitle": "macOS and Linux (web automations, for developers)",
+  "agents.otherOsHelp": "On a Mac or Linux machine the agent runs web automations (browsers). Desktop actions need a Windows PC. There is no installer yet: install Node.js 20 or newer and pnpm, then run these commands in a terminal. The first one opens this Portal to approve the machine; the last one runs jobs while the terminal stays open.",
   "auth.forgot": "Forgot password?",
   "auth.forgotTitle": "Reset your password",
   "auth.forgotHelp": "Enter your email and we will send you a link to choose a new password.",

@@ -142,6 +142,8 @@ export const es: LocaleMessages = {
     "agents.downloadWindows": "⬇ Descargar para Windows",
     "agents.installHint": "Instale el agente en cada PC con Windows que deba ejecutar automatizaciones. Cuando termine la instalación, apruebe el PC aquí en el Portal. No se necesita ninguna clave.",
     "agents.fromSource": "En Linux o macOS, o desde el código fuente:",
+    "agents.otherOsTitle": "macOS y Linux (automatizaciones web, para desarrolladores)",
+    "agents.otherOsHelp": "En un Mac o un equipo Linux, el agente ejecuta automatizaciones web (navegadores). Las acciones de escritorio necesitan un PC con Windows. Aún no hay instalador: instale Node.js 20 o posterior y pnpm, y ejecute estos comandos en una terminal. El primero abre este Portal para aprobar el equipo; el último ejecuta trabajos mientras la terminal siga abierta.",
     "auth.forgot": "¿Olvidó su contraseña?",
     "auth.forgotTitle": "Restablecer la contraseña",
     "auth.forgotHelp": "Introduzca su correo y le enviaremos un enlace para elegir una nueva contraseña.",

@@ -104,11 +104,17 @@ export function Agents() {
               {t("agents.downloadWindows")}
             </a>
           </p>
-          <p className="muted">{t("agents.fromSource")}</p>
-          <pre>
-            pnpm --filter @zamtest/agent exec tsx src/cli.ts enroll --server {AGENT_SERVER_URL} --config agent.json{"\n"}
-            pnpm --filter @zamtest/agent exec tsx src/cli.ts connect --config agent.json
-          </pre>
+          <details className="other-os">
+            <summary>{t("agents.otherOsTitle")}</summary>
+            <p className="muted">{t("agents.otherOsHelp")}</p>
+            <pre>
+              git clone -b claude/low-code-automation-platform-13z01c https://github.com/takwiannoh81/ZamTest-AI.git{"\n"}
+              cd ZamTest-AI && pnpm install{"\n"}
+              pnpm --filter @zamtest/agent exec playwright install chromium{"\n"}
+              pnpm --filter @zamtest/agent exec tsx src/cli.ts enroll --server {AGENT_SERVER_URL} --config agent.json{"\n"}
+              pnpm --filter @zamtest/agent exec tsx src/cli.ts connect --config agent.json
+            </pre>
+          </details>
         </Empty>
       )}
       {atLeast(me, "admin") && <InstallKeys />}

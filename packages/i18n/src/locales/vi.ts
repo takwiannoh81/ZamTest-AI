@@ -142,6 +142,8 @@ export const vi: LocaleMessages = {
     "agents.downloadWindows": "⬇ Tải xuống cho Windows",
     "agents.installHint": "Cài agent trên mỗi máy tính Windows cần chạy tự động hóa. Khi cài đặt xong, hãy phê duyệt máy tại đây trong Portal. Không cần khóa.",
     "agents.fromSource": "Trên Linux hoặc macOS, hoặc từ mã nguồn:",
+    "agents.otherOsTitle": "macOS và Linux (tự động hóa web, dành cho nhà phát triển)",
+    "agents.otherOsHelp": "Trên máy Mac hoặc Linux, tác tử chạy tự động hóa web (trình duyệt). Thao tác trên máy tính để bàn cần PC Windows. Hiện chưa có trình cài đặt: hãy cài Node.js 20 trở lên và pnpm, rồi chạy các lệnh này trong terminal. Lệnh đầu tiên mở Cổng này để phê duyệt máy; lệnh cuối cùng chạy tác vụ khi terminal còn mở.",
     "auth.forgot": "Quên mật khẩu?",
     "auth.forgotTitle": "Đặt lại mật khẩu",
     "auth.forgotHelp": "Nhập email của bạn, chúng tôi sẽ gửi liên kết để đặt mật khẩu mới.",

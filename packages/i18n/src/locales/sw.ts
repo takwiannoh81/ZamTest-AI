@@ -142,6 +142,8 @@ export const sw: LocaleMessages = {
     "agents.downloadWindows": "⬇ Pakua kwa Windows",
     "agents.installHint": "Sakinisha wakala kwenye kila kompyuta ya Windows itakayoendesha otomatiki. Usakinishaji ukimalizika, idhinisha kompyuta hapa kwenye Portal. Hakuna ufunguo unaohitajika.",
     "agents.fromSource": "Kwenye Linux au macOS, au kutoka msimbo chanzo:",
+    "agents.otherOsTitle": "macOS na Linux (uendeshaji otomatiki wa wavuti, kwa wasanidi)",
+    "agents.otherOsHelp": "Kwenye Mac au mashine ya Linux, wakala huendesha uendeshaji otomatiki wa wavuti (vivinjari). Vitendo vya eneo-kazi vinahitaji kompyuta ya Windows. Bado hakuna kisakinishi: sakinisha Node.js 20 au mpya zaidi na pnpm, kisha endesha amri hizi kwenye terminal. Ya kwanza hufungua Lango hili ili kuidhinisha mashine; ya mwisho huendesha kazi wakati terminal iko wazi.",
     "auth.forgot": "Umesahau nenosiri?",
     "auth.forgotTitle": "Weka upya nenosiri lako",
     "auth.forgotHelp": "Weka barua pepe yako na tutakutumia kiungo cha kuchagua nenosiri jipya.",

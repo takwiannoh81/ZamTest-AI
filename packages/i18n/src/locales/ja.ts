@@ -142,6 +142,8 @@ export const ja: LocaleMessages = {
     "agents.downloadWindows": "⬇ Windows 版をダウンロード",
     "agents.installHint": "自動化を実行する各 Windows PC にエージェントをインストールします。セットアップが終わったら、このポータルで PC を承認してください。キーは不要です。",
     "agents.fromSource": "Linux または macOS、あるいはソースコードから:",
+    "agents.otherOsTitle": "macOS と Linux (Web 自動化、開発者向け)",
+    "agents.otherOsHelp": "Mac や Linux では、エージェントは Web 自動化 (ブラウザー) を実行します。デスクトップ操作には Windows PC が必要です。インストーラーはまだありません。Node.js 20 以降と pnpm をインストールし、ターミナルで次のコマンドを実行してください。最初のコマンドでこのポータルが開き、マシンを承認します。最後のコマンドは、ターミナルを開いている間ジョブを実行します。",
     "auth.forgot": "パスワードをお忘れですか？",
     "auth.forgotTitle": "パスワードをリセット",
     "auth.forgotHelp": "メールアドレスを入力すると、新しいパスワードを設定するリンクをお送りします。",

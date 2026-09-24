@@ -142,6 +142,8 @@ export const de: LocaleMessages = {
     "agents.downloadWindows": "⬇ Für Windows herunterladen",
     "agents.installHint": "Installieren Sie den Agent auf jedem Windows-PC, der Automatisierungen ausführen soll. Wenn das Setup fertig ist, geben Sie den PC hier im Portal frei. Ein Schlüssel ist nicht nötig.",
     "agents.fromSource": "Unter Linux oder macOS oder aus dem Quellcode:",
+    "agents.otherOsTitle": "macOS und Linux (Web-Automatisierungen, für Entwickler)",
+    "agents.otherOsHelp": "Auf einem Mac oder Linux-Rechner führt der Agent Web-Automatisierungen (Browser) aus. Desktop-Aktionen brauchen einen Windows-PC. Einen Installer gibt es noch nicht: Installieren Sie Node.js 20 oder neuer und pnpm und führen Sie dann diese Befehle in einem Terminal aus. Der erste öffnet dieses Portal zur Freigabe des Rechners; der letzte führt Jobs aus, solange das Terminal geöffnet bleibt.",
     "auth.forgot": "Passwort vergessen?",
     "auth.forgotTitle": "Passwort zurücksetzen",
     "auth.forgotHelp": "Geben Sie Ihre E-Mail-Adresse ein. Wir senden Ihnen einen Link, um ein neues Passwort festzulegen.",
