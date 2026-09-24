@@ -1,13 +1,14 @@
-import { HttpError } from "./jobs.js";
+import { HttpError } from "./errors.js";
 import { newId, nowIso } from "./store.js";
 import type { Store } from "./store.js";
 import type { Queue, QueueItem, QueueItemStatus } from "./types.js";
 
 export const FINAL_ITEM_STATUSES: QueueItemStatus[] = ["successful", "failed", "business-exception"];
 
-export function findQueue(store: Store, nameOrId: string): Queue {
-  const queue =
-    store.data.queues[nameOrId] ?? Object.values(store.data.queues).find((q) => q.name.toLowerCase() === nameOrId.toLowerCase());
+/** A queue of the workspace, by id or (case-insensitive) name. */
+export function findQueue(store: Store, nameOrId: string, workspaceId: string): Queue {
+  const mine = Object.values(store.data.queues).filter((q) => q.workspaceId === workspaceId);
+  const queue = mine.find((q) => q.id === nameOrId) ?? mine.find((q) => q.name.toLowerCase() === nameOrId.toLowerCase());
   if (!queue) throw new HttpError(404, `Queue "${nameOrId}" not found. Create it in the Portal under Queues.`);
   return queue;
 }
@@ -19,6 +20,7 @@ export function addItem(store: Store, queue: Queue, data: unknown, reference?: s
   }
   const item: QueueItem = {
     id: newId("qi"),
+    workspaceId: queue.workspaceId,
     queueId: queue.id,
     reference: reference || undefined,
     data,

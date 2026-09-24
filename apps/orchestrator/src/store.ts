@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Agent, Asset, Enrollment, InstallKey, Job, JobLog, Package, Queue, QueueItem, Schedule, Session, User, WorkflowDraft } from "./types.js";
+import type { Agent, Asset, Enrollment, InstallKey, Job, JobLog, Package, Queue, QueueItem, Schedule, Session, User, WorkflowDraft, Workspace } from "./types.js";
+import { DEFAULT_WORKSPACE } from "./types.js";
 
 export interface Data {
+  workspaces: Record<string, Workspace>;
   workflows: Record<string, WorkflowDraft>;
   packages: Record<string, Package>;
   agents: Record<string, Agent>;
@@ -16,11 +18,14 @@ export interface Data {
   queueItems: Record<string, QueueItem>;
   enrollments: Record<string, Enrollment>;
   installKeys: Record<string, InstallKey>;
+  /** Runs and AI requests per workspace and month, keyed "<workspaceId>:<YYYY-MM>". */
+  usage: Record<string, { runs: number; ai: number }>;
 }
 
 const MAX_LOGS_PER_JOB = 5000;
 
 const empty = (): Data => ({
+  workspaces: {},
   workflows: {},
   packages: {},
   agents: {},
@@ -34,6 +39,7 @@ const empty = (): Data => ({
   queueItems: {},
   enrollments: {},
   installKeys: {},
+  usage: {},
 });
 
 /**
@@ -53,6 +59,24 @@ export class Store {
       this.data = { ...empty(), ...(JSON.parse(readFileSync(this.file, "utf8")) as Partial<Data>) };
     } else if (dataDir) {
       mkdirSync(dataDir, { recursive: true });
+    }
+    this.migrate();
+  }
+
+  /**
+   * Data from before workspaces (and anything created without one) belongs to
+   * the default workspace: the platform owner's own.
+   */
+  private migrate(): void {
+    // The platform owner's own workspace has no limits.
+    this.data.workspaces[DEFAULT_WORKSPACE] ??= { id: DEFAULT_WORKSPACE, name: "Default workspace", createdAt: nowIso(), plan: "enterprise" };
+    for (const workspace of Object.values(this.data.workspaces)) workspace.plan ??= "free";
+    const owned = [
+      this.data.workflows, this.data.packages, this.data.agents, this.data.jobs, this.data.schedules, this.data.assets,
+      this.data.users, this.data.queues, this.data.queueItems, this.data.installKeys,
+    ] as Array<Record<string, { workspaceId?: string }>>;
+    for (const collection of owned) {
+      for (const record of Object.values(collection)) record.workspaceId ??= DEFAULT_WORKSPACE;
     }
   }
 

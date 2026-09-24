@@ -1,7 +1,41 @@
 import type { Workflow } from "@zamtest/core";
 
+/** The workspace everything lived in before workspaces existed: the platform owner's own. */
+export const DEFAULT_WORKSPACE = "ws_default";
+
+/**
+ * One customer (company): its users, workflows, bots, assets, jobs and
+ * schedules are only visible inside it.
+ */
+export interface Workspace {
+  id: string;
+  name: string;
+  createdAt: string;
+  /** See plans.ts. */
+  plan: "free" | "pro" | "enterprise";
+  /** Pro: seats bought (kept in step with the Stripe subscription). */
+  seats?: { builders: number; bots: number };
+  /** Enterprise: limits agreed with the customer (unset = unlimited). */
+  customLimits?: Partial<import("./plans.js").Limits>;
+  billing?: WorkspaceBilling;
+}
+
+/** The workspace's Stripe customer and subscription, as last reported by Stripe. */
+export interface WorkspaceBilling {
+  customerId?: string;
+  subscriptionId?: string;
+  /** Stripe subscription status: active, trialing, past_due, canceled, unpaid, incomplete, ... */
+  status?: string;
+  interval?: "month" | "year";
+  currentPeriodEnd?: string;
+  cancelAtPeriodEnd?: boolean;
+}
+
 export interface WorkflowDraft {
   id: string;
+  /** The customer workspace this belongs to. */
+  workspaceId: string;
+
   name: string;
   description?: string;
   definition: Workflow;
@@ -12,6 +46,9 @@ export interface WorkflowDraft {
 /** An immutable, versioned snapshot of a workflow that can be run by agents ("process"). */
 export interface Package {
   id: string;
+  /** The customer workspace this belongs to. */
+  workspaceId: string;
+
   workflowId: string;
   name: string;
   version: number;
@@ -25,6 +62,9 @@ export type AgentStatus = "online" | "busy" | "offline";
 
 export interface Agent {
   id: string;
+  /** The customer workspace this belongs to. */
+  workspaceId: string;
+
   name: string;
   machine: string;
   os: string;
@@ -51,6 +91,8 @@ export interface Enrollment {
   version: string;
   status: "pending" | "approved" | "denied";
   approvedBy?: string;
+  /** Set when approved: the approver's workspace. */
+  workspaceId?: string;
   createdAt: string;
   expiresAt: string;
 }
@@ -58,6 +100,9 @@ export interface Enrollment {
 /** Lets IT install agents silently: a PC that presents this key is approved without a browser. */
 export interface InstallKey {
   id: string;
+  /** The customer workspace this belongs to. */
+  workspaceId: string;
+
   name: string;
   /** SHA-256 of the key; the key itself is shown once, when it is created. */
   keyHash: string;
@@ -73,6 +118,9 @@ export const FINAL_JOB_STATUSES: JobStatus[] = ["succeeded", "failed", "cancelle
 
 export interface Job {
   id: string;
+  /** The customer workspace this belongs to. */
+  workspaceId: string;
+
   name: string;
   packageId?: string;
   packageVersion?: number;
@@ -104,6 +152,8 @@ export interface JobLog {
 
 export interface Schedule {
   id: string;
+  /** The customer workspace this belongs to. */
+  workspaceId: string;
   name: string;
   packageId: string;
   cron: string;
@@ -119,6 +169,8 @@ export type AssetType = "text" | "number" | "boolean" | "credential";
 
 export interface Asset {
   id: string;
+  /** The customer workspace this belongs to. */
+  workspaceId: string;
   name: string;
   type: AssetType;
   /** For credentials: { username, password }. */
@@ -132,6 +184,9 @@ export const ROLES: Role[] = ["viewer", "operator", "developer", "admin"];
 
 export interface User {
   id: string;
+  /** The customer workspace this belongs to. */
+  workspaceId: string;
+
   email: string;
   name: string;
   role: Role;
@@ -158,10 +213,15 @@ export interface Principal {
   email: string;
   role: Role;
   kind: "user" | "token" | "open";
+  /** The workspace the request acts in (the default workspace for the master token). */
+  workspaceId: string;
 }
 
 export interface Queue {
   id: string;
+  /** The customer workspace this belongs to. */
+  workspaceId: string;
+
   name: string;
   description?: string;
   /** How many times a failed item is retried before it stays failed. */
@@ -173,6 +233,9 @@ export type QueueItemStatus = "new" | "in-progress" | "successful" | "failed" | 
 
 export interface QueueItem {
   id: string;
+  /** The customer workspace this belongs to. */
+  workspaceId: string;
+
   queueId: string;
   reference?: string;
   data: unknown;

@@ -3,19 +3,16 @@ import type { OrchestratorConfig } from "./config.js";
 import { newId, nowIso } from "./store.js";
 import type { Store } from "./store.js";
 import { releaseJobItems } from "./queues.js";
+import { HttpError } from "./errors.js";
+import { useRun } from "./plans.js";
 import type { Job } from "./types.js";
 import { FINAL_JOB_STATUSES } from "./types.js";
 
-export class HttpError extends Error {
-  constructor(
-    public readonly statusCode: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export { HttpError };
 
 export interface CreateJobInput {
+  /** The workspace the job runs in; its process and target agent must belong to it. */
+  workspaceId: string;
   packageId?: string;
   definition?: Workflow;
   inputs?: Record<string, unknown>;
@@ -31,17 +28,20 @@ export function createJob(store: Store, input: CreateJobInput): Job {
   let version: number | undefined;
   if (input.packageId) {
     const pkg = store.data.packages[input.packageId];
-    if (!pkg) throw new HttpError(404, `Package ${input.packageId} not found`);
+    if (!pkg || pkg.workspaceId !== input.workspaceId) throw new HttpError(404, `Package ${input.packageId} not found`);
     definition = pkg.definition;
     name = pkg.name;
     version = pkg.version;
   }
   if (!definition) throw new HttpError(400, "Either packageId or definition is required");
-  if (input.targetAgentId && !store.data.agents[input.targetAgentId]) {
+  if (input.targetAgentId && store.data.agents[input.targetAgentId]?.workspaceId !== input.workspaceId) {
     throw new HttpError(404, `Agent ${input.targetAgentId} not found`);
   }
+  // Counts against the plan's monthly runs (402 when they are used up).
+  useRun(store, input.workspaceId);
   const job: Job = {
     id: newId("job"),
+    workspaceId: input.workspaceId,
     name,
     packageId: input.packageId,
     packageVersion: version,

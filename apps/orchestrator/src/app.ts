@@ -33,10 +33,11 @@ import type { BackupService } from "./backup.js";
 import type { OrchestratorConfig } from "./config.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
+import { checkBots, checkBuilders, checkFeature, currentUsage, isBuilder, limitsOf, PlanLimitError, useAi } from "./plans.js";
 import { Scheduler, validateCron } from "./scheduler.js";
 import { newId, nowIso, Store } from "./store.js";
-import type { Agent, Asset, Enrollment, InstallKey, Job, Package, Principal, Queue, QueueItem, Schedule, User, WorkflowDraft } from "./types.js";
-import { ROLES } from "./types.js";
+import type { Agent, Asset, Enrollment, InstallKey, Job, Package, Principal, Queue, QueueItem, Schedule, User, WorkflowDraft, Workspace } from "./types.js";
+import { DEFAULT_WORKSPACE, ROLES } from "./types.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -122,6 +123,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   await app.register(cors, { origin: config.corsOrigins, credentials: true });
 
   app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
+    if (err instanceof PlanLimitError) return reply.status(402).send({ error: err.message, code: "plan_limit", limit: err.limit });
     if (err instanceof HttpError) {
       return reply.status(err.statusCode).send({ error: err.message, ...(err.statusCode === 403 ? { code: "forbidden" } : {}) });
     }
@@ -159,7 +161,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       if (!config.agentKey || !safeEqual(key, config.agentKey)) return reply.status(401).send({ error: "Invalid agent key" });
       return;
     }
-    if (url === "/api/auth/login" || url === "/api/auth/token") return;
+    if (url === "/api/auth/login" || url === "/api/auth/token" || url === "/api/auth/signup" || url === "/api/auth/config") return;
     const cookieToken = req.headers.authorization ? undefined : readCookie(req.headers.cookie, SESSION_COOKIE);
     const principal = resolvePrincipal(store, config.adminToken, req.headers.authorization, cookieToken);
     if (!principal) return reply.status(401).send({ error: "Sign in required", code: "unauthorized" });
@@ -185,10 +187,57 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   const limiter = new LoginLimiter();
   const emailSchema = z.string().trim().toLowerCase().email();
   const passwordSchema = z.string().min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`).max(200);
+  // Emails are unique across workspaces: people sign in with their email alone.
   const findByEmail = (email: string) => Object.values(store.data.users).find((u) => u.email === email);
-  const activeAdmins = () => Object.values(store.data.users).filter((u) => u.role === "admin" && !u.disabled);
+  const activeAdmins = (workspaceId: string) =>
+    Object.values(store.data.users).filter((u) => u.workspaceId === workspaceId && u.role === "admin" && !u.disabled);
+
+  /* Workspaces: every request acts inside the caller's workspace. Records of other
+     workspaces do not exist for it (404), whatever id is asked for. */
+  const ws = (req: FastifyRequest) => me(req).workspaceId;
+  const own = <T extends { workspaceId: string }>(collection: Record<string, T>, id: string, what: string, req: FastifyRequest): T => {
+    const item = collection[id];
+    if (!item || item.workspaceId !== ws(req)) throw new HttpError(404, `${what} ${id} not found`);
+    return item;
+  };
+  const mine = <T extends { workspaceId: string }>(collection: Record<string, T>, req: FastifyRequest): T[] =>
+    Object.values(collection).filter((item) => item.workspaceId === ws(req));
+  /** The platform owner (not customers): the master token, local open mode, or an admin of the default workspace. */
+  const platformAdmin = (p: Principal) => p.kind !== "user" || (p.workspaceId === DEFAULT_WORKSPACE && p.role === "admin");
+  const signupLimiter = new LoginLimiter(10, 60 * 60 * 1000);
 
   /* --------------------------- auth + users ------------------------- */
+  // Public: whether the Portal offers "Create an account".
+  app.get("/api/auth/config", async () => ({ signup: config.allowSignup }));
+
+  // A new customer: creates their workspace, with them as its administrator, and signs them in.
+  app.post("/api/auth/signup", async (req, reply) => {
+    if (!config.allowSignup) throw new HttpError(403, "Sign-up is not open on this server; ask an administrator for an account");
+    const ipKey = `signup:${req.ip}`;
+    if (signupLimiter.blocked(ipKey)) return reply.status(429).send({ error: "Too many sign-ups; try again later", code: "rate_limited" });
+    signupLimiter.fail(ipKey);
+    const body = parse(
+      z.object({ company: z.string().trim().min(2).max(100), name: z.string().trim().min(1).max(100), email: emailSchema, password: passwordSchema }),
+      req.body,
+    );
+    if (findByEmail(body.email)) throw new HttpError(409, "An account with this email already exists. Sign in instead.");
+    const workspace: Workspace = { id: newId("ws"), name: body.company, createdAt: nowIso(), plan: "free" };
+    const user: User = {
+      id: newId("usr"),
+      workspaceId: workspace.id,
+      email: body.email,
+      name: body.name,
+      role: "admin",
+      passwordHash: await hashPassword(body.password),
+      createdAt: nowIso(),
+      lastLoginAt: nowIso(),
+    };
+    store.data.workspaces[workspace.id] = workspace;
+    store.data.users[user.id] = user;
+    reply.header("set-cookie", sessionCookie(createSession(store, user), cookieOptions));
+    return reply.status(201).send({ user: publicUser(user), workspace });
+  });
+
   app.post("/api/auth/login", async (req, reply) => {
     const body = parse(z.object({ email: z.string().trim().toLowerCase(), password: z.string() }), req.body);
     const keys = [`ip:${req.ip}`, `email:${body.email}`];
@@ -229,7 +278,16 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   app.get("/api/auth/me", async (req) => {
     const p = me(req);
-    return { id: p.id, name: p.name, email: p.email, role: p.role, kind: p.kind };
+    const workspace = store.data.workspaces[p.workspaceId];
+    return {
+      id: p.id,
+      name: p.name,
+      email: p.email,
+      role: p.role,
+      kind: p.kind,
+      workspace: { id: p.workspaceId, name: workspace?.name ?? "" },
+      platformAdmin: platformAdmin(p),
+    };
   });
 
   app.post("/api/auth/password", async (req) => {
@@ -252,8 +310,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     disabled: z.boolean().optional(),
   });
 
-  app.get("/api/users", async () =>
-    Object.values(store.data.users)
+  app.get("/api/users", async (req) =>
+    mine(store.data.users, req)
       .sort((a, b) => ROLES.indexOf(b.role) - ROLES.indexOf(a.role) || a.name.localeCompare(b.name))
       .map(publicUser),
   );
@@ -261,8 +319,10 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.post("/api/users", async (req, reply) => {
     const body = parse(UserBody, req.body);
     if (findByEmail(body.email)) throw new HttpError(409, `A user with email ${body.email} already exists`);
+    if (isBuilder(body.role) && !body.disabled) checkBuilders(store, ws(req));
     const user: User = {
       id: newId("usr"),
+      workspaceId: ws(req),
       email: body.email,
       name: body.name,
       role: body.role,
@@ -276,13 +336,17 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.put<{ Params: { id: string } }>("/api/users/:id", async (req) => {
-    const user = get(store.data.users, req.params.id, "User");
+    const user = own(store.data.users, req.params.id, "User", req);
     const body = parse(UserBody.partial().extend({ password: passwordSchema.optional().or(z.literal("")) }), req.body);
     const losesAdmin = user.role === "admin" && ((body.role && body.role !== "admin") || body.disabled === true);
-    if (losesAdmin && activeAdmins().length <= 1) throw new HttpError(409, "Keep at least one active administrator");
+    if (losesAdmin && activeAdmins(user.workspaceId).length <= 1) throw new HttpError(409, "Keep at least one active administrator");
     if (body.email && body.email !== user.email && findByEmail(body.email)) {
       throw new HttpError(409, `A user with email ${body.email} already exists`);
     }
+    // Becoming a Developer or Admin (or being re-enabled as one) takes a builder seat.
+    const wasSeat = isBuilder(user.role) && !user.disabled;
+    const isSeat = isBuilder(body.role ?? user.role) && !(body.disabled ?? user.disabled);
+    if (isSeat && !wasSeat) checkBuilders(store, user.workspaceId);
     if (body.email) user.email = body.email;
     if (body.name) user.name = body.name;
     if (body.role) user.role = body.role;
@@ -294,9 +358,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.delete<{ Params: { id: string } }>("/api/users/:id", async (req, reply) => {
-    const user = get(store.data.users, req.params.id, "User");
+    const user = own(store.data.users, req.params.id, "User", req);
     if (user.id === me(req).id) throw new HttpError(409, "You cannot delete your own account");
-    if (user.role === "admin" && !user.disabled && activeAdmins().length <= 1) {
+    if (user.role === "admin" && !user.disabled && activeAdmins(user.workspaceId).length <= 1) {
       throw new HttpError(409, "Keep at least one active administrator");
     }
     delete store.data.users[user.id];
@@ -305,8 +369,16 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* ------------------------------ backups --------------------------- */
-  app.get("/api/admin/backup", async () => options.backup?.getStatus() ?? { configured: false, running: false });
-  app.post("/api/admin/backup", async () => {
+  // The whole database, all workspaces: for the platform owner only.
+  const requirePlatformAdmin = (req: FastifyRequest) => {
+    if (!platformAdmin(me(req))) throw new HttpError(403, "Only the platform owner can do this");
+  };
+  app.get("/api/admin/backup", async (req) => {
+    requirePlatformAdmin(req);
+    return options.backup?.getStatus() ?? { configured: false, running: false };
+  });
+  app.post("/api/admin/backup", async (req) => {
+    requirePlatformAdmin(req);
     if (!options.backup) throw new HttpError(409, "Backups are not configured");
     const key = await options.backup.runNow();
     return { ...options.backup.getStatus(), key };
@@ -322,9 +394,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   // Public: the agent's tray app reads where the Portal and Designer are.
   app.get("/api/health", async () => ({ ok: true, time: nowIso(), portalUrl: config.portalUrl, designerUrl: config.designerUrl }));
   app.get("/api/actions", async () => BUILTIN_ACTIONS);
-  app.get("/api/stats", async () => {
-    const jobs = Object.values(store.data.jobs);
-    const agents = Object.values(store.data.agents);
+  app.get("/api/stats", async (req) => {
+    const jobs = mine(store.data.jobs, req);
+    const agents = mine(store.data.agents, req);
     const count = (s: Job["status"]) => jobs.filter((j) => j.status === s).length;
     return {
       agents: { total: agents.length, online: agents.filter((a) => a.status !== "offline").length, busy: agents.filter((a) => a.status === "busy").length },
@@ -336,17 +408,17 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
         failed: count("failed"),
         cancelled: count("cancelled"),
       },
-      workflows: Object.keys(store.data.workflows).length,
-      packages: Object.keys(store.data.packages).length,
-      schedules: Object.values(store.data.schedules).filter((s) => s.enabled).length,
+      workflows: mine(store.data.workflows, req).length,
+      packages: mine(store.data.packages, req).length,
+      schedules: mine(store.data.schedules, req).filter((s) => s.enabled).length,
       healedSelectors: jobs.reduce((n, j) => n + j.healedSelectors.length, 0),
       ai: { configured: ai === undefined ? AiClient.isConfigured() : Boolean(ai) },
     };
   });
 
   /* ---------------------------- workflows --------------------------- */
-  app.get("/api/workflows", async () =>
-    Object.values(store.data.workflows)
+  app.get("/api/workflows", async (req) =>
+    mine(store.data.workflows, req)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .map(({ definition, ...rest }) => ({ ...rest, steps: countSteps(definition.root) })),
   );
@@ -362,16 +434,16 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       variables: [],
       root: { id: "root", type: "core.sequence", props: {}, slots: { body: [] } },
     };
-    const wf: WorkflowDraft = { id, name, description: body.description, definition: { ...definition, id, name }, createdAt: nowIso(), updatedAt: nowIso() };
+    const wf: WorkflowDraft = { id, workspaceId: ws(req), name, description: body.description, definition: { ...definition, id, name }, createdAt: nowIso(), updatedAt: nowIso() };
     store.data.workflows[id] = wf;
     store.save();
     return reply.status(201).send(wf);
   });
 
-  app.get<{ Params: { id: string } }>("/api/workflows/:id", async (req) => get(store.data.workflows, req.params.id, "Workflow"));
+  app.get<{ Params: { id: string } }>("/api/workflows/:id", async (req) => own(store.data.workflows, req.params.id, "Workflow", req));
 
   app.put<{ Params: { id: string } }>("/api/workflows/:id", async (req) => {
-    const wf = get(store.data.workflows, req.params.id, "Workflow");
+    const wf = own(store.data.workflows, req.params.id, "Workflow", req);
     const body = parse(WorkflowBody, req.body);
     if (body.name) wf.name = body.name;
     if (body.description !== undefined) wf.description = body.description;
@@ -383,18 +455,19 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.delete<{ Params: { id: string } }>("/api/workflows/:id", async (req, reply) => {
-    get(store.data.workflows, req.params.id, "Workflow");
+    own(store.data.workflows, req.params.id, "Workflow", req);
     delete store.data.workflows[req.params.id];
     store.save();
     return reply.status(204).send();
   });
 
   app.post<{ Params: { id: string } }>("/api/workflows/:id/publish", async (req, reply) => {
-    const wf = get(store.data.workflows, req.params.id, "Workflow");
+    const wf = own(store.data.workflows, req.params.id, "Workflow", req);
     const body = parse(z.object({ releaseNotes: z.string().optional() }).default({}), req.body ?? {});
     const previous = Object.values(store.data.packages).filter((p) => p.workflowId === wf.id);
     const pkg: Package = {
       id: newId("pkg"),
+      workspaceId: wf.workspaceId,
       workflowId: wf.id,
       name: wf.name,
       description: wf.description,
@@ -409,14 +482,14 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* ----------------------------- packages --------------------------- */
-  app.get("/api/packages", async () =>
-    Object.values(store.data.packages)
+  app.get("/api/packages", async (req) =>
+    mine(store.data.packages, req)
       .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
       .map(({ definition, ...rest }) => ({ ...rest, variables: definition.variables })),
   );
-  app.get<{ Params: { id: string } }>("/api/packages/:id", async (req) => get(store.data.packages, req.params.id, "Package"));
+  app.get<{ Params: { id: string } }>("/api/packages/:id", async (req) => own(store.data.packages, req.params.id, "Package", req));
   app.delete<{ Params: { id: string } }>("/api/packages/:id", async (req, reply) => {
-    get(store.data.packages, req.params.id, "Package");
+    own(store.data.packages, req.params.id, "Package", req);
     if (Object.values(store.data.schedules).some((s) => s.packageId === req.params.id)) {
       throw new HttpError(409, "Package is used by a schedule");
     }
@@ -428,7 +501,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   /* ------------------------------- jobs ----------------------------- */
   app.get<{ Querystring: { status?: string; limit?: string } }>("/api/jobs", async (req) => {
     const limit = Math.min(Number(req.query.limit ?? 100), 1000);
-    return Object.values(store.data.jobs)
+    return mine(store.data.jobs, req)
       .filter((j) => !req.query.status || j.status === req.query.status)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit)
@@ -442,20 +515,20 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       throw new HttpError(403, "Test runs of unpublished workflows need the developer role");
     }
     const who = me(req);
-    const job = createJob(store, { ...body, startedBy: who.email || who.name });
+    const job = createJob(store, { ...body, workspaceId: who.workspaceId, startedBy: who.email || who.name });
     return reply.status(201).send(jobSummary(job));
   });
 
-  app.get<{ Params: { id: string } }>("/api/jobs/:id", async (req) => get(store.data.jobs, req.params.id, "Job"));
+  app.get<{ Params: { id: string } }>("/api/jobs/:id", async (req) => own(store.data.jobs, req.params.id, "Job", req));
 
   app.get<{ Params: { id: string }; Querystring: { after?: string } }>("/api/jobs/:id/logs", async (req) => {
-    get(store.data.jobs, req.params.id, "Job");
+    own(store.data.jobs, req.params.id, "Job", req);
     const after = Number(req.query.after ?? 0);
     return (store.data.jobLogs[req.params.id] ?? []).filter((l) => l.seq > after);
   });
 
   app.post<{ Params: { id: string } }>("/api/jobs/:id/cancel", async (req) => {
-    const job = get(store.data.jobs, req.params.id, "Job");
+    const job = own(store.data.jobs, req.params.id, "Job", req);
     if (isFinal(job)) throw new HttpError(409, `Job is already ${job.status}`);
     if (job.status === "pending") finishJob(store, job, "cancelled", "Cancelled before start");
     else {
@@ -467,13 +540,13 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* ------------------------------ agents ---------------------------- */
-  app.get("/api/agents", async () =>
-    Object.values(store.data.agents)
+  app.get("/api/agents", async (req) =>
+    mine(store.data.agents, req)
       .map(({ tokenHash: _secret, ...agent }) => agent)
       .sort((a, b) => a.name.localeCompare(b.name)),
   );
   app.delete<{ Params: { id: string } }>("/api/agents/:id", async (req, reply) => {
-    get(store.data.agents, req.params.id, "Agent");
+    own(store.data.agents, req.params.id, "Agent", req);
     delete store.data.agents[req.params.id];
     store.save();
     return reply.status(204).send();
@@ -481,41 +554,45 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   /* ----------------------------- schedules -------------------------- */
   const withNextRun = (s: Schedule) => ({ ...s, nextRunAt: scheduler.nextRun(s.id) });
-  const checkSchedule = (body: z.infer<typeof ScheduleBody>) => {
-    get(store.data.packages, body.packageId, "Package");
+  const checkSchedule = (body: z.infer<typeof ScheduleBody>, req: FastifyRequest) => {
+    own(store.data.packages, body.packageId, "Package", req);
+    if (body.targetAgentId) own(store.data.agents, body.targetAgentId, "Agent", req);
     const cronError = validateCron(body.cron, body.timezone);
     if (cronError) throw new HttpError(400, `Invalid cron expression: ${cronError}`);
   };
 
-  app.get("/api/schedules", async () => Object.values(store.data.schedules).map(withNextRun));
+  app.get("/api/schedules", async (req) => mine(store.data.schedules, req).map(withNextRun));
   app.post("/api/schedules", async (req, reply) => {
     const body = parse(ScheduleBody, req.body);
-    checkSchedule(body);
-    const schedule: Schedule = { id: newId("sch"), ...body, createdAt: nowIso() };
+    checkSchedule(body, req);
+    if (body.enabled) checkFeature(store, ws(req), "schedules");
+    const schedule: Schedule = { id: newId("sch"), workspaceId: ws(req), ...body, createdAt: nowIso() };
     store.data.schedules[schedule.id] = schedule;
     store.save();
     scheduler.sync(schedule);
     return reply.status(201).send(withNextRun(schedule));
   });
   app.put<{ Params: { id: string } }>("/api/schedules/:id", async (req) => {
-    const existing = get(store.data.schedules, req.params.id, "Schedule");
+    const existing = own(store.data.schedules, req.params.id, "Schedule", req);
     const body = parse(ScheduleBody, { ...existing, ...(req.body as object) });
-    checkSchedule(body);
-    const schedule: Schedule = { ...existing, ...body };
+    checkSchedule(body, req);
+    if (body.enabled && !existing.enabled) checkFeature(store, ws(req), "schedules");
+    const schedule: Schedule = { ...existing, ...body, workspaceId: existing.workspaceId };
     store.data.schedules[schedule.id] = schedule;
     store.save();
     scheduler.sync(schedule);
     return withNextRun(schedule);
   });
   app.delete<{ Params: { id: string } }>("/api/schedules/:id", async (req, reply) => {
-    get(store.data.schedules, req.params.id, "Schedule");
+    own(store.data.schedules, req.params.id, "Schedule", req);
     delete store.data.schedules[req.params.id];
     store.save();
     scheduler.sync(undefined, req.params.id);
     return reply.status(204).send();
   });
   app.post<{ Params: { id: string } }>("/api/schedules/:id/run", async (req) => {
-    get(store.data.schedules, req.params.id, "Schedule");
+    own(store.data.schedules, req.params.id, "Schedule", req);
+    checkFeature(store, ws(req), "schedules");
     scheduler.fire(req.params.id);
     return { ok: true };
   });
@@ -528,21 +605,21 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
   const withCounts = (q: Queue) => ({ ...q, counts: queueCounts(store, q.id) });
 
-  app.get("/api/queues", async () => Object.values(store.data.queues).sort((a, b) => a.name.localeCompare(b.name)).map(withCounts));
+  app.get("/api/queues", async (req) => mine(store.data.queues, req).sort((a, b) => a.name.localeCompare(b.name)).map(withCounts));
 
   app.post("/api/queues", async (req, reply) => {
     const body = parse(QueueBody, req.body);
-    if (Object.values(store.data.queues).some((q) => q.name.toLowerCase() === body.name.toLowerCase())) {
+    if (mine(store.data.queues, req).some((q) => q.name.toLowerCase() === body.name.toLowerCase())) {
       throw new HttpError(409, `Queue "${body.name}" already exists`);
     }
-    const queue: Queue = { id: newId("que"), ...body, createdAt: nowIso() };
+    const queue: Queue = { id: newId("que"), workspaceId: ws(req), ...body, createdAt: nowIso() };
     store.data.queues[queue.id] = queue;
     store.save();
     return reply.status(201).send(withCounts(queue));
   });
 
   app.put<{ Params: { id: string } }>("/api/queues/:id", async (req) => {
-    const queue = get(store.data.queues, req.params.id, "Queue");
+    const queue = own(store.data.queues, req.params.id, "Queue", req);
     const body = parse(QueueBody.partial(), req.body);
     Object.assign(queue, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)));
     store.save();
@@ -550,7 +627,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.delete<{ Params: { id: string } }>("/api/queues/:id", async (req, reply) => {
-    get(store.data.queues, req.params.id, "Queue");
+    own(store.data.queues, req.params.id, "Queue", req);
     delete store.data.queues[req.params.id];
     for (const item of Object.values(store.data.queueItems)) if (item.queueId === req.params.id) delete store.data.queueItems[item.id];
     store.save();
@@ -558,7 +635,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.get<{ Params: { id: string }; Querystring: { status?: string; limit?: string } }>("/api/queues/:id/items", async (req) => {
-    get(store.data.queues, req.params.id, "Queue");
+    own(store.data.queues, req.params.id, "Queue", req);
     const limit = Math.min(Number(req.query.limit ?? 200), 2000);
     return Object.values(store.data.queueItems)
       .filter((i) => i.queueId === req.params.id && (!req.query.status || i.status === req.query.status))
@@ -567,13 +644,13 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.post<{ Params: { id: string } }>("/api/queues/:id/items", async (req, reply) => {
-    const queue = get(store.data.queues, req.params.id, "Queue");
+    const queue = own(store.data.queues, req.params.id, "Queue", req);
     const body = parse(z.object({ data: z.unknown(), reference: z.string().trim().max(200).optional() }), req.body);
     return reply.status(201).send(addItem(store, queue, body.data ?? {}, body.reference));
   });
 
   app.post<{ Params: { id: string } }>("/api/queue-items/:id/retry", async (req) => {
-    const item = get(store.data.queueItems, req.params.id, "Queue item");
+    const item = own(store.data.queueItems, req.params.id, "Queue item", req);
     if (item.status !== "failed" && item.status !== "business-exception") {
       throw new HttpError(409, "Only failed items can be retried");
     }
@@ -583,27 +660,30 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.delete<{ Params: { id: string } }>("/api/queue-items/:id", async (req, reply) => {
-    get(store.data.queueItems, req.params.id, "Queue item");
+    own(store.data.queueItems, req.params.id, "Queue item", req);
     delete store.data.queueItems[req.params.id];
     store.save();
     return reply.status(204).send();
   });
 
   /* ------------------------------ assets ---------------------------- */
-  app.get("/api/assets", async () => Object.values(store.data.assets).map(maskAsset));
+  app.get("/api/assets", async (req) => mine(store.data.assets, req).map(maskAsset));
   app.post("/api/assets", async (req, reply) => {
     const body = parse(AssetBody, req.body);
-    if (Object.values(store.data.assets).some((a) => a.name === body.name)) {
+    if (mine(store.data.assets, req).some((a) => a.name === body.name)) {
       throw new HttpError(409, `Asset "${body.name}" already exists`);
     }
-    const asset: Asset = { id: newId("ast"), ...body, value: body.value ?? null, updatedAt: nowIso() };
+    const asset: Asset = { id: newId("ast"), workspaceId: ws(req), ...body, value: body.value ?? null, updatedAt: nowIso() };
     store.data.assets[asset.id] = asset;
     store.save();
     return reply.status(201).send(maskAsset(asset));
   });
   app.put<{ Params: { id: string } }>("/api/assets/:id", async (req) => {
-    const existing = get(store.data.assets, req.params.id, "Asset");
+    const existing = own(store.data.assets, req.params.id, "Asset", req);
     const body = parse(AssetBody.partial(), req.body);
+    if (body.name && body.name !== existing.name && mine(store.data.assets, req).some((a) => a.name === body.name)) {
+      throw new HttpError(409, `Asset "${body.name}" already exists`);
+    }
     const asset: Asset = { ...existing, ...body, value: body.value ?? existing.value, updatedAt: nowIso() };
     // Masked credential passwords sent back by the UI mean "unchanged".
     if (asset.type === "credential" && (body.value as { password?: string } | undefined)?.password === "********") {
@@ -614,7 +694,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     return maskAsset(asset);
   });
   app.delete<{ Params: { id: string } }>("/api/assets/:id", async (req, reply) => {
-    get(store.data.assets, req.params.id, "Asset");
+    own(store.data.assets, req.params.id, "Asset", req);
     delete store.data.assets[req.params.id];
     store.save();
     return reply.status(204).send();
@@ -627,6 +707,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.post("/api/ai/generate-workflow", async (req) => {
+    getAi();
+    useAi(store, ws(req));
     const body = parse(
       z.object({ prompt: z.string().min(3), existing: WorkflowSchema.optional(), language: z.string().optional() }),
       req.body,
@@ -640,6 +722,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.post("/api/ai/suggest-selectors", async (req) => {
+    getAi();
+    useAi(store, ws(req));
     const body = parse(
       z.object({
         html: z.string().min(1).max(400_000),
@@ -670,14 +754,16 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       req.body,
     );
     // Shared-key agents may only take over records of other shared-key agents, never an approved PC.
+    // The shared key belongs to the platform owner, so its agents work for the default workspace.
+    const sharedKeyAgent = (a: Agent | undefined) => a && !a.tokenHash && a.workspaceId === DEFAULT_WORKSPACE ? a : undefined;
     const existing = req.agent
       ? store.data.agents[req.agent.id]
-      : (body.agentId && !store.data.agents[body.agentId]?.tokenHash && store.data.agents[body.agentId]) ||
-        Object.values(store.data.agents).find((a) => !a.tokenHash && a.name === body.name && a.machine === body.machine);
+      : (body.agentId && sharedKeyAgent(store.data.agents[body.agentId])) ||
+        Object.values(store.data.agents).find((a) => sharedKeyAgent(a) && a.name === body.name && a.machine === body.machine);
     const info = { name: body.name, machine: body.machine, os: body.os, version: body.version };
     const agent: Agent = existing
       ? { ...existing, ...info, status: "online", currentJobId: undefined, lastHeartbeat: nowIso() }
-      : { id: newId("agt"), ...info, status: "online", lastHeartbeat: nowIso(), registeredAt: nowIso() };
+      : { id: newId("agt"), workspaceId: DEFAULT_WORKSPACE, ...info, status: "online", lastHeartbeat: nowIso(), registeredAt: nowIso() };
     store.data.agents[agent.id] = agent;
     // Jobs that were running on this agent before it restarted are lost.
     for (const job of Object.values(store.data.jobs)) {
@@ -702,7 +788,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       return reply.status(204).send();
     }
     const job = Object.values(store.data.jobs)
-      .filter((j) => j.status === "pending" && (!j.targetAgentId || j.targetAgentId === agent.id))
+      .filter((j) => j.workspaceId === agent.workspaceId && j.status === "pending" && (!j.targetAgentId || j.targetAgentId === agent.id))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
     if (!job) {
       agent.status = "online";
@@ -764,13 +850,13 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.post<{ Params: { name: string } }>("/api/agent/queues/:name/items", async (req, reply) => {
     agentFor(req);
     const body = parse(z.object({ data: z.unknown(), reference: z.string().trim().max(200).optional() }).passthrough(), req.body);
-    const item = addItem(store, findQueue(store, req.params.name), body.data ?? {}, body.reference);
+    const item = addItem(store, findQueue(store, req.params.name, agentFor(req).workspaceId), body.data ?? {}, body.reference);
     return reply.status(201).send({ id: item.id });
   });
 
   app.post<{ Params: { name: string } }>("/api/agent/queues/:name/next", async (req, reply) => {
     const agent = agentFor(req);
-    const item = takeNext(store, findQueue(store, req.params.name), jobOfAgent(agent, agentBody(req).jobId), agent.id);
+    const item = takeNext(store, findQueue(store, req.params.name, agent.workspaceId), jobOfAgent(agent, agentBody(req).jobId), agent.id);
     if (!item) return reply.status(204).send();
     const queue = store.data.queues[item.queueId]!;
     return { id: item.id, queue: queue.name, reference: item.reference, data: item.data, retries: item.retries };
@@ -789,7 +875,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.get<{ Params: { name: string } }>("/api/agent/assets/:name", async (req) => {
-    const asset = Object.values(store.data.assets).find((a) => a.name === req.params.name);
+    // Shared-key agents send no agentId here; they work for the default workspace.
+    const workspaceId = req.agent?.workspaceId ?? DEFAULT_WORKSPACE;
+    const asset = Object.values(store.data.assets).find((a) => a.workspaceId === workspaceId && a.name === req.params.name);
     if (!asset) throw new HttpError(404, `Asset "${req.params.name}" not found`);
     return { name: asset.name, type: asset.type, value: asset.value };
   });
@@ -825,11 +913,14 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     const pending = Object.values(store.data.enrollments).filter((e) => e.status === "pending").length;
     if (pending >= MAX_PENDING_ENROLLMENTS) return reply.status(503).send({ error: "Too many PCs are waiting for approval; try again later" });
     let approvedBy: string | undefined;
+    let approvedFor: string | undefined;
     if (body.installKey) {
       const key = usableInstallKey(body.installKey);
       if (!key) return reply.status(401).send({ error: "The install key is invalid, expired or used up", code: "invalid_install_key" });
+      checkBots(store, key.workspaceId);
       key.uses++;
       approvedBy = `Install key "${key.name}"`;
+      approvedFor = key.workspaceId;
     }
     const deviceCode = newSecret();
     const taken = new Set(Object.values(store.data.enrollments).map((e) => e.userCode));
@@ -844,6 +935,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       version: body.version,
       status: approvedBy ? "approved" : "pending",
       approvedBy,
+      workspaceId: approvedFor,
       createdAt: nowIso(),
       expiresAt: new Date(Date.now() + ENROLL_TTL_MS).toISOString(),
     };
@@ -875,6 +967,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     const agentToken = newSecret();
     const agent: Agent = {
       id: newId("agt"),
+      workspaceId: enrollment.workspaceId ?? DEFAULT_WORKSPACE,
       name: enrollment.name,
       machine: enrollment.machine,
       os: enrollment.os,
@@ -909,20 +1002,28 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   const decide = (req: FastifyRequest<{ Params: { code: string } }>, status: "approved" | "denied") => {
     const enrollment = enrollmentByCode(req.params.code);
     if (enrollment.status !== "pending") throw new HttpError(409, `This PC was already ${enrollment.status}`);
+    if (status === "approved") checkBots(store, ws(req));
     enrollment.status = status;
     enrollment.approvedBy = who(me(req));
+    // The PC joins the approver's workspace.
+    enrollment.workspaceId = ws(req);
     store.save();
     return publicEnrollment(enrollment);
   };
   // Reading needs any role; approving needs Developer (an approved PC can read asset values).
-  app.get<{ Params: { code: string } }>("/api/enrollments/:code", async (req) => publicEnrollment(enrollmentByCode(req.params.code)));
+  app.get<{ Params: { code: string } }>("/api/enrollments/:code", async (req) => {
+    const enrollment = enrollmentByCode(req.params.code);
+    // Once decided, a request is only visible in the workspace that decided it.
+    if (enrollment.status !== "pending" && enrollment.workspaceId !== ws(req)) throw new HttpError(404, "This code has expired or does not exist.");
+    return publicEnrollment(enrollment);
+  });
   app.post<{ Params: { code: string } }>("/api/enrollments/:code/approve", async (req) => decide(req, "approved"));
   app.post<{ Params: { code: string } }>("/api/enrollments/:code/deny", async (req) => decide(req, "denied"));
 
   /* install keys: silent installs by IT (admin only, via the /api/admin prefix) */
   const publicInstallKey = ({ keyHash: _secret, ...key }: InstallKey) => key;
-  app.get("/api/admin/install-keys", async () =>
-    Object.values(store.data.installKeys)
+  app.get("/api/admin/install-keys", async (req) =>
+    mine(store.data.installKeys, req)
       .map(publicInstallKey)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
   );
@@ -935,9 +1036,11 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       }),
       req.body,
     );
+    checkFeature(store, ws(req), "installKeys");
     const key = `ztik_${newSecret()}`;
     const installKey: InstallKey = {
       id: newId("ik"),
+      workspaceId: ws(req),
       name: body.name,
       keyHash: hashToken(key),
       createdAt: nowIso(),
@@ -952,10 +1055,72 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     return reply.status(201).send({ ...publicInstallKey(installKey), key });
   });
   app.delete<{ Params: { id: string } }>("/api/admin/install-keys/:id", async (req, reply) => {
-    get(store.data.installKeys, req.params.id, "Install key");
+    own(store.data.installKeys, req.params.id, "Install key", req);
     delete store.data.installKeys[req.params.id];
     store.save();
     return reply.status(204).send();
+  });
+
+  /* ------------------------- workspace and plan ------------------------ */
+  const workspaceSummary = (workspace: Workspace) => ({
+    id: workspace.id,
+    name: workspace.name,
+    plan: workspace.plan,
+    seats: workspace.seats,
+    limits: limitsOf(workspace),
+    usage: currentUsage(store, workspace.id),
+    billing: workspace.billing
+      ? {
+          status: workspace.billing.status,
+          interval: workspace.billing.interval,
+          currentPeriodEnd: workspace.billing.currentPeriodEnd,
+          cancelAtPeriodEnd: workspace.billing.cancelAtPeriodEnd,
+        }
+      : undefined,
+  });
+  app.get("/api/workspace", async (req) => workspaceSummary(get(store.data.workspaces, ws(req), "Workspace")));
+  app.put("/api/workspace", async (req) => {
+    if (me(req).role !== "admin") throw new HttpError(403, "This needs the admin role");
+    const workspace = get(store.data.workspaces, ws(req), "Workspace");
+    const body = parse(z.object({ name: z.string().trim().min(2).max(100) }), req.body);
+    workspace.name = body.name;
+    store.save();
+    return workspaceSummary(workspace);
+  });
+
+  /* platform owner: all customers, and plans agreed outside Stripe (Enterprise) */
+  app.get("/api/platform/workspaces", async (req) => {
+    requirePlatformAdmin(req);
+    return Object.values(store.data.workspaces)
+      .map((w) => ({ ...workspaceSummary(w), createdAt: w.createdAt, users: Object.values(store.data.users).filter((u) => u.workspaceId === w.id).length }))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  });
+  const LimitsBody = z
+    .object({
+      builders: z.number().int().min(1),
+      bots: z.number().int().min(1),
+      runsPerMonth: z.number().int().min(0),
+      aiPerMonth: z.number().int().min(0),
+      schedules: z.boolean(),
+      installKeys: z.boolean(),
+    })
+    .partial();
+  app.put<{ Params: { id: string } }>("/api/platform/workspaces/:id", async (req) => {
+    requirePlatformAdmin(req);
+    const workspace = get(store.data.workspaces, req.params.id, "Workspace");
+    const body = parse(
+      z.object({
+        plan: z.enum(["free", "pro", "enterprise"]).optional(),
+        seats: z.object({ builders: z.number().int().min(1), bots: z.number().int().min(1) }).optional(),
+        customLimits: LimitsBody.nullable().optional(),
+      }),
+      req.body,
+    );
+    if (body.plan) workspace.plan = body.plan;
+    if (body.seats) workspace.seats = body.seats;
+    if (body.customLimits !== undefined) workspace.customLimits = body.customLimits ?? undefined;
+    store.save();
+    return workspaceSummary(workspace);
   });
 
   /* ---------------------------- lifecycle --------------------------- */

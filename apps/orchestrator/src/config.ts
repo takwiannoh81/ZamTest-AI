@@ -13,6 +13,8 @@ export interface OrchestratorConfig {
   designerUrl: string;
   /** Domain for the sign-in cookie, e.g. ".zamtechai.com", so the Portal and Designer share one sign-in. */
   cookieDomain?: string;
+  /** Anyone may create an account (and with it a new workspace) in the Portal: the hosted service. */
+  allowSignup: boolean;
   /** Allowed browser origins for CORS; `true` allows any (development only). */
   corsOrigins: string[] | true;
   production: boolean;
@@ -32,6 +34,7 @@ export function loadConfig(env = process.env): OrchestratorConfig {
     portalUrl: (env.ZAMTEST_PORTAL_URL || "http://localhost:5173").replace(/\/+$/, ""),
     designerUrl: (env.ZAMTEST_DESIGNER_URL || "http://localhost:5174").replace(/\/+$/, ""),
     cookieDomain: env.ZAMTEST_COOKIE_DOMAIN || undefined,
+    allowSignup: env.ZAMTEST_ALLOW_SIGNUP === "true",
     corsOrigins: env.ZAMTEST_CORS_ORIGINS
       ? env.ZAMTEST_CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
       : true,

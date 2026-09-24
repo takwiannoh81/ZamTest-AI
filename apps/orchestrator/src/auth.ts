@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import type { Store } from "./store.js";
 import { nowIso } from "./store.js";
 import type { Principal, Role, Session, User } from "./types.js";
-import { ROLES } from "./types.js";
+import { DEFAULT_WORKSPACE, ROLES } from "./types.js";
 
 const scrypt = promisify(scryptCb) as (password: string, salt: Buffer, keylen: number) => Promise<Buffer>;
 const KEY_LENGTH = 64;
@@ -88,7 +88,8 @@ export function publicUser(user: User) {
   return rest;
 }
 
-const MASTER_PRINCIPAL: Principal = { id: "token", name: "Access token", email: "", role: "admin", kind: "token" };
+/** The master access token administers the platform owner's own (default) workspace. */
+const MASTER_PRINCIPAL: Principal = { id: "token", name: "Access token", email: "", role: "admin", kind: "token", workspaceId: DEFAULT_WORKSPACE };
 
 /**
  * Resolves the caller from the Authorization header or, for the Portal and
@@ -111,11 +112,13 @@ export function resolvePrincipal(
     if (session && Date.parse(session.expiresAt) > Date.now()) {
       if (session.userId === MASTER_SESSION) return adminToken ? MASTER_PRINCIPAL : null;
       const user = store.data.users[session.userId];
-      if (user && !user.disabled) return { id: user.id, name: user.name, email: user.email, role: user.role, kind: "user" };
+      if (user && !user.disabled) {
+        return { id: user.id, name: user.name, email: user.email, role: user.role, kind: "user", workspaceId: user.workspaceId };
+      }
     }
   }
   if (!adminToken && Object.keys(store.data.users).length === 0) {
-    return { id: "open", name: "Local developer", email: "", role: "admin", kind: "open" };
+    return { id: "open", name: "Local developer", email: "", role: "admin", kind: "open", workspaceId: DEFAULT_WORKSPACE };
   }
   return null;
 }
@@ -164,7 +167,7 @@ export function hasRole(principal: Principal, needed: Role): boolean {
  * users, backups and removing agents need Admin.
  */
 export function requiredRole(method: string, path: string): Role {
-  if (path.startsWith("/api/users") || path.startsWith("/api/admin/")) return "admin";
+  if (path.startsWith("/api/users") || path.startsWith("/api/admin/") || path.startsWith("/api/billing/") || path.startsWith("/api/platform/")) return "admin";
   if (method === "GET" || method === "HEAD") return "viewer";
   if (method === "DELETE" && path.startsWith("/api/agents/")) return "admin";
   if (method === "POST" && path === "/api/jobs") return "operator"; // ad-hoc definitions need developer (checked in the route)

@@ -1,5 +1,6 @@
 import { Cron } from "croner";
 import { createJob } from "./jobs.js";
+import { scheduleAllowed } from "./plans.js";
 import { nowIso } from "./store.js";
 import type { Store } from "./store.js";
 import type { Schedule } from "./types.js";
@@ -39,8 +40,14 @@ export class Scheduler {
   fire(id: string) {
     const schedule = this.store.data.schedules[id];
     if (!schedule) return;
+    // Plans without schedules (e.g. after a downgrade) keep them, paused.
+    if (!scheduleAllowed(this.store, schedule.workspaceId)) {
+      this.log(`Schedule "${schedule.name}" skipped: the workspace's plan does not include schedules`);
+      return;
+    }
     try {
       const job = createJob(this.store, {
+        workspaceId: schedule.workspaceId,
         packageId: schedule.packageId,
         inputs: schedule.inputs,
         targetAgentId: schedule.targetAgentId,
