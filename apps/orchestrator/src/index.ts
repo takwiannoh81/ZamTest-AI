@@ -1,5 +1,6 @@
 import { buildApp } from "./app.js";
 import { BackupService, loadBackupConfig, s3Target } from "./backup.js";
+import { loadBillingConfig, StripeBilling } from "./billing.js";
 import { Store } from "./store.js";
 import { loadConfig, productionProblems } from "./config.js";
 
@@ -14,7 +15,10 @@ const backupConfig = loadBackupConfig();
 const backup = backupConfig
   ? new BackupService(store, backupConfig, s3Target(backupConfig), (msg) => console.log(`[backup] ${msg}`))
   : null;
-const { app } = await buildApp({ config, store, backup, logger: true });
+const billingConfig = loadBillingConfig();
+const billing = billingConfig ? new StripeBilling(billingConfig) : null;
+const { app } = await buildApp({ config, store, backup, billing, logger: true });
+app.log.info(billing ? `Billing: Stripe (${billingConfig!.secretKey.startsWith("sk_live_") ? "live" : "test"} mode)` : "Billing: not set up (no STRIPE_* settings)");
 if (backupConfig) app.log.info(`Backups: s3://${backupConfig.bucket}/${backupConfig.prefix} on "${backupConfig.cron}", keeping ${backupConfig.keepDays} days`);
 
 if (config.agentKey === "dev-agent-key") {

@@ -30,10 +30,12 @@ import {
   verifyPassword,
 } from "./auth.js";
 import type { BackupService } from "./backup.js";
+import { PAID_STATUSES } from "./billing.js";
+import type { BillingProvider, SubscriptionState } from "./billing.js";
 import type { OrchestratorConfig } from "./config.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
-import { checkBots, checkBuilders, checkFeature, currentUsage, isBuilder, limitsOf, PlanLimitError, useAi } from "./plans.js";
+import { checkBots, checkBuilders, checkFeature, currentUsage, FREE_LIMITS, isBuilder, limitsOf, PlanLimitError, PRO, useAi } from "./plans.js";
 import { Scheduler, validateCron } from "./scheduler.js";
 import { newId, nowIso, Store } from "./store.js";
 import type { Agent, Asset, Enrollment, InstallKey, Job, Package, Principal, Queue, QueueItem, Schedule, User, WorkflowDraft, Workspace } from "./types.js";
@@ -55,6 +57,8 @@ export interface AppOptions {
   logger?: boolean;
   /** Nightly S3 backups; null/undefined when not configured. */
   backup?: BackupService | null;
+  /** Online payments (Stripe); null/undefined when not configured. */
+  billing?: BillingProvider | null;
 }
 
 
@@ -161,7 +165,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       if (!config.agentKey || !safeEqual(key, config.agentKey)) return reply.status(401).send({ error: "Invalid agent key" });
       return;
     }
-    if (url === "/api/auth/login" || url === "/api/auth/token" || url === "/api/auth/signup" || url === "/api/auth/config") return;
+    // Stripe's webhook proves itself with its signature (checked in the route).
+    if (url === "/api/auth/login" || url === "/api/auth/token" || url === "/api/auth/signup" || url === "/api/auth/config" || url === "/api/billing/webhook") return;
     const cookieToken = req.headers.authorization ? undefined : readCookie(req.headers.cookie, SESSION_COOKIE);
     const principal = resolvePrincipal(store, config.adminToken, req.headers.authorization, cookieToken);
     if (!principal) return reply.status(401).send({ error: "Sign in required", code: "unauthorized" });
@@ -1063,6 +1068,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   /* ------------------------- workspace and plan ------------------------ */
   const workspaceSummary = (workspace: Workspace) => ({
+    billingAvailable: Boolean(options.billing),
     id: workspace.id,
     name: workspace.name,
     plan: workspace.plan,
@@ -1121,6 +1127,110 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     if (body.customLimits !== undefined) workspace.customLimits = body.customLimits ?? undefined;
     store.save();
     return workspaceSummary(workspace);
+  });
+
+  /* ------------------------ billing (Stripe) ------------------------ */
+  const billing = options.billing ?? null;
+  const needBilling = () => {
+    if (!billing) throw new HttpError(503, "Online payments are not set up on this server");
+    return billing;
+  };
+  const isPaid = (status?: string) => PAID_STATUSES.includes(status ?? "");
+
+  /** Keeps a workspace's plan and seats in step with its Stripe subscription. */
+  const applySubscription = (state: SubscriptionState) => {
+    const workspace =
+      (state.workspaceId ? store.data.workspaces[state.workspaceId] : undefined) ??
+      Object.values(store.data.workspaces).find((w) => w.billing?.customerId === state.customerId);
+    if (!workspace) {
+      app.log.warn(`Billing: no workspace for Stripe subscription ${state.subscriptionId}`);
+      return;
+    }
+    // A leftover event of an older subscription must not end the one that is paid now.
+    const current = workspace.billing;
+    if (current?.subscriptionId && current.subscriptionId !== state.subscriptionId && isPaid(current.status) && !isPaid(state.status)) return;
+    workspace.billing = {
+      ...current,
+      customerId: state.customerId,
+      subscriptionId: state.subscriptionId,
+      status: state.status,
+      interval: state.interval,
+      currentPeriodEnd: state.currentPeriodEnd,
+      cancelAtPeriodEnd: state.cancelAtPeriodEnd,
+    };
+    // Enterprise agreements are managed by the platform owner, not by the subscription.
+    if (workspace.plan !== "enterprise") {
+      if (isPaid(state.status)) {
+        workspace.plan = "pro";
+        workspace.seats = { builders: Math.max(1, state.builders), bots: Math.max(1, state.bots) };
+      } else {
+        // Ended or unpaid: back to Free. Nothing is deleted; schedules pause.
+        workspace.plan = "free";
+        workspace.seats = undefined;
+      }
+    }
+    store.save();
+    app.log.info(`Billing: workspace ${workspace.id} is on ${workspace.plan} (subscription ${state.status})`);
+  };
+
+  app.get("/api/billing/plans", async () => {
+    if (!billing) return { configured: false, included: { free: FREE_LIMITS, pro: PRO } };
+    return { configured: true, prices: await billing.prices(), included: { free: FREE_LIMITS, pro: PRO } };
+  });
+
+  app.post("/api/billing/checkout", async (req) => {
+    const provider = needBilling();
+    const body = parse(
+      z.object({ interval: z.enum(["month", "year"]).default("month"), builders: z.number().int().min(1).max(1000), bots: z.number().int().min(1).max(1000) }),
+      req.body,
+    );
+    const workspace = get(store.data.workspaces, ws(req), "Workspace");
+    if (workspace.plan === "enterprise") throw new HttpError(409, "This workspace has an Enterprise agreement; contact ZamTech AI to change it");
+    if (isPaid(workspace.billing?.status)) throw new HttpError(409, "This workspace already has a subscription; change it under Manage billing");
+    const usage = currentUsage(store, workspace.id);
+    if (body.builders < usage.builders || body.bots < usage.bots) {
+      throw new HttpError(400, `Choose at least ${usage.builders} builder seat(s) and ${usage.bots} bot(s): that is what this workspace uses now`);
+    }
+    let customerId = workspace.billing?.customerId;
+    if (!customerId) {
+      customerId = await provider.createCustomer({ workspaceId: workspace.id, name: workspace.name, email: me(req).email || undefined });
+      workspace.billing = { ...workspace.billing, customerId };
+      store.save();
+    }
+    const url = await provider.checkout({
+      customerId,
+      workspaceId: workspace.id,
+      interval: body.interval,
+      builders: body.builders,
+      bots: body.bots,
+      successUrl: `${config.portalUrl}/#/billing?checkout=done`,
+      cancelUrl: `${config.portalUrl}/#/billing`,
+    });
+    return { url };
+  });
+
+  app.post("/api/billing/portal", async (req) => {
+    const provider = needBilling();
+    const workspace = get(store.data.workspaces, ws(req), "Workspace");
+    if (!workspace.billing?.customerId) throw new HttpError(409, "This workspace has no billing account yet; choose a plan first");
+    return { url: await provider.portal({ customerId: workspace.billing.customerId, returnUrl: `${config.portalUrl}/#/billing` }) };
+  });
+
+  // Stripe's webhook needs the exact bytes it signed, so this route reads the body raw.
+  await app.register(async (scope) => {
+    scope.addContentTypeParser("application/json", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
+    scope.post("/api/billing/webhook", async (req, reply) => {
+      if (!billing) return reply.status(404).send({ error: "Billing is not set up" });
+      let state: SubscriptionState | null;
+      try {
+        state = await billing.parseWebhook(req.body as Buffer, String(req.headers["stripe-signature"] ?? ""));
+      } catch (err) {
+        app.log.warn(`Billing: rejected a webhook: ${(err as Error).message}`);
+        return reply.status(400).send({ error: "Invalid webhook signature" });
+      }
+      if (state) applySubscription(state);
+      return { received: true };
+    });
   });
 
   /* ---------------------------- lifecycle --------------------------- */
