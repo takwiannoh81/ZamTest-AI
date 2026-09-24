@@ -34,6 +34,11 @@ services:
       ZAMTEST_ADMIN_TOKEN: ${ZAMTEST_ADMIN_TOKEN}
       ZAMTEST_AGENT_KEY: ${ZAMTEST_AGENT_KEY}
       ZAMTEST_CORS_ORIGINS: https://portal.${SITE_DOMAIN},https://designer.${SITE_DOMAIN}
+      # One sign-in for the Portal and the Designer (a cookie on the parent domain),
+      # and where approval links for new bot PCs point.
+      ZAMTEST_COOKIE_DOMAIN: .${SITE_DOMAIN}
+      ZAMTEST_PORTAL_URL: https://portal.${SITE_DOMAIN}
+      ZAMTEST_DESIGNER_URL: https://designer.${SITE_DOMAIN}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ZAMTEST_AI_MODEL: ${ZAMTEST_AI_MODEL:-}
       # Nightly S3 backups (optional; see docs/DEPLOYMENT.md)

@@ -95,7 +95,10 @@ describe("orchestrator API", () => {
 describe("production safety", () => {
   it("refuses weak or default secrets in production", async () => {
     const { productionProblems } = await import("../src/config.js");
-    expect(productionProblems(loadConfig({ NODE_ENV: "production" }))).toHaveLength(2);
+    // Only the admin token is required: without a shared agent key, only PCs approved in the Portal connect.
+    expect(productionProblems(loadConfig({ NODE_ENV: "production" }))).toHaveLength(1);
+    expect(productionProblems(loadConfig({ NODE_ENV: "production", ZAMTEST_ADMIN_TOKEN: "x".repeat(32), ZAMTEST_AGENT_KEY: "short" }))).toHaveLength(1);
+    expect(loadConfig({ NODE_ENV: "production" }).agentKey).toBeUndefined();
     const strong = "x".repeat(32);
     expect(productionProblems(loadConfig({ NODE_ENV: "production", ZAMTEST_ADMIN_TOKEN: strong, ZAMTEST_AGENT_KEY: strong }))).toEqual([]);
     expect(productionProblems(loadConfig({}))).toEqual([]);

@@ -5,15 +5,21 @@
 // Windows service cannot do that: services run in session 0, which has no
 // desktop. Started at sign-in from the HKCU Run key written by the installer.
 //
+// Connecting a PC needs no key: the tray app asks the orchestrator for an
+// approval link and opens it in the Portal, where a signed-in Developer or
+// Admin approves the PC. The PC then gets its own credential, kept encrypted
+// for this Windows user (DPAPI). An install key (IT rollouts) approves at once.
+//
 //   ZamTechAgent.exe                       start (or, if already running, open Settings)
+//   ZamTechAgent.exe --first-run           start after setup: approval, then the Designer
 //   ZamTechAgent.exe --settings            start and open Settings
 //   ZamTechAgent.exe --quit [--now] [--wait SECONDS]
 //       stop the running instance, letting a running job finish unless --now;
 //       exits with 2 if it is still running after SECONDS (default 15)
-//   ZamTechAgent.exe --protect-key         encrypt a plain "key" in agent.json (used by setup)
 //
-// While it runs, status.txt next to it says "busy" or "idle" so setup can tell
-// whether a job would be interrupted.
+// Setup leaves its choices (server, bot name, install key) in setup.json,
+// which is merged into agent.json on start. While running, status.txt says
+// "busy" or "idle" so setup can tell whether a job would be interrupted.
 //
 // Built with the C# 5 compiler that ships with .NET Framework 4 (see
 // scripts/build-installer.mjs), so no newer language features.
@@ -37,19 +43,33 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyCompany("ZamTech AI")]
 
 static class Program {
-  const string MutexName = @"Local\ZamTechAIAgent";
-  public const string QuitEventName = @"Local\ZamTechAIAgent.Quit";
-  public const string QuitNowEventName = @"Local\ZamTechAIAgent.QuitNow";
-  public const string ShowEventName = @"Local\ZamTechAIAgent.Show";
+  // One running instance per install folder; setup stops the one in its own folder.
+  static string MutexName;
+  public static string QuitEventName, QuitNowEventName, ShowEventName;
+  public const string Version = "0.1.0";
+
+  static void NameInstance(string dir) {
+    string id;
+    using (var sha = SHA256.Create()) {
+      byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(Path.GetFullPath(dir).TrimEnd('\\').ToLowerInvariant()));
+      id = BitConverter.ToString(hash).Replace("-", "").Substring(0, 16);
+    }
+    MutexName = @"Local\ZamTechAIAgent." + id;
+    QuitEventName = MutexName + ".Quit";
+    QuitNowEventName = MutexName + ".QuitNow";
+    ShowEventName = MutexName + ".Show";
+  }
 
   [STAThread]
   static int Main(string[] args) {
     string dir = AppDomain.CurrentDomain.BaseDirectory;
+    NameInstance(dir);
     if (Has(args, "--protect-key")) {
+      // Older setups wrote secrets in plain text; encrypt them for this user.
       try {
         var s = new AgentSettings(Path.Combine(dir, "agent.json"));
         s.Load();
-        if (s.HasPlainKey) s.Save();
+        if (s.HasPlainSecrets) s.Save();
         return 0;
       } catch {
         return 1;
@@ -71,7 +91,7 @@ static class Program {
     try {
       Application.EnableVisualStyles();
       Application.SetCompatibleTextRenderingDefault(false);
-      Application.Run(new AgentTray(dir, Has(args, "--settings")));
+      Application.Run(new AgentTray(dir, Has(args, "--settings"), Has(args, "--first-run")));
     } finally {
       mutex.ReleaseMutex();
     }
@@ -106,14 +126,67 @@ static class Program {
   }
 }
 
-/// agent.json, shared with the agent (see apps/agent/src/config.ts). The key is
-/// kept encrypted for the current Windows user (DPAPI) as "keyProtected".
+/// JSON over HTTP(S) to the orchestrator.
+static class Http {
+  public class Reply {
+    public int Status;
+    public Dictionary<string, object> Json;
+    public bool Ok { get { return Status >= 200 && Status < 300; } }
+    public string Error { get { string e = Str(Json, "error"); return e.Length > 0 ? e : "HTTP " + Status; } }
+  }
+
+  static Http() {
+    ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; // TLS 1.2
+  }
+
+  public static Reply Send(string method, string url, Dictionary<string, object> body) {
+    var req = (HttpWebRequest)WebRequest.Create(url);
+    req.Method = method;
+    req.Timeout = 15000;
+    req.Accept = "application/json";
+    if (body != null) {
+      req.ContentType = "application/json";
+      byte[] data = Encoding.UTF8.GetBytes(new JavaScriptSerializer().Serialize(body));
+      using (var s = req.GetRequestStream()) s.Write(data, 0, data.Length);
+    }
+    HttpWebResponse res;
+    try {
+      res = (HttpWebResponse)req.GetResponse();
+    } catch (WebException ex) {
+      res = ex.Response as HttpWebResponse;
+      if (res == null) throw;
+    }
+    using (res)
+    using (var reader = new StreamReader(res.GetResponseStream(), Encoding.UTF8)) {
+      string text = reader.ReadToEnd();
+      var reply = new Reply { Status = (int)res.StatusCode, Json = new Dictionary<string, object>() };
+      try {
+        if (text.Length > 0) reply.Json = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(text) ?? reply.Json;
+      } catch { }
+      return reply;
+    }
+  }
+
+  public static string Str(Dictionary<string, object> d, string key) {
+    object v;
+    return d != null && d.TryGetValue(key, out v) && v != null ? v.ToString() : "";
+  }
+}
+
+/// agent.json, shared with the agent (see apps/agent/src/config.ts). Secrets are
+/// kept encrypted for the current Windows user (DPAPI): "tokenProtected" for the
+/// PC's own credential, "keyProtected" for a shared agent key (older installs).
 class AgentSettings {
   public string Server = "";
-  public string Key = "";
   public string Name = "";
-  /// agent.json still has the key in plain text, as setup writes it.
-  public bool HasPlainKey;
+  public string Token = "";
+  public string AgentId = "";
+  public string Key = "";
+  public string InstallKey = "";
+  public string PortalUrl = "";
+  public string DesignerUrl = "";
+  /// agent.json still holds a secret in plain text.
+  public bool HasPlainSecrets;
   Dictionary<string, object> raw = new Dictionary<string, object>();
   readonly string path;
   // Must match KEY_ENTROPY in apps/agent/src/config.ts.
@@ -121,40 +194,91 @@ class AgentSettings {
 
   public AgentSettings(string path) { this.path = path; }
 
-  public bool Complete { get { return Server.Length > 0 && Key.Length > 0; } }
+  /// Connected: this PC has its own credential (or a shared key) for a server.
+  public bool Complete { get { return Server.Length > 0 && (Token.Length > 0 || Key.Length > 0); } }
 
   public void Load() {
-    if (!File.Exists(path)) return;
-    try {
-      raw = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(path, Encoding.UTF8)) ?? new Dictionary<string, object>();
-    } catch {
-      raw = new Dictionary<string, object>();
-    }
+    raw = Read(path);
     Server = Get("server");
     Name = Get("name");
-    Key = Get("key");
-    HasPlainKey = Key.Length > 0;
-    if (!HasPlainKey && Get("keyProtected").Length > 0) {
-      try {
-        Key = Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(Get("keyProtected")), Entropy, DataProtectionScope.CurrentUser));
-      } catch {
-        Key = ""; // saved by another Windows user, or damaged: ask for the key again
-      }
+    AgentId = Get("agentId");
+    InstallKey = Get("installKey");
+    PortalUrl = Get("portalUrl");
+    DesignerUrl = Get("designerUrl");
+    HasPlainSecrets = Get("token").Length > 0 || Get("key").Length > 0;
+    Token = Reveal("token", "tokenProtected");
+    Key = Reveal("key", "keyProtected");
+  }
+
+  static Dictionary<string, object> Read(string file) {
+    if (!File.Exists(file)) return new Dictionary<string, object>();
+    try {
+      return new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(file, Encoding.UTF8)) ?? new Dictionary<string, object>();
+    } catch {
+      return new Dictionary<string, object>();
     }
   }
 
   string Get(string name) {
-    object v;
-    return raw.TryGetValue(name, out v) && v != null ? v.ToString().Trim() : "";
+    return Http.Str(raw, name).Trim();
+  }
+
+  string Reveal(string plainName, string protectedName) {
+    string plain = Get(plainName);
+    if (plain.Length > 0) return plain;
+    string sealedValue = Get(protectedName);
+    if (sealedValue.Length == 0) return "";
+    try {
+      return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(sealedValue), Entropy, DataProtectionScope.CurrentUser));
+    } catch {
+      return ""; // saved by another Windows user, or damaged: connect the PC again
+    }
+  }
+
+  void Seal(string plainName, string protectedName, string value) {
+    raw.Remove(plainName);
+    if (value.Length == 0) raw.Remove(protectedName);
+    else raw[protectedName] = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(value), Entropy, DataProtectionScope.CurrentUser));
+  }
+
+  void Put(string name, string value) {
+    if (value.Length == 0) raw.Remove(name);
+    else raw[name] = value;
   }
 
   public void Save() {
-    raw["server"] = Server;
-    raw["name"] = Name;
-    raw.Remove("key");
-    raw["keyProtected"] = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(Key), Entropy, DataProtectionScope.CurrentUser));
+    Put("server", Server);
+    Put("name", Name);
+    Put("agentId", AgentId);
+    Put("installKey", InstallKey);
+    Put("portalUrl", PortalUrl);
+    Put("designerUrl", DesignerUrl);
+    Seal("token", "tokenProtected", Token);
+    Seal("key", "keyProtected", Key);
     File.WriteAllText(path, new JavaScriptSerializer().Serialize(raw), new UTF8Encoding(false));
-    HasPlainKey = false;
+    HasPlainSecrets = false;
+  }
+
+  /// Takes over what setup chose (setup.json) and deletes that file. A new server
+  /// means the PC has to be approved there, so its credential is dropped.
+  public bool MergeSetup(string setupFile) {
+    if (!File.Exists(setupFile)) return false;
+    var setup = Read(setupFile);
+    string server = Http.Str(setup, "server").Trim().TrimEnd('/');
+    if (server.Length > 0 && !string.Equals(server, Server, StringComparison.OrdinalIgnoreCase)) {
+      Server = server;
+      Token = "";
+      AgentId = "";
+      PortalUrl = "";
+      DesignerUrl = "";
+    }
+    string name = Http.Str(setup, "name").Trim();
+    if (name.Length > 0) Name = name;
+    string installKey = Http.Str(setup, "installKey").Trim();
+    if (installKey.Length > 0) InstallKey = installKey;
+    Save();
+    try { File.Delete(setupFile); } catch { }
+    return true;
   }
 }
 
@@ -164,21 +288,24 @@ class AgentTray : ApplicationContext {
 
   readonly string dir, logDir, configPath, statusPath;
   readonly NotifyIcon tray;
-  readonly ToolStripMenuItem statusItem;
+  readonly ToolStripMenuItem statusItem, approveItem;
   readonly Control ui = new Control();
   readonly System.Windows.Forms.Timer restartTimer = new System.Windows.Forms.Timer();
   readonly System.Windows.Forms.Timer killTimer = new System.Windows.Forms.Timer();
+  readonly System.Windows.Forms.Timer enrollRetryTimer = new System.Windows.Forms.Timer();
   readonly object logGate = new object();
   readonly IntPtr job;
   Process agent;
   DateTime agentStarted;
-  int failures;
-  bool quitting, announced, busy, stopping;
+  int failures, enrollGeneration;
+  bool quitting, announced, busy, stopping, enrolling, firstRun;
+  string approvalUrl;
   Action afterStop;
   SettingsForm settingsForm;
 
-  public AgentTray(string dir, bool openSettings) {
+  public AgentTray(string dir, bool openSettings, bool firstRun) {
     this.dir = dir;
+    this.firstRun = firstRun;
     logDir = Path.Combine(dir, "logs");
     configPath = Path.Combine(dir, "agent.json");
     statusPath = Path.Combine(dir, "status.txt");
@@ -190,6 +317,11 @@ class AgentTray : ApplicationContext {
     var menu = new ContextMenuStrip();
     statusItem = new ToolStripMenuItem("Starting...") { Enabled = false };
     menu.Items.Add(statusItem);
+    approveItem = new ToolStripMenuItem("Open the approval page", null, delegate { if (approvalUrl != null) OpenUrl(approvalUrl); }) { Visible = false };
+    menu.Items.Add(approveItem);
+    menu.Items.Add(new ToolStripSeparator());
+    menu.Items.Add("Open Designer", null, delegate { OpenSite(true); });
+    menu.Items.Add("Open Portal", null, delegate { OpenSite(false); });
     menu.Items.Add(new ToolStripSeparator());
     menu.Items.Add("Settings...", null, delegate { ShowSettings(); });
     menu.Items.Add("Open log", null, delegate { OpenLog(); });
@@ -205,7 +337,8 @@ class AgentTray : ApplicationContext {
       ContextMenuStrip = menu,
       Visible = true,
     };
-    tray.DoubleClick += delegate { ShowSettings(); };
+    tray.DoubleClick += delegate { if (enrolling && approvalUrl != null) OpenUrl(approvalUrl); else ShowSettings(); };
+    tray.BalloonTipClicked += delegate { if (enrolling && approvalUrl != null) OpenUrl(approvalUrl); };
 
     restartTimer.Tick += delegate { restartTimer.Stop(); StartAgent(); };
     killTimer.Tick += delegate {
@@ -213,17 +346,27 @@ class AgentTray : ApplicationContext {
       Log("[tray] The agent did not stop in time; ending it");
       try { if (agent != null) agent.Kill(); } catch { }
     };
+    enrollRetryTimer.Interval = 30000;
+    enrollRetryTimer.Tick += delegate { enrollRetryTimer.Stop(); StartAgent(); };
     // Setup and uninstall ask the running instance to stop through these events.
     Watch(Program.QuitEventName, delegate { StopAgent(false, Exit); });
     Watch(Program.QuitNowEventName, delegate { StopAgent(true, Exit); });
     Watch(Program.ShowEventName, ShowSettings);
 
     var settings = LoadSettings();
-    if (settings.HasPlainKey) {
-      try { settings.Save(); } catch (Exception ex) { Log("[tray] Cannot encrypt the agent key: " + ex.Message); }
+    try {
+      if (settings.MergeSetup(Path.Combine(dir, "setup.json"))) Log("[tray] Applied the choices made in setup");
+      else if (settings.HasPlainSecrets) settings.Save();
+    } catch (Exception ex) {
+      Log("[tray] Cannot update agent.json: " + ex.Message);
     }
     WriteStatus();
-    if (openSettings || !settings.Complete) ShowSettings();
+    if (openSettings || settings.Server.Length == 0) ShowSettings();
+    // Just installed on a PC that is already connected (an upgrade): open the Designer right away.
+    if (firstRun && settings.Complete) {
+      this.firstRun = false;
+      OpenSite(true);
+    }
     StartAgent();
   }
 
@@ -252,13 +395,47 @@ class AgentTray : ApplicationContext {
     try { File.WriteAllText(statusPath, busy ? "busy" : "idle"); } catch { }
   }
 
+  static void OpenUrl(string url) {
+    try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+  }
+
+  /// Opens the Designer or the Portal, asking the server where they are if needed.
+  void OpenSite(bool designer) {
+    var s = LoadSettings();
+    string known = designer ? s.DesignerUrl : s.PortalUrl;
+    if (known.Length > 0) { OpenUrl(known); return; }
+    string server = s.Server;
+    ThreadPool.QueueUserWorkItem(delegate {
+      string url = "";
+      try {
+        var health = Http.Send("GET", server + "/api/health", null);
+        url = Http.Str(health.Json, designer ? "designerUrl" : "portalUrl");
+        if (url.Length > 0) {
+          OnUi(delegate {
+            var fresh = LoadSettings();
+            fresh.PortalUrl = Http.Str(health.Json, "portalUrl");
+            fresh.DesignerUrl = Http.Str(health.Json, "designerUrl");
+            try { fresh.Save(); } catch { }
+          });
+        }
+      } catch { }
+      // Fall back to the usual layout: api.example.com -> designer.example.com / portal.example.com.
+      if (url.Length == 0 && server.Contains("://api.")) url = server.Replace("://api.", designer ? "://designer." : "://portal.");
+      if (url.Length > 0) OpenUrl(url);
+    });
+  }
+
   /* ---------------------------- agent process ---------------------------- */
 
   void StartAgent() {
-    if (quitting || agent != null) return;
+    if (quitting || agent != null || enrolling) return;
     var settings = LoadSettings();
-    if (!settings.Complete) {
+    if (settings.Server.Length == 0) {
       SetStatus("Not set up - open Settings");
+      return;
+    }
+    if (!settings.Complete) {
+      BeginEnrollment();
       return;
     }
     var psi = new ProcessStartInfo(Path.Combine(dir, "node.exe"), "\"" + Path.Combine(dir, "agent.mjs") + "\" connect --config \"" + configPath + "\"") {
@@ -271,8 +448,11 @@ class AgentTray : ApplicationContext {
       StandardOutputEncoding = Encoding.UTF8,
       StandardErrorEncoding = Encoding.UTF8,
     };
-    // The key is handed over in memory, so the agent does not have to decrypt agent.json itself.
-    psi.EnvironmentVariables["ZAMTEST_AGENT_KEY"] = settings.Key;
+    // The credential is handed over in memory, so the agent does not have to decrypt agent.json itself.
+    psi.EnvironmentVariables.Remove("ZAMTEST_AGENT_TOKEN");
+    psi.EnvironmentVariables.Remove("ZAMTEST_AGENT_KEY");
+    if (settings.Token.Length > 0) psi.EnvironmentVariables["ZAMTEST_AGENT_TOKEN"] = settings.Token;
+    else psi.EnvironmentVariables["ZAMTEST_AGENT_KEY"] = settings.Key;
     psi.EnvironmentVariables["ZAMTEST_STDIN_CONTROL"] = "1";
     psi.EnvironmentVariables["ZAMTEST_DRAIN_SECONDS"] = DrainSeconds.ToString();
     psi.EnvironmentVariables["NO_COLOR"] = "1";
@@ -298,7 +478,7 @@ class AgentTray : ApplicationContext {
 
   /// Restart/Quit from the menu: asks first when that would interrupt a job.
   void AskAndStop(string what, Action then) {
-    if (agent == null) { then(); return; }
+    if (agent == null) { CancelEnrollment(); then(); return; }
     if (!busy) { StopAgent(false, then); return; }
     if (stopping) {
       var cancel = MessageBox.Show("The agent is waiting for the current job to finish. Cancel the job and " + what + " now?",
@@ -374,6 +554,10 @@ class AgentTray : ApplicationContext {
         if (line.Contains("] Job ")) SetStatus("Stopping");
         return;
       }
+      if (line.Contains("no longer approved")) {
+        PcRemoved();
+        return;
+      }
       if (line.Contains("Registered as")) {
         SetStatus("Connected");
         if (!announced) {
@@ -381,11 +565,162 @@ class AgentTray : ApplicationContext {
           tray.ShowBalloonTip(4000, "ZamTech AI Agent", "Connected. This PC can now run jobs.", ToolTipIcon.Info);
         }
       }
-      else if (line.Contains("Invalid agent key")) SetStatus("Wrong agent key - open Settings");
+      else if (line.Contains("Invalid agent key")) SetStatus("Not approved - use Settings > Connect this PC");
       else if (line.Contains("retrying in") || line.Contains("Orchestrator error")) SetStatus("Cannot reach the server - retrying");
       else if (line.Contains("] Running job")) SetStatus("Running a job");
       else if (line.Contains("] Job ")) SetStatus("Connected");
     });
+  }
+
+  /// The PC was removed in the Portal: its credential no longer works, so ask for approval again.
+  void PcRemoved() {
+    Log("[tray] This PC was removed in the Portal; asking for approval again");
+    var s = LoadSettings();
+    s.Token = "";
+    s.AgentId = "";
+    try { s.Save(); } catch { }
+    StopAgent(true, StartAgent);
+  }
+
+  /* ------------------------- connecting this PC -------------------------- */
+
+  void BeginEnrollment() {
+    if (quitting || enrolling) return;
+    enrollRetryTimer.Stop();
+    enrolling = true;
+    int generation = ++enrollGeneration;
+    var s = LoadSettings();
+    string name = s.Name.Length > 0 ? s.Name : Environment.MachineName;
+    SetStatus("Connecting this PC...");
+    new Thread(delegate() { Enroll(generation, s.Server, name, s.InstallKey); }) { IsBackground = true }.Start();
+  }
+
+  void CancelEnrollment() {
+    enrollGeneration++;
+    enrolling = false;
+    approveItem.Visible = false;
+    enrollRetryTimer.Stop();
+  }
+
+  bool Current(int generation) {
+    return generation == enrollGeneration && !quitting;
+  }
+
+  /// Runs on a background thread: start, show the approval page, then wait for the decision.
+  void Enroll(int generation, string server, string name, string installKey) {
+    try {
+      var body = new Dictionary<string, object> {
+        { "name", name },
+        { "machine", Environment.MachineName },
+        { "os", "win32 " + Environment.OSVersion.Version },
+        { "version", Program.Version },
+      };
+      if (installKey.Length > 0) body["installKey"] = installKey;
+      var start = Http.Send("POST", server + "/api/agent/enroll/start", body);
+      if (start.Status == 401 && installKey.Length > 0) {
+        Log("[tray] The install key was not accepted (" + start.Error + "); asking for approval in the browser instead");
+        OnUi(delegate { var s = LoadSettings(); s.InstallKey = ""; try { s.Save(); } catch { } });
+        body.Remove("installKey");
+        start = Http.Send("POST", server + "/api/agent/enroll/start", body);
+      }
+      if (!start.Ok) throw new Exception(start.Error);
+      string deviceCode = Http.Str(start.Json, "deviceCode");
+      string url = Http.Str(start.Json, "verificationUrl") + (firstRun ? "&next=designer" : "");
+      bool approvedAtOnce = Http.Str(start.Json, "approved") == "True";
+      int interval = Math.Max(2, Convert.ToInt32(start.Json.ContainsKey("interval") ? start.Json["interval"] : 3));
+      int expiresIn = Convert.ToInt32(start.Json.ContainsKey("expiresIn") ? start.Json["expiresIn"] : 900);
+      if (!approvedAtOnce) {
+        // The Portal shows the same code, so the person can check they approve this PC.
+        string code = Http.Str(start.Json, "userCode");
+        Log("[tray] Waiting for approval in the Portal (code " + code + ")");
+        OnUi(delegate {
+          if (!Current(generation)) return;
+          approvalUrl = url;
+          approveItem.Visible = true;
+          SetStatus("Waiting for approval - code " + code);
+          OpenUrl(url);
+          tray.ShowBalloonTip(10000, "Approve this PC: code " + code,
+            "Approve this PC in the ZamTech AI Portal in your browser, checking that it shows code " + code + ". Click here to open the page again.", ToolTipIcon.Info);
+        });
+      }
+      var until = DateTime.Now.AddSeconds(expiresIn);
+      while (DateTime.Now < until && Current(generation)) {
+        var poll = Http.Send("POST", server + "/api/agent/enroll/poll", new Dictionary<string, object> { { "deviceCode", deviceCode } });
+        string status = Http.Str(poll.Json, "status");
+        if (status == "approved") {
+          var result = poll.Json;
+          OnUi(delegate { if (Current(generation)) FinishEnrollment(result); });
+          return;
+        }
+        if (status == "denied") {
+          OnUi(delegate { if (Current(generation)) EnrollmentEnded("Declined in the Portal - use Settings > Connect this PC"); });
+          return;
+        }
+        if (status == "expired") break;
+        Thread.Sleep(interval * 1000);
+      }
+      OnUi(delegate { if (Current(generation)) EnrollmentEnded("Not connected - use Settings > Connect this PC"); });
+    } catch (Exception ex) {
+      Log("[tray] Cannot connect this PC: " + ex.Message);
+      OnUi(delegate {
+        if (!Current(generation)) return;
+        enrolling = false;
+        approveItem.Visible = false;
+        SetStatus("Cannot reach the server - retrying");
+        enrollRetryTimer.Start();
+      });
+    }
+  }
+
+  void FinishEnrollment(Dictionary<string, object> result) {
+    // Approved in the browser: the Portal continues into the Designer by itself.
+    bool approvedInBrowser = approvalUrl != null;
+    enrolling = false;
+    approveItem.Visible = false;
+    approvalUrl = null;
+    var s = LoadSettings();
+    s.Token = Http.Str(result, "agentToken");
+    s.AgentId = Http.Str(result, "agentId");
+    s.InstallKey = "";
+    if (Http.Str(result, "name").Length > 0) s.Name = Http.Str(result, "name");
+    if (Http.Str(result, "portalUrl").Length > 0) s.PortalUrl = Http.Str(result, "portalUrl");
+    if (Http.Str(result, "designerUrl").Length > 0) s.DesignerUrl = Http.Str(result, "designerUrl");
+    try {
+      s.Save();
+    } catch (Exception ex) {
+      Log("[tray] Cannot save the credential: " + ex.Message);
+      SetStatus("Cannot save the settings - see log");
+      return;
+    }
+    Log("[tray] This PC was approved by " + Http.Str(result, "approvedBy"));
+    // An install key approves without the browser, so open the Designer here after a fresh install.
+    if (firstRun) {
+      firstRun = false;
+      if (s.DesignerUrl.Length > 0 && !approvedInBrowser) OpenUrl(s.DesignerUrl);
+    }
+    announced = false;
+    StartAgent();
+  }
+
+  void EnrollmentEnded(string status) {
+    enrolling = false;
+    approveItem.Visible = false;
+    approvalUrl = null;
+    firstRun = false;
+    SetStatus(status);
+  }
+
+  /// Settings > Connect this PC: forget the credential and ask for approval again.
+  void Reconnect() {
+    var s = LoadSettings();
+    s.Token = "";
+    s.AgentId = "";
+    s.Key = "";
+    try { s.Save(); } catch { }
+    CancelEnrollment();
+    announced = false;
+    failures = 0;
+    StopAgent(false, StartAgent);
   }
 
   /* --------------------------------- logs -------------------------------- */
@@ -426,11 +761,13 @@ class AgentTray : ApplicationContext {
       settingsForm.Activate();
       return;
     }
-    settingsForm = new SettingsForm(LoadSettings());
+    settingsForm = new SettingsForm(LoadSettings(), enrolling);
     settingsForm.FormClosed += delegate {
-      bool saved = settingsForm.DialogResult == DialogResult.OK;
+      var form = settingsForm;
       settingsForm = null;
-      if (saved) {
+      if (form.DialogResult != DialogResult.OK) return;
+      if (form.ReconnectRequested) Reconnect();
+      else {
         announced = false;
         StopAgent(false, delegate { failures = 0; StartAgent(); });
       }
@@ -442,6 +779,7 @@ class AgentTray : ApplicationContext {
   void Exit() {
     if (quitting) return;
     quitting = true;
+    CancelEnrollment();
     try { File.Delete(statusPath); } catch { }
     tray.Visible = false;
     tray.Dispose();
@@ -451,13 +789,16 @@ class AgentTray : ApplicationContext {
 
 class SettingsForm : Form {
   readonly AgentSettings settings;
-  readonly TextBox server = new TextBox(), key = new TextBox(), name = new TextBox();
+  readonly TextBox server = new TextBox(), name = new TextBox();
   readonly CheckBox startAtSignIn = new CheckBox();
-  readonly Label result = new Label();
+  readonly Label connection = new Label(), result = new Label();
   const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
   const string RunValue = "ZamTech AI Agent";
 
-  public SettingsForm(AgentSettings settings) {
+  /// Save with a new server, or "Connect this PC again": ask for approval again.
+  public bool ReconnectRequested;
+
+  public SettingsForm(AgentSettings settings, bool waitingForApproval) {
     this.settings = settings;
     Text = "ZamTech AI Agent settings";
     Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -467,7 +808,7 @@ class SettingsForm : Form {
     StartPosition = FormStartPosition.CenterScreen;
     AutoScaleMode = AutoScaleMode.Font;
     Font = SystemFonts.MessageBoxFont;
-    ClientSize = new Size(460, 300);
+    ClientSize = new Size(480, 300);
 
     var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(14), ColumnCount = 2, RowCount = 7 };
     layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -475,15 +816,22 @@ class SettingsForm : Form {
     Controls.Add(layout);
 
     var intro = new Label {
-      Text = "Connect this PC to your ZamTech AI orchestrator. Ask your administrator for the agent key (ZAMTEST_AGENT_KEY in deploy/.env).",
-      AutoSize = true, MaximumSize = new Size(430, 0), Margin = new Padding(0, 0, 0, 10),
+      Text = "This PC runs automations for your ZamTech AI workspace. A Developer or Admin approves it once in the Portal; no key is needed.",
+      AutoSize = true, MaximumSize = new Size(450, 0), Margin = new Padding(0, 0, 0, 10),
     };
     layout.Controls.Add(intro, 0, 0);
     layout.SetColumnSpan(intro, 2);
     AddRow(layout, 1, "Server URL", server, settings.Server.Length > 0 ? settings.Server : "https://api.zamtechai.com");
-    AddRow(layout, 2, "Agent key", key, settings.Key);
-    key.UseSystemPasswordChar = true;
-    AddRow(layout, 3, "Bot name", name, settings.Name.Length > 0 ? settings.Name : Environment.MachineName);
+    AddRow(layout, 2, "Bot name", name, settings.Name.Length > 0 ? settings.Name : Environment.MachineName);
+
+    layout.Controls.Add(new Label { Text = "Status", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 8, 10, 0) }, 0, 3);
+    connection.AutoSize = true;
+    connection.MaximumSize = new Size(350, 0);
+    connection.Margin = new Padding(0, 8, 0, 0);
+    connection.Text = settings.Token.Length > 0
+      ? "Connected" + (settings.AgentId.Length > 0 ? " (" + settings.AgentId + ")" : "")
+      : settings.Key.Length > 0 ? "Connected with a shared agent key" : waitingForApproval ? "Waiting for approval in the Portal" : "Not connected";
+    layout.Controls.Add(connection, 1, 3);
 
     startAtSignIn.Text = "Start the agent when I sign in to Windows";
     startAtSignIn.AutoSize = true;
@@ -492,19 +840,26 @@ class SettingsForm : Form {
     layout.Controls.Add(startAtSignIn, 1, 4);
 
     result.AutoSize = true;
-    result.MaximumSize = new Size(330, 0);
+    result.MaximumSize = new Size(350, 0);
     result.Margin = new Padding(0, 8, 0, 0);
     layout.Controls.Add(result, 1, 5);
 
     var buttons = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(0, 12, 0, 0) };
-    var save = new Button { Text = "Save and connect", AutoSize = true };
+    var save = new Button { Text = "Save", AutoSize = true };
     var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
     var test = new Button { Text = "Test connection", AutoSize = true };
-    save.Click += delegate { Save(); };
+    var reconnect = new Button { Text = "Connect this PC again", AutoSize = true };
+    save.Click += delegate { Save(false); };
     test.Click += delegate { TestConnection(); };
+    reconnect.Click += delegate {
+      var sure = MessageBox.Show("This PC will stop running jobs until it is approved again in the Portal. Continue?",
+        "ZamTech AI Agent", MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
+      if (sure == DialogResult.OK) Save(true);
+    };
     buttons.Controls.Add(save);
     buttons.Controls.Add(cancel);
     buttons.Controls.Add(test);
+    buttons.Controls.Add(reconnect);
     layout.Controls.Add(buttons, 0, 6);
     layout.SetColumnSpan(buttons, 2);
     AcceptButton = save;
@@ -520,12 +875,11 @@ class SettingsForm : Form {
 
   string ServerUrl { get { return server.Text.Trim().TrimEnd('/'); } }
 
-  bool Validate(out string error) {
+  bool ValidServer() {
     Uri uri;
-    error = null;
-    if (!Uri.TryCreate(ServerUrl, UriKind.Absolute, out uri) || (uri.Scheme != "https" && uri.Scheme != "http")) error = "Enter the server address, e.g. https://api.zamtechai.com";
-    else if (key.Text.Trim().Length == 0) error = "Enter the agent key.";
-    return error == null;
+    if (Uri.TryCreate(ServerUrl, UriKind.Absolute, out uri) && (uri.Scheme == "https" || uri.Scheme == "http")) return true;
+    ShowResult("Enter the server address, e.g. https://api.zamtechai.com", false);
+    return false;
   }
 
   void ShowResult(string text, bool ok) {
@@ -534,53 +888,38 @@ class SettingsForm : Form {
   }
 
   void TestConnection() {
-    string error;
-    if (!Validate(out error)) { ShowResult(error, false); return; }
+    if (!ValidServer()) return;
     ShowResult("Testing...", true);
     Cursor = Cursors.WaitCursor;
-    string url = ServerUrl, agentKey = key.Text.Trim();
+    string url = ServerUrl;
     ThreadPool.QueueUserWorkItem(delegate {
       string message;
-      bool ok = Probe(url, agentKey, out message);
+      bool ok;
+      try {
+        var health = Http.Send("GET", url + "/api/health", null);
+        ok = health.Ok;
+        message = ok ? "The server answers." : "The server answered with " + health.Error;
+      } catch (Exception ex) {
+        ok = false;
+        message = "Cannot reach " + url + ": " + ex.Message;
+      }
       BeginInvoke((Action)delegate { Cursor = Cursors.Default; ShowResult(message, ok); });
     });
   }
 
-  /// Health check, then a heartbeat for an unknown agent: 401 means the key is wrong, any other answer means it is right.
-  static bool Probe(string server, string agentKey, out string message) {
-    ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; // TLS 1.2
-    try {
-      var health = (HttpWebRequest)WebRequest.Create(server + "/api/health");
-      health.Timeout = 10000;
-      using (health.GetResponse()) { }
-    } catch (Exception ex) {
-      message = "Cannot reach " + server + ": " + ex.Message;
-      return false;
-    }
-    try {
-      var hb = (HttpWebRequest)WebRequest.Create(server + "/api/agent/heartbeat");
-      hb.Method = "POST";
-      hb.Timeout = 10000;
-      hb.ContentType = "application/json";
-      hb.Headers["x-agent-key"] = agentKey;
-      byte[] body = Encoding.UTF8.GetBytes("{\"agentId\":\"connection-test\"}");
-      using (var s = hb.GetRequestStream()) s.Write(body, 0, body.Length);
-      using (hb.GetResponse()) { }
-    } catch (WebException ex) {
-      var res = ex.Response as HttpWebResponse;
-      if (res == null) { message = "Cannot reach " + server + ": " + ex.Message; return false; }
-      if (res.StatusCode == HttpStatusCode.Unauthorized) { message = "The server answered, but the agent key is wrong."; return false; }
-    }
-    message = "Connection works.";
-    return true;
-  }
-
-  void Save() {
-    string error;
-    if (!Validate(out error)) { ShowResult(error, false); return; }
+  void Save(bool reconnect) {
+    if (!ValidServer()) return;
+    bool newServer = !string.Equals(ServerUrl, settings.Server, StringComparison.OrdinalIgnoreCase);
     settings.Server = ServerUrl;
-    settings.Key = key.Text.Trim();
     settings.Name = name.Text.Trim();
+    if (newServer) {
+      // The credential belongs to the old server.
+      settings.Token = "";
+      settings.AgentId = "";
+      settings.Key = "";
+      settings.PortalUrl = "";
+      settings.DesignerUrl = "";
+    }
     try {
       settings.Save();
       SetStartAtSignIn(startAtSignIn.Checked);
@@ -588,6 +927,7 @@ class SettingsForm : Form {
       ShowResult("Cannot save the settings: " + ex.Message, false);
       return;
     }
+    ReconnectRequested = reconnect || newServer;
     DialogResult = DialogResult.OK;
     Close();
   }

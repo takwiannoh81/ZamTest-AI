@@ -2,11 +2,15 @@
 ;   ISCC.exe /DAppVersion=0.1.0 /DStage=<staged app folder> /DOutDir=<output folder> zamtech-agent.iss
 ;
 ; Installs per user (no administrator rights) because desktop automation has to
-; run in the user's signed-in session, not as a service.
+; run in the user's signed-in session, not as a service. There is nothing to
+; type: on Finish the tray app opens the Portal, where the person approves this
+; PC (they are signed in there already), and then the Designer opens.
 ;
-; Silent install for rolling out to many PCs:
-;   ZamTechAI-Agent-Setup-<version>.exe /VERYSILENT /SERVER=https://api.zamtechai.com /KEY=<agent key> [/NAME=finance-pc-01]
-; Optional: /MERGETASKS="browsers" downloads Chromium, /MERGETASKS="!autostart" skips
+; Silent install for rolling out to many PCs, with an install key an Admin
+; creates in the Portal (Bot Agents > Install keys), so no one has to approve:
+;   ZamTechAI-Agent-Setup.exe /VERYSILENT /INSTALLKEY=<install key> [/NAME=finance-pc-01]
+; Optional: /SERVER=https://api.example.com for another orchestrator,
+; /MERGETASKS="browsers" downloads Chromium, /MERGETASKS="!autostart" skips
 ; starting at sign-in, /NOSTART leaves the agent stopped after setup.
 ; An upgrade waits for a running job to finish (up to 10 minutes) unless /CANCELJOB is given.
 
@@ -18,6 +22,12 @@
 #endif
 #ifndef OutDir
   #define OutDir "..\dist\installer"
+#endif
+#ifndef DefaultServer
+  #define DefaultServer "https://api.zamtechai.com"
+#endif
+#ifndef DesignerUrl
+  #define DesignerUrl "https://designer.zamtechai.com"
 #endif
 
 [Setup]
@@ -31,6 +41,8 @@ AppSupportURL=https://zamtechai.com
 DefaultDirName={autopf}\ZamTech AI Agent
 DefaultGroupName=ZamTech AI Agent
 DisableProgramGroupPage=yes
+DisableDirPage=yes
+DisableReadyPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -54,6 +66,10 @@ SignedUninstaller=yes
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
 
+[Messages]
+FinishedHeadingLabel=ZamTech AI Agent is installed
+FinishedLabel=When you click Finish, your browser opens the ZamTech AI Portal. Approve this PC there (sign in if asked), and the Designer opens next.
+
 [Tasks]
 Name: "autostart"; Description: "Start the agent when I sign in to Windows"
 Name: "browsers"; Description: "Download Chromium for web automation (about 150 MB)"; Flags: unchecked
@@ -64,6 +80,7 @@ Source: "{#Stage}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs crea
 [Icons]
 Name: "{group}\ZamTech AI Agent"; Filename: "{app}\ZamTechAgent.exe"
 Name: "{group}\ZamTech AI Agent settings"; Filename: "{app}\ZamTechAgent.exe"; Parameters: "--settings"
+Name: "{group}\ZamTech AI Designer"; Filename: "{#DesignerUrl}"; IconFilename: "{app}\ZamTechAgent.exe"
 Name: "{group}\Desktop self-test"; Filename: "{cmd}"; Parameters: "/s /c ""title Desktop self-test & ""{app}\node.exe"" ""{app}\agent.mjs"" desktop-test & echo. & pause"""; WorkingDir: "{app}\logs"; IconFilename: "{app}\ZamTechAgent.exe"
 Name: "{group}\Agent logs"; Filename: "{app}\logs"
 
@@ -77,17 +94,21 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\node.exe"; Parameters: """{app}\node_modules\playwright\cli.js"" install chromium"; StatusMsg: "Downloading Chromium for web automation..."; Tasks: browsers; Flags: runhidden waituntilterminated
-Filename: "{app}\ZamTechAgent.exe"; Description: "Start ZamTech AI Agent now"; Flags: postinstall nowait skipifsilent
+; --first-run: approve this PC in the Portal, which then opens the Designer.
+Filename: "{app}\ZamTechAgent.exe"; Parameters: "--first-run"; Description: "Connect this PC and open the ZamTech AI Designer"; Flags: postinstall nowait skipifsilent
 Filename: "{app}\ZamTechAgent.exe"; Flags: nowait; Check: WizardSilent and not CmdLineParamExists('/NOSTART')
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\logs"
 Type: files; Name: "{app}\agent.json"
+Type: files; Name: "{app}\setup.json"
 Type: files; Name: "{app}\status.txt"
 
 [Code]
 var
-  ConnectPage: TInputQueryWizardPage;
+  DesignerIntro: TNewStaticText;
+  DesignerEdit: TNewEdit;
+  CopyButton: TNewButton;
 
 function CmdLineParamExists(const Value: String): Boolean;
 var
@@ -102,9 +123,9 @@ begin
     end;
 end;
 
-function ParamOr(const Name, Default: String): String;
+function Param(const Name: String): String;
 begin
-  Result := ExpandConstant('{param:' + Name + '|' + Default + '}');
+  Result := Trim(ExpandConstant('{param:' + Name + '|}'));
 end;
 
 function JsonString(const S: String): String;
@@ -124,52 +145,60 @@ begin
   Result := Result + '"';
 end;
 
-function ConfigPath: String;
+procedure AddJson(var Json: String; const Name, Value: String);
 begin
-  Result := ExpandConstant('{app}\agent.json');
+  if Value = '' then Exit;
+  if Json <> '' then Json := Json + ',';
+  Json := Json + JsonString(Name) + ':' + JsonString(Value);
+end;
+
+// --- Finish page: the Designer address ---
+
+procedure CopyDesignerUrl(Sender: TObject);
+var
+  Code: Integer;
+begin
+  Exec(ExpandConstant('{cmd}'), '/c echo|set /p="{#DesignerUrl}"|clip', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  CopyButton.Caption := 'Copied';
 end;
 
 procedure InitializeWizard;
 begin
-  ConnectPage := CreateInputQueryPage(wpSelectTasks,
-    'Connect to your orchestrator',
-    'Where should this bot agent get its jobs from?',
-    'Ask your administrator for the agent key (ZAMTEST_AGENT_KEY in deploy/.env on the server). ' +
-    'Leave the key empty on an upgrade to keep the current settings.');
-  ConnectPage.Add('Server URL:', False);
-  ConnectPage.Add('Agent key:', True);
-  ConnectPage.Add('Bot name (how this PC appears in the Portal):', False);
-  ConnectPage.Values[0] := ParamOr('SERVER', GetPreviousData('Server', 'https://api.zamtechai.com'));
-  ConnectPage.Values[1] := ParamOr('KEY', '');
-  ConnectPage.Values[2] := ParamOr('NAME', GetPreviousData('BotName', GetComputerNameString));
+  DesignerIntro := TNewStaticText.Create(WizardForm);
+  DesignerIntro.Parent := WizardForm.FinishedPage;
+  DesignerIntro.Caption := 'Your automations are built in the ZamTech AI Designer:';
+  DesignerIntro.AutoSize := True;
+
+  DesignerEdit := TNewEdit.Create(WizardForm);
+  DesignerEdit.Parent := WizardForm.FinishedPage;
+  DesignerEdit.Text := '{#DesignerUrl}';
+  DesignerEdit.ReadOnly := True;
+
+  CopyButton := TNewButton.Create(WizardForm);
+  CopyButton.Parent := WizardForm.FinishedPage;
+  CopyButton.Caption := 'Copy';
+  CopyButton.OnClick := @CopyDesignerUrl;
 end;
 
-procedure RegisterPreviousData(PreviousDataKey: Integer);
-begin
-  SetPreviousData(PreviousDataKey, 'Server', ConnectPage.Values[0]);
-  SetPreviousData(PreviousDataKey, 'BotName', ConnectPage.Values[2]);
-end;
-
-function NextButtonClick(CurPageID: Integer): Boolean;
+procedure CurPageChanged(CurPageID: Integer);
 var
-  Server: String;
+  Top: Integer;
 begin
-  Result := True;
-  if CurPageID = ConnectPage.ID then
-  begin
-    Server := Trim(ConnectPage.Values[0]);
-    if (Pos('https://', Lowercase(Server)) <> 1) and (Pos('http://', Lowercase(Server)) <> 1) then
-    begin
-      MsgBox('Enter the server address, for example https://api.zamtechai.com', mbError, MB_OK);
-      Result := False;
-    end
-    else if (Trim(ConnectPage.Values[1]) = '') and not FileExists(ConfigPath) then
-    begin
-      Result := MsgBox('No agent key entered. The agent will not connect until you add it in its Settings. Continue?',
-        mbConfirmation, MB_YESNO) = IDYES;
-    end;
-  end;
+  if CurPageID <> wpFinished then Exit;
+  // Below the "Connect this PC and open the Designer" check box.
+  Top := WizardForm.RunList.Top + WizardForm.RunList.Height + ScaleY(20);
+  DesignerIntro.Left := WizardForm.FinishedLabel.Left;
+  DesignerIntro.Top := Top;
+  DesignerEdit.Left := WizardForm.FinishedLabel.Left;
+  DesignerEdit.Top := DesignerIntro.Top + DesignerIntro.Height + ScaleY(6);
+  CopyButton.Width := ScaleX(75);
+  CopyButton.Height := WizardForm.NextButton.Height;
+  CopyButton.Left := WizardForm.FinishedLabel.Left + WizardForm.FinishedLabel.Width - CopyButton.Width;
+  DesignerEdit.Width := CopyButton.Left - DesignerEdit.Left - ScaleX(8);
+  CopyButton.Top := DesignerEdit.Top + (DesignerEdit.Height - CopyButton.Height) div 2;
 end;
+
+// --- stopping a running agent ---
 
 function AgentExe: String;
 begin
@@ -225,28 +254,32 @@ begin
   if not Result and not UninstallSilent then MsgBox(Error, mbError, MB_OK);
 end;
 
-procedure WriteConfig;
+// --- choices for the tray app: setup.json ---
+
+// The tray app merges setup.json into agent.json when it starts, so an upgrade
+// keeps this PC's credential. A fresh install gets the default server.
+procedure WriteSetupChoices;
 var
-  Server, Key, Name: String;
+  Json, Server: String;
   Lines: TArrayOfString;
-  Code: Integer;
 begin
-  Server := Trim(ConnectPage.Values[0]);
+  Server := Param('SERVER');
   while (Length(Server) > 0) and (Server[Length(Server)] = '/') do
     Delete(Server, Length(Server), 1);
-  Key := Trim(ConnectPage.Values[1]);
-  Name := Trim(ConnectPage.Values[2]);
-  // An upgrade without a new key keeps agent.json as it is.
-  if (Key = '') and FileExists(ConfigPath) then Exit;
+  if (Server = '') and not FileExists(ExpandConstant('{app}\agent.json')) then Server := '{#DefaultServer}';
+  Json := '';
+  AddJson(Json, 'server', Server);
+  AddJson(Json, 'name', Param('NAME'));
+  AddJson(Json, 'installKey', Param('INSTALLKEY'));
+  if Json = '' then Exit;
+  ForceDirectories(ExpandConstant('{app}'));
   SetArrayLength(Lines, 1);
-  Lines[0] := '{"server":' + JsonString(Server) + ',"key":' + JsonString(Key) + ',"name":' + JsonString(Name) + '}';
-  SaveStringsToUTF8File(ConfigPath, Lines, False);
-  // Encrypt the key for this Windows user straight away.
-  Exec(ExpandConstant('{app}\ZamTechAgent.exe'), '--protect-key', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Lines[0] := '{' + Json + '}';
+  SaveStringsToUTF8File(ExpandConstant('{app}\setup.json'), Lines, False);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssPostInstall then WriteConfig;
+  // Before the files are copied, so it is in place before any tray app starts.
+  if CurStep = ssInstall then WriteSetupChoices;
 end;
-

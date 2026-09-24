@@ -183,3 +183,21 @@ code, pre, .mono, .log, .log-line { direction: ltr; unicode-bidi: isolate; }
 .roles-legend { margin-top: 20px; display: grid; gap: 8px; font-size: 13px; }
 .card-sub { font-size: 14px; margin: 16px 0 8px; }
 .data-cell { display: inline-block; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+
+/* Connect this PC */
+.connect-card { max-width: 560px; }
+.connect-facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0 0 16px; }
+.connect-facts dt { color: var(--muted); }
+.connect-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.connect-code, .code-input { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 18px; letter-spacing: 0.08em; }
+.connect-done p:first-child { color: var(--ok); font-weight: 600; }
+.download-link { padding: 10px; border-radius: 8px; text-align: center; background: var(--accent); color: white; font-weight: 600; }
+.download-link:hover { filter: brightness(1.08); }
+
+/* Install keys */
+.key-box { display: flex; gap: 8px; align-items: center; margin: 8px 0 12px; }
+.key-box code { flex: 1; min-width: 0; overflow-wrap: anywhere; background: var(--surface-2); border-radius: 6px; padding: 8px 10px; font-size: 12.5px; }
+.key-form { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: end; margin-bottom: 12px; }
+.key-form .field { margin-bottom: 0; }
+@media (max-width: 720px) { .key-form { grid-template-columns: 1fr; } }
+.small { font-size: 12px; }

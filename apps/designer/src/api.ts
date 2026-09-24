@@ -1,33 +1,26 @@
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
-export function getToken(): string {
-  try {
-    return localStorage.getItem("zamtest.token") ?? "";
-  } catch {
-    return "";
-  }
+// The Portal's sign-in sets an HttpOnly cookie shared with the Designer; nothing is kept in the page.
+// Earlier versions stored a token in localStorage: remove it.
+try {
+  localStorage.removeItem("zamtest.token");
+} catch {
+  /* storage unavailable */
 }
 
-export function setToken(token: string) {
-  try {
-    localStorage.setItem("zamtest.token", token);
-  } catch {
-    /* storage unavailable */
-  }
-}
-
-/** Fired when the server rejects the stored access token (or none is stored). */
+/** Fired when the server needs the user to sign in (in the Portal). */
 export const UNAUTHORIZED_EVENT = "zamtest:unauthorized";
 /** Fired when the signed-in user's role does not allow the request. */
 export const FORBIDDEN_EVENT = "zamtest:forbidden";
 
 export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
-  const token = getToken();
   const res = await fetch(`${BASE}${path}`, {
     method: init.method ?? "GET",
+    credentials: "include",
     headers: {
       ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      // Proves the request comes from this app, not another site using the cookie.
+      "x-zamtech-client": "designer",
     },
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });

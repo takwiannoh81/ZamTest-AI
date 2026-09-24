@@ -3,7 +3,16 @@ export interface OrchestratorConfig {
   host: string;
   dataDir: string | null;
   adminToken?: string;
-  agentKey: string;
+  /**
+   * Shared key for agents that were not approved in the Portal (the cloud bot
+   * container, older installs). Unset in production = only approved PCs connect.
+   */
+  agentKey?: string;
+  /** Where people sign in; approval links for new PCs point here. */
+  portalUrl: string;
+  designerUrl: string;
+  /** Domain for the sign-in cookie, e.g. ".zamtechai.com", so the Portal and Designer share one sign-in. */
+  cookieDomain?: string;
   /** Allowed browser origins for CORS; `true` allows any (development only). */
   corsOrigins: string[] | true;
   production: boolean;
@@ -19,7 +28,10 @@ export function loadConfig(env = process.env): OrchestratorConfig {
     host: env.ZAMTEST_HOST ?? "127.0.0.1",
     dataDir: env.ZAMTEST_DATA_DIR ?? ".data",
     adminToken: env.ZAMTEST_ADMIN_TOKEN || undefined,
-    agentKey: env.ZAMTEST_AGENT_KEY || "dev-agent-key",
+    agentKey: env.ZAMTEST_AGENT_KEY || (env.NODE_ENV === "production" ? undefined : "dev-agent-key"),
+    portalUrl: (env.ZAMTEST_PORTAL_URL || "http://localhost:5173").replace(/\/+$/, ""),
+    designerUrl: (env.ZAMTEST_DESIGNER_URL || "http://localhost:5174").replace(/\/+$/, ""),
+    cookieDomain: env.ZAMTEST_COOKIE_DOMAIN || undefined,
     corsOrigins: env.ZAMTEST_CORS_ORIGINS
       ? env.ZAMTEST_CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
       : true,
@@ -36,8 +48,8 @@ export function productionProblems(config: OrchestratorConfig): string[] {
   if (!config.adminToken || config.adminToken.length < 24) {
     problems.push("ZAMTEST_ADMIN_TOKEN must be set to a random value of at least 24 characters");
   }
-  if (config.agentKey === "dev-agent-key" || config.agentKey.length < 24) {
-    problems.push("ZAMTEST_AGENT_KEY must be set to a random value of at least 24 characters");
+  if (config.agentKey !== undefined && (config.agentKey === "dev-agent-key" || config.agentKey.length < 24)) {
+    problems.push("ZAMTEST_AGENT_KEY must be a random value of at least 24 characters (or unset, so only PCs approved in the Portal connect)");
   }
   return problems;
 }

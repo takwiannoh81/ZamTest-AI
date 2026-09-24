@@ -6,7 +6,10 @@ import { execute } from "./runtime.js";
 
 export interface AgentOptions {
   server: string;
-  key: string;
+  /** This PC's own credential (approved in the Portal); preferred over the shared key. */
+  token?: string;
+  /** Shared agent key (cloud bot, older installs). */
+  key?: string;
   name: string;
   pollMs?: number;
   heartbeatMs?: number;
@@ -45,7 +48,10 @@ export class AgentConnection {
   private async call<T>(method: string, path: string, body?: unknown): Promise<T | undefined> {
     const res = await fetch(new URL(path, this.options.server), {
       method,
-      headers: { "content-type": "application/json", "x-agent-key": this.options.key },
+      headers: {
+        "content-type": "application/json",
+        ...(this.options.token ? { "x-agent-token": this.options.token } : { "x-agent-key": this.options.key ?? "" }),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (res.status === 204) return undefined;

@@ -138,7 +138,8 @@ These are MVP defaults. Read them before exposing the platform on a network.
 
 - The orchestrator binds to `127.0.0.1` by default.
 - Set `ZAMTEST_ADMIN_TOKEN` to enable the master access token, then create personal accounts with roles (Admin, Developer, Operator, Viewer) under **Users** in the Portal. Once any account exists, the API requires sign-in.
-- Set `ZAMTEST_AGENT_KEY` to replace the default agent key.
+- Bot agents connect with their own credential, issued when a Developer or Admin approves the PC in the Portal (or by an admin's install key); removing an agent revokes it. The shared `ZAMTEST_AGENT_KEY` still works for the cloud bot and older installs; in production, leave it unset to allow only approved PCs.
+- People sign in only in the Portal; the Designer shares that sign-in through an HttpOnly cookie (`ZAMTEST_COOKIE_DOMAIN`). Changes sent with the cookie must carry the `x-zamtech-client` header, which other sites cannot add.
 - Credential assets are stored **unencrypted** in `.data/db.json` for now. Encryption at rest and an external vault integration are on the roadmap. User passwords are stored only as scrypt hashes.
 - Nightly encrypted backups to S3 are built in; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 - Workflow expressions and the *Run JavaScript* action run with the agent's permissions. Only let trusted automation developers publish processes.

@@ -3,6 +3,7 @@ import { LanguageSelect, useI18n } from "@zamtest/i18n/react";
 import { useHashRoute } from "./hooks";
 import { Agents } from "./pages/Agents";
 import { Assets } from "./pages/Assets";
+import { Connect } from "./pages/Connect";
 import { Dashboard } from "./pages/Dashboard";
 import { JobDetail, Jobs } from "./pages/Jobs";
 import { Processes } from "./pages/Processes";
@@ -10,9 +11,8 @@ import { QueueDetail, Queues } from "./pages/Queues";
 import { Schedules } from "./pages/Schedules";
 import { Settings } from "./pages/Settings";
 import { Users } from "./pages/Users";
+import { AGENT_DOWNLOAD_URL, DESIGNER_URL } from "./links";
 import { atLeast, signOut, useMe } from "./session";
-
-const DESIGNER_URL = import.meta.env.VITE_DESIGNER_URL ?? "http://localhost:5174";
 
 const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolean }> = [
   { path: "/", label: "nav.dashboard", icon: "◎" },
@@ -29,11 +29,14 @@ const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolea
 export function App() {
   const { t } = useI18n();
   const me = useMe();
-  const [route] = useHashRoute();
-  const active = NAV.filter((n) => (n.path === "/" ? route === "/" : route.startsWith(n.path))).at(-1)?.path ?? "/";
+  const [fullRoute] = useHashRoute();
+  // e.g. "/connect?code=ABCD-EFGH&next=designer"
+  const [route = "/", query = ""] = fullRoute.split("?");
+  const active = NAV.filter((n) => (n.path === "/" ? route === "/" : route.startsWith(n.path))).at(-1)?.path;
 
   let page;
-  if (route.startsWith("/jobs/")) page = <JobDetail id={route.slice("/jobs/".length)} />;
+  if (route === "/connect") page = <Connect query={query} />;
+  else if (route.startsWith("/jobs/")) page = <JobDetail id={route.slice("/jobs/".length)} />;
   else if (route.startsWith("/queues/")) page = <QueueDetail id={route.slice("/queues/".length)} />;
   else if (route === "/queues") page = <Queues />;
   else if (route === "/processes") page = <Processes />;
@@ -74,6 +77,9 @@ export function App() {
             </div>
           )}
           <LanguageSelect className="lang-select" />
+          <a className="download-link" href={AGENT_DOWNLOAD_URL}>
+            {t("agents.downloadWindows")}
+          </a>
           <a className="designer-link" href={DESIGNER_URL} target="_blank" rel="noreferrer">
             {t("nav.openDesigner")}
           </a>

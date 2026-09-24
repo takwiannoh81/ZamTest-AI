@@ -7,18 +7,26 @@ import { BUILTIN_ACTIONS, WorkflowSchema } from "@zamtest/core";
 import { languageName } from "@zamtest/i18n";
 import type { EngineEvent } from "@zamtest/core";
 import {
+  clearedSessionCookie,
   createSession,
   deleteSession,
   deleteUserSessions,
   hashPassword,
+  hashToken,
   hasRole,
   LoginLimiter,
+  MASTER_SESSION,
   MIN_PASSWORD_LENGTH,
+  newSecret,
+  newUserCode,
   pruneSessions,
   publicUser,
+  readCookie,
   requiredRole,
   resolvePrincipal,
   safeEqual,
+  SESSION_COOKIE,
+  sessionCookie,
   verifyPassword,
 } from "./auth.js";
 import type { BackupService } from "./backup.js";
@@ -27,12 +35,14 @@ import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
 import { Scheduler, validateCron } from "./scheduler.js";
 import { newId, nowIso, Store } from "./store.js";
-import type { Agent, Asset, Job, Package, Principal, Queue, QueueItem, Schedule, User, WorkflowDraft } from "./types.js";
+import type { Agent, Asset, Enrollment, InstallKey, Job, Package, Principal, Queue, QueueItem, Schedule, User, WorkflowDraft } from "./types.js";
 import { ROLES } from "./types.js";
 
 declare module "fastify" {
   interface FastifyRequest {
     principal?: Principal;
+    /** The approved PC making an /api/agent request with its own credential. */
+    agent?: Agent;
   }
 }
 
@@ -109,7 +119,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     return ai;
   };
 
-  await app.register(cors, { origin: config.corsOrigins });
+  await app.register(cors, { origin: config.corsOrigins, credentials: true });
 
   app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
     if (err instanceof HttpError) {
@@ -123,17 +133,41 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* ------------------------------ auth ------------------------------ */
+  const cookieOptions = { domain: config.cookieDomain, secure: config.production };
+  // A PC asking to be connected has no credential yet.
+  const PUBLIC_AGENT_ROUTES = new Set(["/api/agent/enroll/start", "/api/agent/enroll/poll"]);
+  const agentByToken = (token: string): Agent | undefined => {
+    const hash = hashToken(token);
+    return Object.values(store.data.agents).find((a) => a.tokenHash !== undefined && safeEqual(a.tokenHash, hash));
+  };
+
   app.addHook("onRequest", async (req: FastifyRequest, reply: FastifyReply) => {
     const url = req.url.split("?")[0] ?? "";
     if (!url.startsWith("/api/") || url === "/api/health") return;
     if (url.startsWith("/api/agent/")) {
+      if (PUBLIC_AGENT_ROUTES.has(url)) return;
+      // A PC approved in the Portal signs in with its own credential. The shared key,
+      // when configured, is for the cloud bot container and older installs.
+      const token = String(req.headers["x-agent-token"] ?? "");
+      if (token) {
+        const agent = agentByToken(token);
+        if (!agent) return reply.status(401).send({ error: "This PC is no longer approved; connect it again", code: "agent_revoked" });
+        req.agent = agent;
+        return;
+      }
       const key = String(req.headers["x-agent-key"] ?? "");
-      if (!safeEqual(key, config.agentKey)) return reply.status(401).send({ error: "Invalid agent key" });
+      if (!config.agentKey || !safeEqual(key, config.agentKey)) return reply.status(401).send({ error: "Invalid agent key" });
       return;
     }
-    if (url === "/api/auth/login") return;
-    const principal = resolvePrincipal(store, config.adminToken, req.headers.authorization);
+    if (url === "/api/auth/login" || url === "/api/auth/token") return;
+    const cookieToken = req.headers.authorization ? undefined : readCookie(req.headers.cookie, SESSION_COOKIE);
+    const principal = resolvePrincipal(store, config.adminToken, req.headers.authorization, cookieToken);
     if (!principal) return reply.status(401).send({ error: "Sign in required", code: "unauthorized" });
+    // Browsers send cookies on their own, so changes made with the sign-in cookie must carry a
+    // header that other sites cannot add without CORS permission (cross-site request forgery).
+    if (cookieToken && !["GET", "HEAD", "OPTIONS"].includes(req.method) && req.headers["x-zamtech-client"] === undefined) {
+      return reply.status(403).send({ error: "Requests signed in with the cookie need the x-zamtech-client header", code: "csrf" });
+    }
     req.principal = principal;
     if (url.startsWith("/api/auth/")) return;
     const needed = requiredRole(req.method, url);
@@ -144,6 +178,10 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   const me = (req: FastifyRequest): Principal => req.principal!;
   const bearer = (req: FastifyRequest) => /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? "")?.[1]?.trim() ?? "";
+  /** The caller's session token, from the Authorization header or the sign-in cookie. */
+  const sessionToken = (req: FastifyRequest) => bearer(req) || readCookie(req.headers.cookie, SESSION_COOKIE) || "";
+  /** How an approval or key is attributed in the Portal. */
+  const who = (p: Principal) => (p.kind === "user" ? `${p.name} <${p.email}>` : p.name);
   const limiter = new LoginLimiter();
   const emailSchema = z.string().trim().toLowerCase().email();
   const passwordSchema = z.string().min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`).max(200);
@@ -164,11 +202,28 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     limiter.reset(...keys);
     user.lastLoginAt = nowIso();
     const token = createSession(store, user);
+    reply.header("set-cookie", sessionCookie(token, cookieOptions));
     return { token, user: publicUser(user) };
   });
 
-  app.post("/api/auth/logout", async (req) => {
-    if (me(req).kind === "user") deleteSession(store, bearer(req));
+  // Sign-in with the master access token (emergencies, first-time setup) opens a normal cookie session.
+  app.post("/api/auth/token", async (req, reply) => {
+    const body = parse(z.object({ token: z.string().trim() }), req.body);
+    const keys = [`ip:${req.ip}`];
+    if (limiter.blocked(...keys)) return reply.status(429).send({ error: "Too many attempts", code: "rate_limited" });
+    if (!config.adminToken || !safeEqual(body.token, config.adminToken)) {
+      limiter.fail(...keys);
+      return reply.status(401).send({ error: "The access token is incorrect", code: "invalid_token" });
+    }
+    limiter.reset(...keys);
+    reply.header("set-cookie", sessionCookie(createSession(store, MASTER_SESSION), cookieOptions));
+    return { ok: true };
+  });
+
+  app.post("/api/auth/logout", async (req, reply) => {
+    const token = sessionToken(req);
+    if (token) deleteSession(store, token);
+    reply.header("set-cookie", clearedSessionCookie(cookieOptions));
     return { ok: true };
   });
 
@@ -184,7 +239,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     const user = get(store.data.users, p.id, "User");
     if (!(await verifyPassword(body.current, user.passwordHash))) throw new HttpError(400, "Current password is incorrect");
     user.passwordHash = await hashPassword(body.next);
-    deleteUserSessions(store, user.id, bearer(req));
+    deleteUserSessions(store, user.id, sessionToken(req));
     store.save();
     return { ok: true };
   });
@@ -264,7 +319,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   };
 
   /* ----------------------------- general ---------------------------- */
-  app.get("/api/health", async () => ({ ok: true, time: nowIso() }));
+  // Public: the agent's tray app reads where the Portal and Designer are.
+  app.get("/api/health", async () => ({ ok: true, time: nowIso(), portalUrl: config.portalUrl, designerUrl: config.designerUrl }));
   app.get("/api/actions", async () => BUILTIN_ACTIONS);
   app.get("/api/stats", async () => {
     const jobs = Object.values(store.data.jobs);
@@ -411,7 +467,11 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* ------------------------------ agents ---------------------------- */
-  app.get("/api/agents", async () => Object.values(store.data.agents).sort((a, b) => a.name.localeCompare(b.name)));
+  app.get("/api/agents", async () =>
+    Object.values(store.data.agents)
+      .map(({ tokenHash: _secret, ...agent }) => agent)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  );
   app.delete<{ Params: { id: string } }>("/api/agents/:id", async (req, reply) => {
     get(store.data.agents, req.params.id, "Agent");
     delete store.data.agents[req.params.id];
@@ -594,7 +654,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* --------------------------- bot agent API ------------------------ */
-  const agentFor = (agentId: unknown): Agent => {
+  /** The calling agent: from its own credential, or (shared key) from the agentId it sends. */
+  const agentFor = (req: FastifyRequest): Agent => {
+    const agentId = req.agent?.id ?? (req.body as { agentId?: unknown } | undefined)?.agentId;
     const agent = store.data.agents[String(agentId ?? "")];
     if (!agent) throw new HttpError(404, "Unknown agent; register again");
     agent.lastHeartbeat = nowIso();
@@ -607,12 +669,15 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       z.object({ agentId: z.string().optional(), name: z.string().min(1), machine: z.string().default(""), os: z.string().default(""), version: z.string().default("") }),
       req.body,
     );
-    const existing =
-      (body.agentId && store.data.agents[body.agentId]) ||
-      Object.values(store.data.agents).find((a) => a.name === body.name && a.machine === body.machine);
+    // Shared-key agents may only take over records of other shared-key agents, never an approved PC.
+    const existing = req.agent
+      ? store.data.agents[req.agent.id]
+      : (body.agentId && !store.data.agents[body.agentId]?.tokenHash && store.data.agents[body.agentId]) ||
+        Object.values(store.data.agents).find((a) => !a.tokenHash && a.name === body.name && a.machine === body.machine);
+    const info = { name: body.name, machine: body.machine, os: body.os, version: body.version };
     const agent: Agent = existing
-      ? { ...existing, ...body, id: existing.id, status: "online", currentJobId: undefined, lastHeartbeat: nowIso() }
-      : { id: newId("agt"), name: body.name, machine: body.machine, os: body.os, version: body.version, status: "online", lastHeartbeat: nowIso(), registeredAt: nowIso() };
+      ? { ...existing, ...info, status: "online", currentJobId: undefined, lastHeartbeat: nowIso() }
+      : { id: newId("agt"), ...info, status: "online", lastHeartbeat: nowIso(), registeredAt: nowIso() };
     store.data.agents[agent.id] = agent;
     // Jobs that were running on this agent before it restarted are lost.
     for (const job of Object.values(store.data.jobs)) {
@@ -623,8 +688,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.post("/api/agent/heartbeat", async (req) => {
-    const body = req.body as { agentId?: string };
-    const agent = agentFor(body.agentId);
+    const agent = agentFor(req);
     store.save();
     const cancelJobIds = Object.values(store.data.jobs)
       .filter((j) => j.agentId === agent.id && j.status === "cancelling")
@@ -633,7 +697,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.post("/api/agent/jobs/next", async (req, reply) => {
-    const agent = agentFor((req.body as { agentId?: string }).agentId);
+    const agent = agentFor(req);
     if (agent.currentJobId && store.data.jobs[agent.currentJobId] && !isFinal(store.data.jobs[agent.currentJobId]!)) {
       return reply.status(204).send();
     }
@@ -656,7 +720,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   const agentJob = (req: FastifyRequest<{ Params: { id: string } }>) => {
-    const agent = agentFor((req.body as { agentId?: string }).agentId);
+    const agent = agentFor(req);
     const job = get(store.data.jobs, req.params.id, "Job");
     if (job.agentId !== agent.id) throw new HttpError(403, "Job belongs to another agent");
     return job;
@@ -683,7 +747,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.post<{ Params: { id: string } }>("/api/agent/jobs/:id/complete", async (req) => {
     const job = agentJob(req);
     const body = parse(
-      z.object({ agentId: z.string(), status: z.enum(["succeeded", "failed", "cancelled"]), error: z.string().optional(), outputs: z.record(z.unknown()).optional() }),
+      z.object({ agentId: z.string().optional(), status: z.enum(["succeeded", "failed", "cancelled"]), error: z.string().optional(), outputs: z.record(z.unknown()).optional() }),
       req.body,
     );
     if (!isFinal(job)) finishJob(store, job, body.status, body.error, body.outputs);
@@ -698,14 +762,14 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   };
 
   app.post<{ Params: { name: string } }>("/api/agent/queues/:name/items", async (req, reply) => {
-    agentFor(agentBody(req).agentId);
+    agentFor(req);
     const body = parse(z.object({ data: z.unknown(), reference: z.string().trim().max(200).optional() }).passthrough(), req.body);
     const item = addItem(store, findQueue(store, req.params.name), body.data ?? {}, body.reference);
     return reply.status(201).send({ id: item.id });
   });
 
   app.post<{ Params: { name: string } }>("/api/agent/queues/:name/next", async (req, reply) => {
-    const agent = agentFor(agentBody(req).agentId);
+    const agent = agentFor(req);
     const item = takeNext(store, findQueue(store, req.params.name), jobOfAgent(agent, agentBody(req).jobId), agent.id);
     if (!item) return reply.status(204).send();
     const queue = store.data.queues[item.queueId]!;
@@ -713,7 +777,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   app.post<{ Params: { id: string } }>("/api/agent/queue-items/:id/complete", async (req) => {
-    const agent = agentFor(agentBody(req).agentId);
+    const agent = agentFor(req);
     const item: QueueItem = get(store.data.queueItems, req.params.id, "Queue item");
     if (item.agentId !== agent.id || item.status !== "in-progress") throw new HttpError(409, "This item is not locked by this agent");
     const body = parse(
@@ -730,10 +794,177 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     return { name: asset.name, type: asset.type, value: asset.value };
   });
 
+  /* ------------- connecting a PC: approval in the Portal ------------- */
+  // Like signing in to a TV app: the agent shows a link with a short code, a signed-in
+  // user approves it in the Portal, and the agent receives its own credential.
+  const ENROLL_TTL_MS = 15 * 60 * 1000;
+  const MAX_PENDING_ENROLLMENTS = 500;
+  const enrollLimiter = new LoginLimiter(30, 10 * 60 * 1000);
+  const EnrollBody = z.object({
+    name: z.string().trim().min(1).max(100),
+    machine: z.string().max(200).default(""),
+    os: z.string().max(200).default(""),
+    version: z.string().max(50).default(""),
+    installKey: z.string().trim().optional(),
+  });
+  const approvalUrl = (userCode: string) => `${config.portalUrl}/#/connect?code=${userCode}`;
+
+  const usableInstallKey = (key: string): InstallKey | undefined => {
+    const hash = hashToken(key);
+    const found = Object.values(store.data.installKeys).find((k) => safeEqual(k.keyHash, hash));
+    if (!found || (found.expiresAt && Date.parse(found.expiresAt) < Date.now())) return undefined;
+    if (found.maxUses !== undefined && found.uses >= found.maxUses) return undefined;
+    return found;
+  };
+
+  app.post("/api/agent/enroll/start", async (req, reply) => {
+    const ipKey = `enroll:${req.ip}`;
+    if (enrollLimiter.blocked(ipKey)) return reply.status(429).send({ error: "Too many requests; try again in a few minutes", code: "rate_limited" });
+    enrollLimiter.fail(ipKey);
+    const body = parse(EnrollBody, req.body);
+    const pending = Object.values(store.data.enrollments).filter((e) => e.status === "pending").length;
+    if (pending >= MAX_PENDING_ENROLLMENTS) return reply.status(503).send({ error: "Too many PCs are waiting for approval; try again later" });
+    let approvedBy: string | undefined;
+    if (body.installKey) {
+      const key = usableInstallKey(body.installKey);
+      if (!key) return reply.status(401).send({ error: "The install key is invalid, expired or used up", code: "invalid_install_key" });
+      key.uses++;
+      approvedBy = `Install key "${key.name}"`;
+    }
+    const deviceCode = newSecret();
+    const taken = new Set(Object.values(store.data.enrollments).map((e) => e.userCode));
+    let userCode = newUserCode();
+    while (taken.has(userCode)) userCode = newUserCode();
+    const enrollment: Enrollment = {
+      id: hashToken(deviceCode),
+      userCode,
+      name: body.name,
+      machine: body.machine,
+      os: body.os,
+      version: body.version,
+      status: approvedBy ? "approved" : "pending",
+      approvedBy,
+      createdAt: nowIso(),
+      expiresAt: new Date(Date.now() + ENROLL_TTL_MS).toISOString(),
+    };
+    store.data.enrollments[enrollment.id] = enrollment;
+    store.save();
+    return {
+      deviceCode,
+      userCode,
+      verificationUrl: approvalUrl(userCode),
+      portalUrl: config.portalUrl,
+      designerUrl: config.designerUrl,
+      expiresIn: ENROLL_TTL_MS / 1000,
+      interval: 3,
+      approved: Boolean(approvedBy),
+    };
+  });
+
+  app.post("/api/agent/enroll/poll", async (req) => {
+    const body = parse(z.object({ deviceCode: z.string().min(20) }), req.body);
+    const enrollment = store.data.enrollments[hashToken(body.deviceCode)];
+    if (!enrollment || Date.parse(enrollment.expiresAt) < Date.now()) return { status: "expired" };
+    if (enrollment.status === "pending") return { status: "pending" };
+    delete store.data.enrollments[enrollment.id];
+    if (enrollment.status === "denied") {
+      store.save();
+      return { status: "denied" };
+    }
+    // The credential is handed over once and only its hash is kept.
+    const agentToken = newSecret();
+    const agent: Agent = {
+      id: newId("agt"),
+      name: enrollment.name,
+      machine: enrollment.machine,
+      os: enrollment.os,
+      version: enrollment.version,
+      status: "offline",
+      lastHeartbeat: nowIso(),
+      registeredAt: nowIso(),
+      tokenHash: hashToken(agentToken),
+      approvedBy: enrollment.approvedBy,
+    };
+    store.data.agents[agent.id] = agent;
+    store.save();
+    return { status: "approved", agentId: agent.id, agentToken, name: agent.name, approvedBy: agent.approvedBy, portalUrl: config.portalUrl, designerUrl: config.designerUrl };
+  });
+
+  const enrollmentByCode = (code: string): Enrollment => {
+    const wanted = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const found = Object.values(store.data.enrollments).find((e) => e.userCode.replace("-", "") === wanted && Date.parse(e.expiresAt) > Date.now());
+    if (!found) throw new HttpError(404, "This code has expired or does not exist. Start the ZamTech AI Agent on the PC again for a new one.");
+    return found;
+  };
+  const publicEnrollment = (e: Enrollment) => ({
+    userCode: e.userCode,
+    name: e.name,
+    machine: e.machine,
+    os: e.os,
+    version: e.version,
+    status: e.status,
+    approvedBy: e.approvedBy,
+    expiresAt: e.expiresAt,
+  });
+  const decide = (req: FastifyRequest<{ Params: { code: string } }>, status: "approved" | "denied") => {
+    const enrollment = enrollmentByCode(req.params.code);
+    if (enrollment.status !== "pending") throw new HttpError(409, `This PC was already ${enrollment.status}`);
+    enrollment.status = status;
+    enrollment.approvedBy = who(me(req));
+    store.save();
+    return publicEnrollment(enrollment);
+  };
+  // Reading needs any role; approving needs Developer (an approved PC can read asset values).
+  app.get<{ Params: { code: string } }>("/api/enrollments/:code", async (req) => publicEnrollment(enrollmentByCode(req.params.code)));
+  app.post<{ Params: { code: string } }>("/api/enrollments/:code/approve", async (req) => decide(req, "approved"));
+  app.post<{ Params: { code: string } }>("/api/enrollments/:code/deny", async (req) => decide(req, "denied"));
+
+  /* install keys: silent installs by IT (admin only, via the /api/admin prefix) */
+  const publicInstallKey = ({ keyHash: _secret, ...key }: InstallKey) => key;
+  app.get("/api/admin/install-keys", async () =>
+    Object.values(store.data.installKeys)
+      .map(publicInstallKey)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+  );
+  app.post("/api/admin/install-keys", async (req, reply) => {
+    const body = parse(
+      z.object({
+        name: z.string().trim().min(1).max(100),
+        expiresInDays: z.number().int().min(1).max(365).optional(),
+        maxUses: z.number().int().min(1).max(100_000).optional(),
+      }),
+      req.body,
+    );
+    const key = `ztik_${newSecret()}`;
+    const installKey: InstallKey = {
+      id: newId("ik"),
+      name: body.name,
+      keyHash: hashToken(key),
+      createdAt: nowIso(),
+      createdBy: who(me(req)),
+      expiresAt: body.expiresInDays ? new Date(Date.now() + body.expiresInDays * 86_400_000).toISOString() : undefined,
+      maxUses: body.maxUses,
+      uses: 0,
+    };
+    store.data.installKeys[installKey.id] = installKey;
+    store.save();
+    // The key is shown once; only its hash is kept.
+    return reply.status(201).send({ ...publicInstallKey(installKey), key });
+  });
+  app.delete<{ Params: { id: string } }>("/api/admin/install-keys/:id", async (req, reply) => {
+    get(store.data.installKeys, req.params.id, "Install key");
+    delete store.data.installKeys[req.params.id];
+    store.save();
+    return reply.status(204).send();
+  });
+
   /* ---------------------------- lifecycle --------------------------- */
   const sweeper = setInterval(() => {
     sweep(store, config);
     pruneSessions(store);
+    for (const e of Object.values(store.data.enrollments)) {
+      if (Date.parse(e.expiresAt) < Date.now()) delete store.data.enrollments[e.id];
+    }
   }, 5_000);
   sweeper.unref();
   scheduler.start();

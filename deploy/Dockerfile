@@ -24,7 +24,7 @@ CMD ["node_modules/.bin/tsx", "apps/orchestrator/src/index.ts"]
 # ------------------------------------------------------------------ web build
 FROM base AS web-build
 ARG SITE_DOMAIN=zamtechai.com
-ENV VITE_PORTAL_URL=https://portal.${SITE_DOMAIN} VITE_DESIGNER_URL=https://designer.${SITE_DOMAIN}
+ENV VITE_PORTAL_URL=https://portal.${SITE_DOMAIN} VITE_DESIGNER_URL=https://designer.${SITE_DOMAIN} VITE_AGENT_SERVER_URL=https://api.${SITE_DOMAIN}
 RUN pnpm --filter @zamtest/website --filter @zamtest/portal --filter @zamtest/designer build
 
 FROM caddy:2 AS web

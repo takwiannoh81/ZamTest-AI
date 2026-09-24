@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, setToken } from "../api";
+import { api } from "../api";
+import { PORTAL_URL } from "./AuthGate";
 
 export type Role = "admin" | "developer" | "operator" | "viewer";
 
@@ -28,7 +29,7 @@ export function useMe(): Me | undefined {
 }
 
 export async function signOut(): Promise<void> {
+  // Signs out of the Portal too (one shared sign-in); the Portal shows its sign-in page.
   await api("/api/auth/logout", { method: "POST" }).catch(() => undefined);
-  setToken("");
-  window.location.reload();
+  window.location.assign(PORTAL_URL);
 }

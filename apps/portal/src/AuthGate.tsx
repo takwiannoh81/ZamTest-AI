@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useI18n } from "@zamtest/i18n/react";
-import { FORBIDDEN_EVENT, setToken, UNAUTHORIZED_EVENT } from "./api";
+import { FORBIDDEN_EVENT, UNAUTHORIZED_EVENT } from "./api";
+import { returnTarget } from "./links";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
 /**
- * Shows the sign-in dialog whenever the orchestrator answers 401, and a short
- * notice when the signed-in user's role does not allow an action (403).
- * People sign in with email and password; the master access token remains
- * available as an emergency option.
+ * The one place people sign in (the Designer sends them here). Shows the
+ * sign-in dialog whenever the orchestrator answers 401, and a short notice
+ * when the signed-in user's role does not allow an action (403). People sign
+ * in with email and password; the master access token remains available as an
+ * emergency option. The server keeps the session in a cookie shared with the
+ * Designer; after signing in, ?return=<Designer page> goes back there.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
   const { t } = useI18n();
@@ -21,6 +24,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [forbidden, setForbidden] = useState(false);
+
+  // Came from the Designer and already signed in: go straight back.
+  useEffect(() => {
+    const target = returnTarget();
+    if (!target) return;
+    void fetch(`${BASE}/api/auth/me`, { credentials: "include" }).then((res) => {
+      if (res.ok) window.location.replace(target);
+    });
+  }, []);
 
   useEffect(() => {
     const onUnauthorized = () => setNeeded(true);
@@ -39,9 +51,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const finish = (value: string) => {
-    setToken(value);
-    window.location.reload();
+  const finish = () => {
+    const target = returnTarget();
+    if (target) window.location.replace(target);
+    else window.location.reload();
   };
 
   const submit = async (e: FormEvent) => {
@@ -52,16 +65,23 @@ export function AuthGate({ children }: { children: ReactNode }) {
       if (mode === "password") {
         const res = await fetch(`${BASE}/api/auth/login`, {
           method: "POST",
+          credentials: "include",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ email: email.trim(), password }),
         });
         if (res.status === 429) return setError(t("auth.tooMany"));
         if (!res.ok) return setError(t("auth.invalidLogin"));
-        finish(((await res.json()) as { token: string }).token);
+        finish();
       } else {
-        const res = await fetch(`${BASE}/api/auth/me`, { headers: { authorization: `Bearer ${token.trim()}` } });
+        const res = await fetch(`${BASE}/api/auth/token`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token: token.trim() }),
+        });
+        if (res.status === 429) return setError(t("auth.tooMany"));
         if (!res.ok) return setError(t("auth.invalid"));
-        finish(token.trim());
+        finish();
       }
     } catch {
       setError(t("auth.invalidLogin"));

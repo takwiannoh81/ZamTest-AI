@@ -33,13 +33,29 @@ export async function verifyPassword(password: string, stored: string | undefine
   return timingSafeEqual(actual, expected) && stored !== undefined;
 }
 
-const tokenId = (token: string) => createHash("sha256").update(token).digest("hex");
+/** SHA-256 of a secret, the form in which sessions, agent credentials and install keys are stored. */
+export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+const tokenId = hashToken;
 
-export function createSession(store: Store, user: User): string {
-  const token = randomBytes(32).toString("base64url");
+export const newSecret = () => randomBytes(32).toString("base64url");
+
+/** Session owner for a sign-in with the master access token (ZAMTEST_ADMIN_TOKEN). */
+export const MASTER_SESSION = "__master__";
+
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I
+/** A short code people can read and compare, e.g. "KDTR-7QMX". */
+export function newUserCode(): string {
+  const bytes = randomBytes(8);
+  let code = "";
+  for (let i = 0; i < 8; i++) code += CODE_ALPHABET[bytes[i]! % CODE_ALPHABET.length];
+  return `${code.slice(0, 4)}-${code.slice(4)}`;
+}
+
+export function createSession(store: Store, user: User | typeof MASTER_SESSION): string {
+  const token = newSecret();
   const session: Session = {
     id: tokenId(token),
-    userId: user.id,
+    userId: user === MASTER_SESSION ? MASTER_SESSION : user.id,
     createdAt: nowIso(),
     expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
   };
@@ -72,20 +88,28 @@ export function publicUser(user: User) {
   return rest;
 }
 
+const MASTER_PRINCIPAL: Principal = { id: "token", name: "Access token", email: "", role: "admin", kind: "token" };
+
 /**
- * Resolves the caller from the Authorization header.
+ * Resolves the caller from the Authorization header or, for the Portal and
+ * Designer, the sign-in cookie.
  * - the master access token (ZAMTEST_ADMIN_TOKEN) acts as an administrator;
- * - a session token belongs to a user account;
+ * - a session token belongs to a user account (or to a master-token sign-in);
  * - with no token configured and no accounts yet (local development), requests are open.
  */
-export function resolvePrincipal(store: Store, adminToken: string | undefined, authorization: string | undefined): Principal | null {
+export function resolvePrincipal(
+  store: Store,
+  adminToken: string | undefined,
+  authorization: string | undefined,
+  cookieToken?: string,
+): Principal | null {
   const bearer = /^Bearer\s+(.+)$/i.exec(authorization ?? "")?.[1]?.trim();
-  if (bearer && adminToken && safeEqual(bearer, adminToken)) {
-    return { id: "token", name: "Access token", email: "", role: "admin", kind: "token" };
-  }
-  if (bearer) {
-    const session = store.data.sessions[tokenId(bearer)];
+  if (bearer && adminToken && safeEqual(bearer, adminToken)) return MASTER_PRINCIPAL;
+  const token = bearer || cookieToken;
+  if (token) {
+    const session = store.data.sessions[tokenId(token)];
     if (session && Date.parse(session.expiresAt) > Date.now()) {
+      if (session.userId === MASTER_SESSION) return adminToken ? MASTER_PRINCIPAL : null;
       const user = store.data.users[session.userId];
       if (user && !user.disabled) return { id: user.id, name: user.name, email: user.email, role: user.role, kind: "user" };
     }
@@ -94,6 +118,40 @@ export function resolvePrincipal(store: Store, adminToken: string | undefined, a
     return { id: "open", name: "Local developer", email: "", role: "admin", kind: "open" };
   }
   return null;
+}
+
+/* ----------------------------- sign-in cookie ----------------------------- */
+
+/** One HttpOnly cookie carries the session for the Portal and the Designer. */
+export const SESSION_COOKIE = "zt_session";
+
+export interface CookieOptions {
+  /** e.g. ".zamtechai.com": shared by portal.zamtechai.com and designer.zamtechai.com. */
+  domain?: string;
+  secure: boolean;
+}
+
+export function sessionCookie(token: string, options: CookieOptions): string {
+  return cookie(token, Math.floor(SESSION_TTL_MS / 1000), options);
+}
+
+export function clearedSessionCookie(options: CookieOptions): string {
+  return cookie("", 0, options);
+}
+
+function cookie(value: string, maxAge: number, { domain, secure }: CookieOptions): string {
+  const parts = [`${SESSION_COOKIE}=${value}`, "Path=/", `Max-Age=${maxAge}`, "HttpOnly", "SameSite=Lax"];
+  if (domain) parts.push(`Domain=${domain}`);
+  if (secure) parts.push("Secure");
+  return parts.join("; ");
+}
+
+export function readCookie(header: string | undefined, name: string): string | undefined {
+  for (const part of (header ?? "").split(";")) {
+    const eq = part.indexOf("=");
+    if (eq > 0 && part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim()) || undefined;
+  }
+  return undefined;
 }
 
 export function hasRole(principal: Principal, needed: Role): boolean {

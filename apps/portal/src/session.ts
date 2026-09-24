@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, setToken } from "./api";
+import { api } from "./api";
 
 export type Role = "admin" | "developer" | "operator" | "viewer";
 
@@ -29,6 +29,5 @@ export function useMe(): Me | undefined {
 
 export async function signOut(): Promise<void> {
   await api("/api/auth/logout", { method: "POST" }).catch(() => undefined);
-  setToken("");
   window.location.reload();
 }

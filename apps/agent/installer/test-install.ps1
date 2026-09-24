@@ -5,6 +5,8 @@
 param(
   [string]$Setup = (Get-ChildItem "$PSScriptRoot\..\dist\installer\ZamTechAI-Agent-Setup-*.exe" | Select-Object -First 1).FullName,
   [switch]$Signed,
+  # Allow running on a PC where the agent is already installed (it will be uninstalled).
+  [switch]$Force,
   [string]$Publisher = 'ZAMTECH&HOME LLC'
 )
 $ErrorActionPreference = 'Stop'
@@ -27,9 +29,14 @@ function Invoke-AndWait([string]$file, [string]$arguments) {
   if ($p.ExitCode -ne 0) { throw "$(Split-Path $file -Leaf) failed with exit code $($p.ExitCode)" }
 }
 
-Invoke-AndWait $Setup '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART /MERGETASKS="!autostart" /SERVER=http://127.0.0.1:4000 /KEY=ci-key /NAME=ci-bot'
 $app = "$env:LOCALAPPDATA\Programs\ZamTech AI Agent"
-foreach ($f in 'node.exe', 'agent.mjs', 'driver.ps1', 'ZamTechAgent.exe', 'agent.json', 'unins000.exe', 'node_modules\playwright\package.json') {
+# This test installs over and then uninstalls the agent: never run it on a PC whose agent is in use.
+if ((Test-Path "$app\unins000.exe") -and -not $Force) {
+  throw "ZamTech AI Agent is already installed on this PC; this test would replace and then uninstall it. Run it on a clean machine, or pass -Force."
+}
+
+Invoke-AndWait $Setup '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOSTART /MERGETASKS="!autostart" /SERVER=http://127.0.0.1:4000/ /INSTALLKEY=ztik_ci /NAME=ci-bot'
+foreach ($f in 'node.exe', 'agent.mjs', 'driver.ps1', 'ZamTechAgent.exe', 'setup.json', 'unins000.exe', 'node_modules\playwright\package.json') {
   if (-not (Test-Path "$app\$f")) { throw "Missing $f" }
 }
 if ($Signed) {
@@ -37,10 +44,10 @@ if ($Signed) {
   Assert-Signed "$app\unins000.exe"
 }
 
-# Setup stores the key encrypted for the user (keyProtected), never in plain text.
-$config = Get-Content "$app\agent.json" -Raw | ConvertFrom-Json
-if ($config.server -ne 'http://127.0.0.1:4000' -or $config.name -ne 'ci-bot' -or $config.key -or -not $config.keyProtected) {
-  throw "Unexpected agent.json: $($config | ConvertTo-Json -Compress)"
+# Setup hands its choices to the tray app in setup.json; the tray app merges them into agent.json.
+$choices = Get-Content "$app\setup.json" -Raw | ConvertFrom-Json
+if ($choices.server -ne 'http://127.0.0.1:4000' -or $choices.name -ne 'ci-bot' -or $choices.installKey -ne 'ztik_ci') {
+  throw "Unexpected setup.json: $($choices | ConvertTo-Json -Compress)"
 }
 $help = & "$app\node.exe" "$app\agent.mjs" --help | Out-String
 if ($help -notmatch 'ZamTech AI bot agent') { throw "The installed agent did not start: $help" }

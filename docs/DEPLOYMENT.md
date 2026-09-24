@@ -92,16 +92,17 @@ docker compose --profile agent up -d --build
 
 This bot includes Playwright browsers and runs in headless mode.
 
-**On your own Windows, Mac or Linux machines:** install Node 20+ and pnpm, clone the repo, then run:
+**On your own Windows PCs:** use the Windows installer (below). **On Mac or Linux machines:** install Node 20+ and pnpm, clone the repo, then connect the machine and start the agent:
 
 ```bash
 pnpm install
 pnpm --filter @zamtest/agent exec playwright install chromium
-ZAMTEST_SERVER=https://api.zamtechai.com \
-ZAMTEST_AGENT_KEY=<value from deploy/.env> \
-ZAMTEST_AGENT_NAME=finance-pc-01 \
-pnpm --filter @zamtest/agent start
+cd apps/agent
+npx tsx src/cli.ts enroll --server https://api.zamtechai.com --name build-server-01 --config agent.json
+npx tsx src/cli.ts connect --config agent.json
 ```
+
+`enroll` prints (and opens) a link to the Portal, where a Developer or Admin approves the machine; with `--install-key <key>` it is approved at once. The machine then has its own credential in `agent.json`. Agents can also still sign in with the shared `ZAMTEST_AGENT_KEY` (the cloud bot does); leave it out of `deploy/.env` to allow only approved machines.
 
 Agents only make outbound HTTPS requests, so they work behind company firewalls and NAT. On machines without a screen, such as servers and containers, browsers run headless automatically.
 
@@ -117,17 +118,19 @@ pnpm --filter @zamtest/agent exec tsx src/cli.ts record https://erp.example.com 
 
 Desktop actions (**Desktop** category in the Designer) drive Windows applications through Microsoft UI Automation. They use the Windows PowerShell and UI Automation that come with every Windows 10/11 PC, so there is nothing extra to install. They only run on a Windows bot agent, and the agent must run **inside a signed-in desktop session**: start it from a normal user session, not as a Windows service, and keep the session unlocked. With RDP, keep the session open rather than minimised, or use a console session.
 
-**The easy way: the Windows installer.** Download it with **Download for Windows** on the Portal's **Agents** page, or from the repository's [GitHub Releases](https://github.com/takwiannoh81/ZamTest-AI/releases/latest). `ZamTechAI-Agent-Setup.exe` installs the agent for the signed-in user (no administrator rights, nothing else to install) and asks for the server URL, the agent key and a bot name. The agent then runs from a tray icon, starts when the user signs in and restarts itself if it stops. Right-click the tray icon for **Settings**, **Open log**, **Run desktop self-test** and **Record a desktop workflow**. It installs to `%LOCALAPPDATA%\Programs\ZamTech AI Agent`, with its settings in `agent.json` and daily logs in `logs\` there.
+**The easy way: the Windows installer.** People sign in to the Portal (the **Sign in** button on zamtechai.com takes them there) and click **Download for Windows** in the side menu. `ZamTechAI-Agent-Setup.exe` installs the agent for the signed-in Windows user: no administrator rights, nothing else to install, nothing to type. Its last page shows the Designer's address with a **Copy** button. On **Finish**, the browser opens **Connect this PC** in the Portal. The person checks that the code there matches the one on the ZamTech AI tray icon and clicks **Approve this PC**; this needs the Developer or Admin role, because a connected PC can use the workspace's stored credentials. The Designer then opens by itself.
 
-- **The agent key is encrypted** for that Windows user (Windows DPAPI) and stored as `keyProtected` in `agent.json`. Another user, or a copy of the file on another PC, cannot read it; there, open **Settings** and enter the key again.
+The agent runs from a tray icon, starts when the user signs in and restarts itself if it stops. Right-click the tray icon for **Open Designer**, **Open Portal**, **Settings** (server, bot name, **Connect this PC again**), **Open log**, **Run desktop self-test** and **Record a desktop workflow**. It installs to `%LOCALAPPDATA%\Programs\ZamTech AI Agent`, with its settings in `agent.json` and daily logs in `logs\` there. The **Bot Agents** page lists every PC and who approved it; **Remove** disconnects a PC at once, and it has to be approved again to reconnect.
+
+- **Each PC has its own credential**, issued when it is approved and kept encrypted for that Windows user (Windows DPAPI) as `tokenProtected` in `agent.json`. The server keeps only a hash of it. Another user, or a copy of the file on another PC, cannot use it; there, choose **Settings > Connect this PC again**.
 - **Stopping never cuts a job short without asking.** **Quit** and **Restart** let a running job finish first (up to 10 minutes) and ask whether to cancel it instead. An upgrade or uninstall asks the same; run silently, it waits for the job. A cancelled job is reported to the orchestrator as *cancelled*.
 - Releases are signed by **ZAMTECH&HOME LLC**, so Windows names the publisher. For the first releases, SmartScreen may still say "Windows protected your PC" until the publisher has built up reputation; choose **More info**, then **Run anyway**. Builds from branches are unsigned.
 
-To roll it out to many PCs without clicking through the wizard:
+To roll it out to many PCs without anyone approving each one, an Admin creates an **install key** on the **Bot Agents** page (with a limit on the number of PCs and an expiry date) and copies the silent install command shown there:
 ```powershell
-ZamTechAI-Agent-Setup.exe /VERYSILENT /SERVER=https://api.zamtechai.com /KEY=<agent key> /NAME=finance-pc-01
+ZamTechAI-Agent-Setup.exe /VERYSILENT /SERVER=https://api.zamtechai.com /INSTALLKEY=<install key> /NAME=finance-pc-01
 ```
-Options: `/MERGETASKS="browsers"` also downloads Chromium for web automation, `/MERGETASKS="!autostart"` does not start the agent at sign-in, `/NOSTART` leaves it stopped after setup, and `/CANCELJOB` cancels a running job instead of waiting for it during an upgrade.
+PCs installed this way are approved by the key, and the Bot Agents page says so. Delete the key when the rollout is done; PCs already connected keep working. Options: `/MERGETASKS="browsers"` also downloads Chromium for web automation, `/MERGETASKS="!autostart"` does not start the agent at sign-in, `/NOSTART` leaves it stopped after setup, and `/CANCELJOB` cancels a running job instead of waiting for it during an upgrade.
 
 **Building and releasing the installer.** Build it on Windows with [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`):
 ```powershell
@@ -168,12 +171,11 @@ Anyone with physical access to an auto-signed-in PC can use that account, so kee
    pnpm --filter @zamtest/agent exec tsx src/cli.ts desktop-test
    ```
    This test opens Notepad and Calculator, types, clicks and reads text back. It writes `desktop-test-report.txt`; send that file along if anything fails.
-3. Start the agent in PowerShell:
+3. Connect the PC (approve it in the Portal when the browser opens), then start the agent in PowerShell:
    ```powershell
-   $env:ZAMTEST_SERVER = "https://api.zamtechai.com"
-   $env:ZAMTEST_AGENT_KEY = "<value from deploy/.env>"
-   $env:ZAMTEST_AGENT_NAME = "finance-pc-01"
-   pnpm --filter @zamtest/agent start
+   cd apps/agent
+   npx tsx src/cli.ts enroll --server https://api.zamtechai.com --name finance-pc-01 --config agent.json
+   npx tsx src/cli.ts connect --config agent.json
    ```
 4. To run desktop processes on this bot, pick it as the target agent when starting a process or creating a schedule. The cloud bot on the Linux server cannot run desktop actions.
 
@@ -200,6 +202,8 @@ People sign in with their own email and password. Each account has one role:
 1. Open the Portal. On the sign-in screen, click **Use the master access token instead** and paste `ZAMTEST_ADMIN_TOKEN` from `deploy/.env`.
 2. Go to **Users**, then **+ New user**, and create your own **Admin** account. Then create an account for each teammate.
 3. Sign out and sign back in with your email and password.
+
+People sign in only in the Portal. The Designer uses the same sign-in: an HttpOnly cookie for the whole domain (`ZAMTEST_COOKIE_DOMAIN`, set to `.zamtechai.com` by `docker-compose.yml`). Opening the Designer without a session goes to the Portal's sign-in and back, and signing out in either app signs out of both. Everyone signs in once more after the server is updated to this version.
 
 After that, keep the master token for emergencies only, for example if every admin is locked out. Sessions last 7 days. Changing a password signs that person out everywhere else. Repeated failed sign-ins are blocked for a few minutes.
 

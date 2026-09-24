@@ -33,6 +33,39 @@ export interface Agent {
   currentJobId?: string;
   lastHeartbeat: string;
   registeredAt: string;
+  /** SHA-256 of the agent's own credential, issued when the PC was approved in the Portal. */
+  tokenHash?: string;
+  /** Who approved this PC: a user ("Name <email>") or an install key. */
+  approvedBy?: string;
+}
+
+/** A PC asking to become a bot agent, waiting for a signed-in user to approve it in the Portal. */
+export interface Enrollment {
+  /** SHA-256 of the secret device code the agent polls with. */
+  id: string;
+  /** Short code in the Portal link, e.g. "KDTR-7QMX". */
+  userCode: string;
+  name: string;
+  machine: string;
+  os: string;
+  version: string;
+  status: "pending" | "approved" | "denied";
+  approvedBy?: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/** Lets IT install agents silently: a PC that presents this key is approved without a browser. */
+export interface InstallKey {
+  id: string;
+  name: string;
+  /** SHA-256 of the key; the key itself is shown once, when it is created. */
+  keyHash: string;
+  createdAt: string;
+  createdBy: string;
+  expiresAt?: string;
+  maxUses?: number;
+  uses: number;
 }
 
 export type JobStatus = "pending" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
@@ -112,6 +145,7 @@ export interface User {
 export interface Session {
   /** SHA-256 of the bearer token; the token itself is never stored. */
   id: string;
+  /** A user's id, or MASTER_SESSION for a session opened with the master access token. */
   userId: string;
   createdAt: string;
   expiresAt: string;

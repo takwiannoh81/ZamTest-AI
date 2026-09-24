@@ -5,7 +5,8 @@ import { parseWorkflow } from "@zamtest/core";
 import type { Workflow } from "@zamtest/core";
 import { recordDesktop, desktopSelfTest } from "./desktop-cli.js";
 import { AgentConnection } from "./connection.js";
-import { agentKeyFrom, loadAgentConfig } from "./config.js";
+import { agentKeyFrom, agentTokenFrom, loadAgentConfig, protectSecret, saveAgentConfig } from "./config.js";
+import { enroll, openInBrowser } from "./enroll.js";
 import { aiEnabled, execute } from "./runtime.js";
 import { startRecording } from "./recorder.js";
 import { createInterface } from "node:readline/promises";
@@ -79,9 +80,16 @@ async function record(url: string) {
 const USAGE = `ZamTech AI bot agent
 
 Usage:
-  zamtest-agent connect [--server URL] [--key KEY] [--name NAME]
+  zamtest-agent enroll [--server URL] [--name NAME] [--config FILE] [--install-key KEY] [--no-browser]
+      Connects this PC: opens the Portal, where a signed-in Developer or Admin
+      approves it (or an install key from Bot Agents approves it at once), and
+      stores the PC's own credential in FILE (encrypted on Windows).
+
+  zamtest-agent connect [--server URL] [--token TOKEN | --key KEY] [--name NAME]
       Unattended mode: connect to the orchestrator and execute queued jobs.
-      Defaults: ZAMTEST_SERVER (http://127.0.0.1:4000), ZAMTEST_AGENT_KEY, hostname.
+      Signs in with the PC's credential from "enroll" (--token, ZAMTEST_AGENT_TOKEN
+      or --config), or the shared key (--key, ZAMTEST_AGENT_KEY).
+      Defaults: ZAMTEST_SERVER (http://127.0.0.1:4000), hostname.
 
   zamtest-agent run <workflow.json> [--inputs '{"key":"value"}']
       Attended/dev mode: run a workflow file locally and print the log.
@@ -103,8 +111,8 @@ Usage:
       and writes desktop-test-report.txt.
 
 Every command accepts --config FILE (or ZAMTEST_AGENT_CONFIG): an agent.json
-with {"server", "key" or "keyProtected", "name", "env"}, as written by the
-Windows installer. Flags and environment variables override it.
+with {"server", "name", "token"/"tokenProtected", "key"/"keyProtected", "env"}, as
+written by the Windows tray app. Flags and environment variables override it.
 
 Stopping the agent (Ctrl+C) lets a running job finish first, for up to
 ZAMTEST_DRAIN_SECONDS (600); press Ctrl+C again to cancel the job.
@@ -121,12 +129,21 @@ const { positionals, values } = parseArgs({
     upload: { type: "boolean" },
     "all-apps": { type: "boolean" },
     config: { type: "string" },
+    token: { type: "string" },
+    "install-key": { type: "string" },
+    "no-browser": { type: "boolean" },
     help: { type: "boolean", short: "h" },
   },
 });
 
 const [command, file] = positionals;
 const fileConfig = loadAgentConfig(values.config ?? process.env.ZAMTEST_AGENT_CONFIG);
+/** The PC's own credential if it has one, else the shared key (the dev default locally). */
+function agentCredential(): { token?: string; key?: string } {
+  const token = values.token ?? process.env.ZAMTEST_AGENT_TOKEN ?? agentTokenFrom(fileConfig);
+  if (token) return { token };
+  return { key: values.key ?? process.env.ZAMTEST_AGENT_KEY ?? agentKeyFrom(fileConfig) ?? "dev-agent-key" };
+}
 const defaultServer = () => values.server ?? process.env.ZAMTEST_SERVER ?? fileConfig.server ?? "http://127.0.0.1:4000";
 
 if (values.help || !command) {
@@ -137,7 +154,7 @@ if (values.help || !command) {
 if (command === "connect") {
   const agent = new AgentConnection({
     server: defaultServer(),
-    key: values.key ?? process.env.ZAMTEST_AGENT_KEY ?? agentKeyFrom(fileConfig) ?? "dev-agent-key",
+    ...agentCredential(),
     name: values.name ?? process.env.ZAMTEST_AGENT_NAME ?? (fileConfig.name || hostname()),
   });
   console.log(`[agent] AI features ${aiEnabled() ? "enabled" : "disabled (set ANTHROPIC_API_KEY to enable)"}`);
@@ -166,6 +183,32 @@ if (command === "connect") {
     control.on("close", () => void shutdown(stopping));
   }
   await agent.start();
+} else if (command === "enroll") {
+  const server = defaultServer();
+  const result = await enroll({
+    server,
+    name: values.name ?? process.env.ZAMTEST_AGENT_NAME ?? (fileConfig.name || hostname()),
+    installKey: values["install-key"] ?? fileConfig.installKey,
+    onApprovalNeeded: (url, code) => {
+      console.log(`Approve this PC in the ZamTech AI Portal (code ${code}):
+  ${url}
+`);
+      if (!values["no-browser"]) openInBrowser(url);
+      console.log("Waiting for approval...");
+    },
+  });
+  console.log(`Approved${result.approvedBy ? ` by ${result.approvedBy}` : ""}: this PC is "${result.name}" (${result.agentId}).`);
+  const configPath = values.config ?? process.env.ZAMTEST_AGENT_CONFIG;
+  if (configPath) {
+    const { installKey: _used, token: _old, tokenProtected: _oldProtected, ...rest } = fileConfig;
+    const secret = process.platform === "win32" ? { tokenProtected: protectSecret(result.agentToken) } : { token: result.agentToken };
+    saveAgentConfig(configPath, { ...rest, server, name: result.name, agentId: result.agentId, ...secret });
+    console.log(`Saved to ${configPath}. Start the agent with: zamtest-agent connect --config "${configPath}"`);
+  } else {
+    console.log(`Start the agent with its credential (shown only now):
+  ZAMTEST_AGENT_TOKEN=${result.agentToken} zamtest-agent connect --server ${server}`);
+  }
+  process.exit(0);
 } else if (command === "run") {
   if (!file) {
     console.error("Missing workflow file\n\n" + USAGE);
