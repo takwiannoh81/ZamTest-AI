@@ -224,6 +224,7 @@ Each customer company has its own **workspace**: its people, workflows, processe
 | AI requests per month | 20 | 500 per builder | agreed |
 | Schedules | no (kept, paused) | yes | yes |
 | Install keys | no | no | yes |
+| Company sign-in (SSO) | no | no | yes |
 
 The server enforces them: when a limit is reached the request is refused with *402 Payment Required* and the Portal (or Designer) shows the reason with a **View plans** link. Nothing is deleted when a workspace moves to a smaller plan; its schedules simply stop running. Workspace Admins see their plan and this month's usage under **Billing**. You (the master token, or an Admin of the default workspace) see every workspace under **Customers**, where you can change a plan, set Pro seats by hand, or give an Enterprise customer agreed limits.
 
@@ -246,6 +247,37 @@ The server enforces them: when a limit is reached the request is refused with *4
 7. To go live, repeat steps 2-5 in **live mode** (live prices, a live webhook with its own secret, and the `sk_live_...` key).
 
 Enterprise customers are not billed through Checkout: agree the contract, invoice it (Stripe Invoicing or otherwise), and set the workspace to Enterprise with its limits under **Customers**. To show a **Contact sales** link for Enterprise on the Billing page, add `SALES_EMAIL=sales@your-domain` to `deploy/.env` and run `install.sh` again (it is built into the Portal).
+
+## 5c. Email, two-step sign-in and company sign-in (SSO)
+
+**Email.** The server sends two kinds of email: *confirm your email* after sign-up, and *reset your password*. Without email settings, sign-up and **Forgot password?** do not work on a production server (the log says `Email: not set up`). Any SMTP service works; with Amazon SES (the server already runs on AWS):
+
+1. In the SES console (region `us-east-2` or yours), **Identities > Create identity > Domain** `zamtechai.com`, and add the DNS records it shows (DKIM) at your DNS provider. Wait until the identity is *Verified*.
+2. **Account dashboard > Request production access**, so SES can send to any address (new accounts can only send to verified addresses).
+3. **SMTP settings > Create SMTP credentials**. Note the user name and password.
+4. On the server (each asks for the value, hidden), then run `install.sh` again:
+   ```bash
+   sudo bash ~/ZamTest-AI/deploy/set-env.sh SMTP_URL    # smtps://USER:PASSWORD@email-smtp.us-east-2.amazonaws.com:465
+   sudo bash ~/ZamTest-AI/deploy/set-env.sh MAIL_FROM   # ZamTech AI <no-reply@zamtechai.com>
+   ```
+   URL-encode the password if it contains `/`, `+` or `=` (`%2F`, `%2B`, `%3D`).
+
+New accounts must confirm their email before they can use the Portal or Designer. Accounts that existed before this version, and accounts an Admin creates under **Users**, count as confirmed. Confirmation links work for 24 hours, reset links for 1 hour and once only; resetting a password signs that person out everywhere.
+
+**Two-step sign-in (MFA).** Anyone with a password can turn it on under **Security**: scan the QR code with Google Authenticator, Microsoft Authenticator, Authy or similar, enter the 6-digit code, and save the 10 recovery codes (each works once, for a lost phone). A workspace Admin can **require two-step sign-in for everyone**: people without it set it up at their next sign-in, before they can do anything else. The Admin must have it on first. If someone loses both phone and recovery codes, an Admin clicks **Reset two-step** next to them under **Users**.
+
+**Company sign-in (SSO), Enterprise.** People of an Enterprise customer sign in with their company account (Microsoft Entra ID, Okta, Google Workspace, or any OpenID Connect provider) instead of a password. On the sign-in screen, once they type an email of the company's domain, a **Continue with your company account** button appears.
+
+1. You (the platform owner) check that the customer owns the domain, then on **Customers** set the workspace to **Enterprise** and enter its **SSO domains** (for example `acme.com`). A domain belongs to one workspace; public email services such as gmail.com are refused.
+2. The customer's IT registers ZamTech AI in their identity provider as a *web* application, with redirect URI **`https://portal.zamtechai.com/api/auth/sso/callback`** (shown on the Security page):
+   - **Microsoft Entra ID:** *App registrations > New registration*, platform *Web*, that redirect URI. Then *Certificates & secrets > New client secret*. Issuer: `https://login.microsoftonline.com/<tenant ID>/v2.0`.
+   - **Okta:** *Applications > Create App Integration > OIDC > Web Application*, sign-in redirect URI as above, and assign the people or groups. Issuer: `https://<company>.okta.com` (or its custom authorization server, e.g. `https://<company>.okta.com/oauth2/default`).
+   - **Google Workspace:** Google Cloud console, *APIs & Services > Credentials > Create OAuth client ID > Web application*, authorized redirect URI as above. Issuer: `https://accounts.google.com`.
+3. The customer's Admin opens **Security > Company sign-in**, enters the issuer URL, client ID and client secret, picks the role for new people, and switches it on. Options: *Create accounts on first sign-in* (otherwise an Admin creates each person under **Users** first) and *Require company sign-in* (passwords stop working for those domains; the master token still works).
+
+Only verified company addresses of the workspace's domains are accepted. The provider's own checks (its MFA, disabled accounts) apply, so ZamTech AI's two-step sign-in is not asked of SSO accounts.
+
+**Data export.** A workspace Admin can download everything in the workspace as JSON under **Security > Export your data** (people, workflows, processes, schedules, assets (secret values hidden), queues, jobs and logs). Password hashes, secrets and other workspaces are never included.
 
 ## 6. Backups to Amazon S3
 
@@ -307,4 +339,5 @@ The data volume holds the workflows, processes, jobs, schedules, assets (includi
 - [ ] The admin token is shared only with people who should administer the platform.
 - [ ] SSH access uses keys, not passwords.
 - [ ] Every person has their own account. The master token is kept for emergencies only.
+- [ ] Email (SMTP) is set up if sign-up is open, and Admins have two-step sign-in on.
 - [ ] S3 backups are configured, the bucket blocks public access, and the backup IAM user can reach only that bucket.

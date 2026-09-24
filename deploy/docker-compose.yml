@@ -43,6 +43,9 @@ services:
       ZAMTEST_DESIGNER_URL: https://designer.${SITE_DOMAIN}
       # Anyone may create an account and workspace in the Portal (the hosted service).
       ZAMTEST_ALLOW_SIGNUP: ${ZAMTEST_ALLOW_SIGNUP:-false}
+      # Confirm-your-email and password-reset emails (see docs/DEPLOYMENT.md, 5c).
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
       # Paying for Pro with Stripe (optional; see docs/DEPLOYMENT.md, "Plans and billing").
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}

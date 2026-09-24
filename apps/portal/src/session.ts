@@ -13,6 +13,8 @@ export interface Me {
   workspace: { id: string; name: string };
   /** The platform owner (sees all customers), not a customer. */
   platformAdmin: boolean;
+  /** Signed in, but must confirm the email or set up two-step sign-in first. */
+  restriction?: "email_unverified" | "mfa_setup_required";
 }
 
 const ORDER: Role[] = ["viewer", "operator", "developer", "admin"];

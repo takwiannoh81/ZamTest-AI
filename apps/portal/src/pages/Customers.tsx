@@ -96,6 +96,7 @@ function PlanEditor({ workspace, onSaved }: { workspace: WorkspaceSummary; onSav
   });
   const [seats, setSeats] = useState({ builders: workspace.seats?.builders ?? 1, bots: workspace.seats?.bots ?? 1 });
   const [failure, setFailure] = useState<string>();
+  const [domains, setDomains] = useState((workspace.ssoDomains ?? []).join(", "));
 
   const save = async () => {
     setFailure(undefined);
@@ -109,6 +110,7 @@ function PlanEditor({ workspace, onSaved }: { workspace: WorkspaceSummary; onSav
           plan,
           ...(plan === "pro" ? { seats } : {}),
           ...(plan === "enterprise" ? { customLimits: Object.keys(customLimits).length ? customLimits : null } : {}),
+          ssoDomains: domains.split(/[\s,]+/).map((d) => d.trim().toLowerCase()).filter(Boolean),
         },
       });
       onSaved();
@@ -155,6 +157,10 @@ function PlanEditor({ workspace, onSaved }: { workspace: WorkspaceSummary; onSav
               </label>
             ))}
           </div>
+          <label className="field">
+            <span>{t("customers.ssoDomains")}</span>
+            <input value={domains} placeholder="acme.com" onChange={(e) => setDomains(e.target.value)} />
+          </label>
         </>
       )}
       <button className="btn" onClick={() => void save()}>

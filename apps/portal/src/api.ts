@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_URL ?? "";
+export const BASE = import.meta.env.VITE_API_URL ?? "";
 
 // Signing in sets an HttpOnly cookie shared with the Designer; nothing is kept in the page.
 // Earlier versions stored a token in localStorage: remove it.
@@ -27,9 +27,11 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
   if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
-  if (res.status === 403) window.dispatchEvent(new Event(FORBIDDEN_EVENT));
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
+  // An account that still has to confirm its email or set up two-step sign-in sees a page about it instead.
+  const restricted = ["email_unverified", "mfa_setup_required"].includes((data as { code?: string }).code ?? "");
+  if (res.status === 403 && !restricted) window.dispatchEvent(new Event(FORBIDDEN_EVENT));
   if (res.status === 402) window.dispatchEvent(new CustomEvent(LIMIT_EVENT, { detail: (data as { error?: string }).error ?? "" }));
   if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
   return data as T;
@@ -71,6 +73,7 @@ export type PlanId = "free" | "pro" | "enterprise";
 
 /** GET /api/workspace (and each row of /api/platform/workspaces). */
 export interface WorkspaceSummary {
+  ssoDomains: string[];
   billingAvailable: boolean;
   id: string;
   name: string;
@@ -190,6 +193,9 @@ export interface User {
   name: string;
   role: "admin" | "developer" | "operator" | "viewer";
   disabled?: boolean;
+  mfaEnabled?: boolean;
+  authSource?: "password" | "sso";
+  emailVerified?: boolean;
   createdAt: string;
   lastLoginAt?: string;
 }

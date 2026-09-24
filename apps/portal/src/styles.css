@@ -225,3 +225,16 @@ code, pre, .mono, .log, .log-line { direction: ltr; unicode-bidi: isolate; }
 .workspace-name { font-size: 12px; color: var(--muted); }
 .auth-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
 .toast-link { margin-inline-start: 10px; color: inherit; font-weight: 700; text-decoration: underline; }
+
+/* Security: company sign-in, two-step sign-in, pages opened from emails */
+.sso-box { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
+.code-input { font-family: ui-monospace, monospace; font-size: 18px; letter-spacing: 3px; }
+.mfa-setup { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.mfa-setup img { border-radius: 8px; background: #fff; }
+.recovery-codes { list-style: none; padding: 0; margin: 0 0 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
+.copyable { user-select: all; word-break: break-all; }
+.error-text { color: var(--danger); }
+.account-page { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); }
+.account-card { width: min(520px, 100%); }
+.account-card .card { border: none; padding: 0; box-shadow: none; }
+.account-card .card > h2 { display: none; }

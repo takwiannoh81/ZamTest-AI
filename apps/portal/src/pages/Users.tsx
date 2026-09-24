@@ -61,6 +61,7 @@ export function Users() {
                 <td>{u.email}</td>
                 <td>
                   <span className="role-badge">{t(`role.${u.role}` as MessageKey)}</span>
+                  {u.authSource === "sso" && <span className="role-badge">{t("users.sso")}</span>}
                 </td>
                 <td>{u.disabled ? t("users.disabled") : t("users.active")}</td>
                 <td>{u.lastLoginAt ? timeAgo(u.lastLoginAt) : t("users.never")}</td>
@@ -73,6 +74,14 @@ export function Users() {
                       <button className="btn-ghost" onClick={() => void act(() => api(`/api/users/${u.id}`, { method: "PUT", body: { disabled: !u.disabled } }))}>
                         {u.disabled ? t("users.enable") : t("users.disable")}
                       </button>
+                      {u.mfaEnabled && (
+                        <button
+                          className="btn-ghost"
+                          onClick={() => confirm(t("users.confirmResetMfa", { name: u.name })) && void act(() => api(`/api/users/${u.id}/mfa/reset`, { method: "POST" }))}
+                        >
+                          {t("users.resetMfa")}
+                        </button>
+                      )}
                       <button
                         className="btn-ghost danger"
                         onClick={() => confirm(t("users.confirmDelete", { name: u.name })) && void act(() => api(`/api/users/${u.id}`, { method: "DELETE" }))}

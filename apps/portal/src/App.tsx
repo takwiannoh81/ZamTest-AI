@@ -8,9 +8,11 @@ import { Customers } from "./pages/Customers";
 import { Connect } from "./pages/Connect";
 import { Dashboard } from "./pages/Dashboard";
 import { JobDetail, Jobs } from "./pages/Jobs";
+import { Restricted } from "./pages/Account";
 import { Processes } from "./pages/Processes";
 import { QueueDetail, Queues } from "./pages/Queues";
 import { Schedules } from "./pages/Schedules";
+import { Security } from "./pages/Security";
 import { Settings } from "./pages/Settings";
 import { Users } from "./pages/Users";
 import { AGENT_DOWNLOAD_URL, DESIGNER_URL } from "./links";
@@ -26,6 +28,7 @@ const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolea
   { path: "/assets", label: "nav.assets", icon: "🔑" },
   { path: "/users", label: "nav.users", icon: "👥", admin: true },
   { path: "/billing", label: "nav.billing", icon: "💳", admin: true },
+  { path: "/security", label: "nav.security", icon: "🛡" },
   { path: "/settings", label: "nav.settings", icon: "☰" },
   { path: "/customers", label: "nav.customers", icon: "🏢", platform: true },
 ];
@@ -37,6 +40,8 @@ export function App() {
   // e.g. "/connect?code=ABCD-EFGH&next=designer"
   const [route = "/", query = ""] = fullRoute.split("?");
   const active = NAV.filter((n) => (n.path === "/" ? route === "/" : route.startsWith(n.path))).at(-1)?.path;
+
+  if (me?.restriction) return <Restricted me={me} />;
 
   let page;
   if (route === "/connect") page = <Connect query={query} />;
@@ -51,6 +56,7 @@ export function App() {
   else if (route === "/agents") page = <Agents />;
   else if (route === "/assets") page = <Assets />;
   else if (route === "/settings") page = <Settings />;
+  else if (route === "/security") page = <Security />;
   else if (route === "/users") page = <Users />;
   else page = <Dashboard />;
 
