@@ -239,7 +239,7 @@ The server enforces them: when a limit is reached the request is refused with *4
    node deploy/stripe-setup.mjs
    ```
    It creates the two products and their prices, the customer portal settings (change seats, cards, invoices, cancel at the end of the period) and the webhook `https://api.zamtechai.com/api/billing/webhook`, then prints the lines for the server. Running it again is safe: it reuses what exists, and a changed price becomes a new price for new subscriptions.
-4. On the server, run `sudo bash ~/ZamTest-AI/deploy/set-env.sh --paste`, paste the printed lines (input hidden) and press Enter on an empty line. The orchestrator's log then says `Billing: Stripe (test mode)`. Optional: `STRIPE_AUTOMATIC_TAX=true` once Stripe Tax is set up.
+4. On the server, run `sudo bash ~/ZamTest-AI/deploy/set-env.sh --paste`, paste the printed lines all at once (input hidden; it finishes by itself a moment after the paste). The orchestrator's log then says `Billing: Stripe (test mode)`. Optional: `STRIPE_AUTOMATIC_TAX=true` once Stripe Tax is set up.
 5. Test: sign up a new workspace, open **Billing > Upgrade to Pro**, and pay with the test card `4242 4242 4242 4242` (any future date, any CVC). Within seconds the workspace shows **Pro** with the seats bought. Try **Manage billing** to change seats or cancel, and the card `4000 0000 0000 0341` to see a failed renewal (the plan stays Pro while Stripe retries; a warning shows under Billing).
 6. To go live, switch Stripe to **live mode**, complete the account's activation (business details, bank account), and repeat steps 2-4 with the `sk_live_...` key.
 

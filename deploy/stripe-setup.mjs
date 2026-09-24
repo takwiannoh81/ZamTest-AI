@@ -186,7 +186,7 @@ Done. Now, on the server (Lightsail > Connect using SSH), run:
 
   sudo bash ~/ZamTest-AI/deploy/set-env.sh --paste
 
-and paste these lines (they contain your secret key: do not share them), then press Enter on an empty line:
+and paste these lines (they contain your secret key: do not share them); it finishes by itself a moment after the paste.
 ------------------------------------------------------------------------
 ${lines.join("\n")}
 ------------------------------------------------------------------------

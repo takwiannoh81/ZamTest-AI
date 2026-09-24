@@ -18,11 +18,18 @@ set_value() {
 }
 
 if [ "$name" = "--paste" ]; then
-  echo "Paste the NAME=value lines, then press Enter on an empty line (input hidden):"
+  echo "Paste the NAME=value lines (input hidden); it finishes by itself a moment after the paste:"
   saved=()
-  while IFS= read -rs line < /dev/tty; do
-    line="${line%$'\r'}"
-    [ -z "$line" ] && break
+  # A paste from Windows has CR LF line ends, which the terminal turns into empty lines:
+  # skip those, and stop when nothing more arrives for 2 seconds (the first line may take as long as needed).
+  timeout=()
+  while IFS= read -rs "${timeout[@]}" line < /dev/tty; do
+    timeout=(-t 2)
+    # Terminals may wrap a paste in "bracketed paste" markers.
+    line="${line//$'\e[200~'/}"
+    line="${line//$'\e[201~'/}"
+    line="${line//$'\r'/}"
+    [ -z "$line" ] && continue
     if ! [[ "$line" =~ ^([A-Z][A-Z0-9_]*)=(.+)$ ]]; then
       echo "Skipped a line that is not NAME=value." >&2
       continue
