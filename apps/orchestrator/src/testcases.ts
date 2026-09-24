@@ -1,9 +1,10 @@
 /**
- * Test cases for workflows: folders (nested) of test cases, each running a
- * workflow as saved in the Designer with given inputs. A case passes when its
- * run succeeds and every expected output has that value. A folder, or all of
- * them, can be run at once. Also: a whole project (workflows and test cases)
- * as one file, to save on a PC and import again.
+ * Test cases: folders (nested) of tests, each with its own steps built in the
+ * Designer ("Verify ..." checks, and "Call Workflow" to run a workflow). A test
+ * passes when its run succeeds. A folder, or all of them, can be run at once.
+ * Older test cases run a workflow with inputs and check its outputs.
+ * Also: a whole project (workflows and test cases) as one file, to save on a PC
+ * and import again.
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -11,6 +12,7 @@ import { WorkflowSchema } from "@zamtest/core";
 import type { Workflow } from "@zamtest/core";
 import { HttpError, parse } from "./errors.js";
 import { createJob } from "./jobs.js";
+import { remapCalls } from "./calls.js";
 import { PlanLimitError } from "./plans.js";
 import { newId, nowIso } from "./store.js";
 import type { Store } from "./store.js";
@@ -47,7 +49,8 @@ const FolderBody = z.object({ name: z.string().trim().min(1).max(200), parentId:
 const CaseBody = z.object({
   name: z.string().trim().min(1).max(200),
   folderId: z.string().nullish(),
-  workflowId: z.string().min(1),
+  definition: WorkflowSchema.optional(),
+  workflowId: z.string().min(1).optional(),
   inputs: z.record(z.unknown()).default({}),
   expectedOutputs: z.record(z.unknown()).nullish(),
   targetAgentId: z.string().nullish(),
@@ -84,10 +87,23 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
     }
     return ids;
   };
-  const caseView = (c: TestCase) => {
+  /** A test case in the tree: without its steps (open it for those). */
+  const caseView = ({ definition, ...c }: TestCase) => {
     const job = c.lastJobId ? store.data.jobs[c.lastJobId] : undefined;
-    return { ...c, workflowName: store.data.workflows[c.workflowId]?.name, last: job ? { jobId: job.id, at: job.finishedAt ?? job.createdAt, ...resultOf(job, c.expectedOutputs) } : undefined };
+    return {
+      ...c,
+      steps: definition ? (definition.root.slots?.body ?? []).length : undefined,
+      workflowName: c.workflowId ? store.data.workflows[c.workflowId]?.name : undefined,
+      last: job ? { jobId: job.id, at: job.finishedAt ?? job.createdAt, ...resultOf(job, c.expectedOutputs) } : undefined,
+    };
   };
+  const blankSteps = (id: string, name: string): Workflow => ({
+    schemaVersion: 1,
+    id,
+    name,
+    variables: [],
+    root: { id: "root", type: "core.sequence", props: {}, slots: { body: [] } },
+  });
 
   /* ---------- tree ---------- */
   app.get("/api/tests", async (req) => ({
@@ -128,13 +144,16 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
 
   app.post("/api/test-cases", async (req, reply) => {
     const body = parse(CaseBody, req.body);
-    ctx.own(store.data.workflows, body.workflowId, "Workflow", req);
+    if (body.workflowId) ctx.own(store.data.workflows, body.workflowId, "Workflow", req);
     if (body.targetAgentId) ctx.own(store.data.agents, body.targetAgentId, "Agent", req);
+    const id = newId("tc");
     const testCase: TestCase = {
-      id: newId("tc"),
+      id,
       workspaceId: ws(req),
       name: body.name,
       folderId: folderOf(req, body.folderId),
+      // New test cases have steps of their own.
+      definition: body.workflowId ? undefined : { ...(body.definition ?? blankSteps(id, body.name)), id, name: body.name },
       workflowId: body.workflowId,
       inputs: body.inputs,
       expectedOutputs: body.expectedOutputs ?? undefined,
@@ -156,6 +175,8 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
     if (body.name) testCase.name = body.name;
     if (body.folderId !== undefined) testCase.folderId = folderOf(req, body.folderId);
     if (body.workflowId) testCase.workflowId = body.workflowId;
+    if (body.definition) testCase.definition = body.definition as Workflow;
+    if (testCase.definition) testCase.definition = { ...testCase.definition, id: testCase.id, name: testCase.name };
     if (body.inputs) testCase.inputs = body.inputs;
     if (body.expectedOutputs !== undefined) testCase.expectedOutputs = body.expectedOutputs ?? undefined;
     if (body.targetAgentId !== undefined) testCase.targetAgentId = body.targetAgentId ?? undefined;
@@ -163,6 +184,12 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
     testCase.updatedAt = nowIso();
     store.save();
     return caseView(testCase);
+  });
+
+  /** A test case with its steps (the Designer opens it). */
+  app.get<{ Params: { id: string } }>("/api/test-cases/:id", async (req) => {
+    const testCase = ctx.own(store.data.testCases, req.params.id, "Test case", req);
+    return { ...caseView(testCase), definition: testCase.definition };
   });
 
   app.delete<{ Params: { id: string } }>("/api/test-cases/:id", async (req, reply) => {
@@ -209,13 +236,15 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
     const run: TestRun = { id: newId("trn"), workspaceId: ws(req), name, startedBy: p.email || p.name, startedAt: nowIso(), items: [] };
     for (const c of cases) {
       const item: TestRun["items"][number] = { testCaseId: c.id, name: c.name, path: pathOf(c.folderId) };
-      const wf: WorkflowDraft | undefined = store.data.workflows[c.workflowId];
-      if (!wf || wf.workspaceId !== run.workspaceId) item.error = "Its workflow was deleted";
+      // Its own steps; older test cases run their workflow.
+      const wf: WorkflowDraft | undefined = c.workflowId ? store.data.workflows[c.workflowId] : undefined;
+      const definition = c.definition ?? (wf && wf.workspaceId === run.workspaceId ? wf.definition : undefined);
+      if (!definition) item.error = "Its workflow was deleted";
       else {
         try {
           const job = createJob(store, {
             workspaceId: run.workspaceId,
-            definition: wf.definition,
+            definition,
             inputs: c.inputs,
             targetAgentId: c.targetAgentId && store.data.agents[c.targetAgentId] ? c.targetAgentId : undefined,
             source: "test",
@@ -256,7 +285,9 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
       exportedAt: nowIso(),
       workflows: workflows.map((w) => ({ ...w.definition, id: w.id, name: w.name, description: w.description })),
       testFolders: ctx.mine(store.data.testFolders, req).map(({ id, name, parentId }) => ({ id, name, parentId })),
-      testCases: ctx.mine(store.data.testCases, req).map(({ id, name, folderId, workflowId, inputs, expectedOutputs, description }) => ({ id, name, folderId, workflowId, inputs, expectedOutputs, description })),
+      testCases: ctx
+        .mine(store.data.testCases, req)
+        .map(({ id, name, folderId, definition, workflowId, inputs, expectedOutputs, description }) => ({ id, name, folderId, definition, workflowId, inputs, expectedOutputs, description })),
     };
     return reply.header("content-type", "application/json; charset=utf-8").send(JSON.stringify(data, null, 2));
   });
@@ -269,7 +300,18 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
         workflows: z.array(z.unknown()).max(1000),
         testFolders: z.array(z.object({ id: z.string(), name: z.string().min(1).max(200), parentId: z.string().nullish() })).max(5000).default([]),
         testCases: z
-          .array(z.object({ id: z.string(), name: z.string().min(1).max(200), folderId: z.string().nullish(), workflowId: z.string(), inputs: z.record(z.unknown()).default({}), expectedOutputs: z.record(z.unknown()).nullish(), description: z.string().nullish() }))
+          .array(
+            z.object({
+              id: z.string(),
+              name: z.string().min(1).max(200),
+              folderId: z.string().nullish(),
+              definition: WorkflowSchema.nullish(),
+              workflowId: z.string().nullish(),
+              inputs: z.record(z.unknown()).default({}),
+              expectedOutputs: z.record(z.unknown()).nullish(),
+              description: z.string().nullish(),
+            }),
+          )
           .max(10000)
           .default([]),
       }),
@@ -283,10 +325,12 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
     }
     const workspaceId = ws(req);
     const ids = new Map<string, string>();
+    for (const definition of definitions) ids.set(definition.id, newId("wf"));
     for (const definition of definitions) {
-      const id = newId("wf");
-      ids.set(definition.id, id);
-      store.data.workflows[id] = { id, workspaceId, name: definition.name, description: definition.description, definition: { ...definition, id }, createdAt: nowIso(), updatedAt: nowIso() };
+      const id = ids.get(definition.id)!;
+      // "Call Workflow" steps point at the imported copies.
+      const own = { ...definition, id, root: remapCalls(definition.root, ids) };
+      store.data.workflows[id] = { id, workspaceId, name: definition.name, description: definition.description, definition: own, createdAt: nowIso(), updatedAt: nowIso() };
     }
     const folderIds = new Map(body.testFolders.map((f) => [f.id, newId("tfd")]));
     for (const f of body.testFolders) {
@@ -294,18 +338,20 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
     }
     let skipped = 0;
     for (const c of body.testCases) {
-      const workflowId = ids.get(c.workflowId);
-      if (!workflowId) {
+      const workflowId = c.workflowId ? ids.get(c.workflowId) : undefined;
+      if (!c.definition && !workflowId) {
         skipped++;
         continue;
       }
       const id = newId("tc");
+      const definition = c.definition ? ({ ...c.definition, id, name: c.name, root: remapCalls(c.definition.root, ids) } as Workflow) : undefined;
       store.data.testCases[id] = {
         id,
         workspaceId,
         name: c.name,
         folderId: c.folderId ? folderIds.get(c.folderId) : undefined,
-        workflowId,
+        definition,
+        workflowId: definition ? undefined : workflowId,
         inputs: c.inputs,
         expectedOutputs: c.expectedOutputs ?? undefined,
         description: c.description ?? undefined,

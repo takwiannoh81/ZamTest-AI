@@ -665,6 +665,106 @@ export const BUILTIN_ACTIONS: ActionMeta[] = [
       output("Save final answer to"),
     ],
   },
+  /* ------------------------------ Workflows ------------------------------ */
+  {
+    type: "core.callWorkflow",
+    displayName: "Call Workflow",
+    category: "Control Flow",
+    description: "Runs another workflow (as saved) with inputs, in the same run: an open browser stays open. Its outputs are saved as an object.",
+    icon: "rocket",
+    props: [
+      { name: "workflowId", label: "Workflow", type: "workflow", required: true },
+      { name: "inputs", label: "Inputs", type: "json", description: 'Values for its inputs, e.g. {"customer": "{{ name }}"}' },
+      output("Save outputs to"),
+    ],
+  },
+
+  /* -------------------------------- Verify -------------------------------- */
+  {
+    type: "verify.condition",
+    displayName: "Verify Condition",
+    category: "Verify",
+    description: "Checks that a condition is true; otherwise the test fails with your message.",
+    icon: "shield",
+    props: [
+      { name: "condition", label: "Condition", type: "expression", required: true, description: 'e.g. total > 0 && status == "Paid"' },
+      { name: "message", label: "Message if it fails", type: "string" },
+    ],
+  },
+  {
+    type: "browser.verifyText",
+    displayName: "Verify Text",
+    category: "Verify",
+    description: "Checks the text of an element on the page. Waits up to the timeout for it to match.",
+    icon: "shield",
+    props: [
+      { name: "selector", label: "Selector", type: "selector", required: true },
+      { name: "text", label: "Expected text", type: "string", required: true },
+      { name: "match", label: "Match", type: "enum", options: ["contains", "equals", "regex"], default: "contains" },
+      { name: "timeoutMs", label: "Timeout (ms)", type: "number", default: 5000 },
+    ],
+  },
+  {
+    type: "browser.verifyVisible",
+    displayName: "Verify Element Visible",
+    category: "Verify",
+    description: "Checks that an element is visible on the page (or, unticked, that it is not).",
+    icon: "shield",
+    props: [
+      { name: "selector", label: "Selector", type: "selector", required: true },
+      { name: "visible", label: "Should be visible", type: "boolean", default: true },
+      { name: "timeoutMs", label: "Timeout (ms)", type: "number", default: 5000 },
+    ],
+  },
+  {
+    type: "browser.verifyTitle",
+    displayName: "Verify Page Title",
+    category: "Verify",
+    description: "Checks the title of the page.",
+    icon: "shield",
+    props: [
+      { name: "text", label: "Expected title", type: "string", required: true },
+      { name: "match", label: "Match", type: "enum", options: ["contains", "equals", "regex"], default: "contains" },
+      { name: "timeoutMs", label: "Timeout (ms)", type: "number", default: 5000 },
+    ],
+  },
+  {
+    type: "browser.verifyUrl",
+    displayName: "Verify Page URL",
+    category: "Verify",
+    description: "Checks the address of the page.",
+    icon: "shield",
+    props: [
+      { name: "text", label: "Expected URL", type: "string", required: true },
+      { name: "match", label: "Match", type: "enum", options: ["contains", "equals", "regex"], default: "contains" },
+      { name: "timeoutMs", label: "Timeout (ms)", type: "number", default: 5000 },
+    ],
+  },
+  {
+    type: "desktop.verifyText",
+    displayName: "Verify Text (Desktop)",
+    category: "Verify",
+    description: "Checks the text of an element in a Windows application.",
+    icon: "shield",
+    props: [
+      { name: "selector", label: "Selector", type: "selector", required: true },
+      { name: "text", label: "Expected text", type: "string", required: true },
+      { name: "match", label: "Match", type: "enum", options: ["contains", "equals", "regex"], default: "contains" },
+      { name: "timeoutMs", label: "Timeout (ms)", type: "number", default: 5000 },
+    ],
+  },
+  {
+    type: "desktop.verifyExists",
+    displayName: "Verify Element Exists (Desktop)",
+    category: "Verify",
+    description: "Checks that an element exists in a Windows application (or, unticked, that it is gone).",
+    icon: "shield",
+    props: [
+      { name: "selector", label: "Selector", type: "selector", required: true },
+      { name: "exists", label: "Should exist", type: "boolean", default: true },
+      { name: "timeoutMs", label: "Timeout (ms)", type: "number", default: 5000 },
+    ],
+  },
 ];
 
 export function findAction(type: string, catalog: ActionMeta[] = BUILTIN_ACTIONS): ActionMeta | undefined {

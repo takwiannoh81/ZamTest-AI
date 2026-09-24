@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import type { ActionContext, ActionHandler } from "@zamtest/core";
 import { errorMessage } from "@zamtest/core";
 import { getAi } from "../ai.js";
+import { expectation, matchOf, shown, textMatches, VerificationError, waitFor } from "../verify.js";
 import { DesktopDriver } from "./driver.js";
 import { formatSelector, parseSelector } from "./selector.js";
 
@@ -151,6 +152,37 @@ export const desktopHandlers: Record<string, ActionHandler> = {
     withDesktopSelector(ctx, props, async (selector) => {
       await getDesktop(ctx).call("waitFor", { selector, state: props.state ?? "visible", timeoutMs: timeoutOf(props, 30_000) });
     }),
+
+  "desktop.verifyText": async (props, ctx) => {
+    const selector = String(props.selector);
+    parseSelector(selector);
+    const driver = getDesktop(ctx);
+    const expected = String(props.text ?? "");
+    const match = matchOf(props.match);
+    const { passed, last } = await waitFor(
+      () => driver.call<{ text: string }>("getText", { selector, timeoutMs: 500 }).then((r) => (r.text ?? "").trim(), () => undefined),
+      (text) => text !== undefined && textMatches(text, expected, match),
+      timeoutOf(props, 5000),
+      ctx.signal,
+    );
+    if (!passed) throw new VerificationError(`Expected the text of ${selector} to ${expectation(match, expected)}, but found ${shown(last)}`);
+    ctx.log("info", `Check passed: ${selector} has the expected text`);
+  },
+
+  "desktop.verifyExists": async (props, ctx) => {
+    const selector = String(props.selector);
+    parseSelector(selector);
+    const driver = getDesktop(ctx);
+    const wanted = props.exists !== false;
+    const { passed } = await waitFor(
+      () => driver.call<{ count: number }>("count", { selector }).then((r) => r.count > 0, () => false),
+      (exists) => exists === wanted,
+      timeoutOf(props, 5000),
+      ctx.signal,
+    );
+    if (!passed) throw new VerificationError(wanted ? `Expected ${selector} to exist, but it was not found` : `Expected ${selector} to be gone, but it is still there`);
+    ctx.log("info", `Check passed: ${selector} ${wanted ? "exists" : "is gone"}`);
+  },
 
   "desktop.screenshot": async (props, ctx) => {
     const { path } = await getDesktop(ctx).call<{ path: string }>("screenshot", {

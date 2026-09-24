@@ -3,6 +3,7 @@ import type { Browser, Page } from "playwright";
 import type { ActionContext, ActionHandler } from "@zamtest/core";
 import { errorMessage } from "@zamtest/core";
 import { getAi } from "./ai.js";
+import { expectation, matchOf, shown, textMatches, VerificationError, waitFor } from "./verify.js";
 
 const SESSION = "browser.session";
 const DEFAULT_ACTION_TIMEOUT = 10_000;
@@ -174,6 +175,53 @@ export const browserHandlers: Record<string, ActionHandler> = {
     withSelector(ctx, { ...props, timeoutMs: props.timeoutMs ?? 30_000 }, (sel, timeout) =>
       getPage(ctx).locator(sel).waitFor({ state: "visible", timeout }),
     ),
+
+  "browser.verifyText": async (props, ctx) => {
+    const page = getPage(ctx);
+    const selector = String(props.selector);
+    const expected = String(props.text ?? "");
+    const match = matchOf(props.match);
+    const { passed, last } = await waitFor(
+      () => page.locator(selector).first().innerText({ timeout: 500 }).then((t) => t, () => undefined),
+      (text) => text !== undefined && textMatches(text, expected, match),
+      Number(props.timeoutMs ?? 5000),
+      ctx.signal,
+    );
+    if (!passed) throw new VerificationError(`Expected the text of ${selector} to ${expectation(match, expected)}, but found ${shown(last)}`);
+    ctx.log("info", `Check passed: ${selector} has the expected text`);
+  },
+
+  "browser.verifyVisible": async (props, ctx) => {
+    const page = getPage(ctx);
+    const selector = String(props.selector);
+    const wanted = props.visible !== false;
+    const { passed } = await waitFor(
+      () => page.locator(selector).first().isVisible().catch(() => false),
+      (visible) => visible === wanted,
+      Number(props.timeoutMs ?? 5000),
+      ctx.signal,
+    );
+    if (!passed) throw new VerificationError(wanted ? `Expected ${selector} to be visible, but it is not on the page` : `Expected ${selector} not to be visible, but it is`);
+    ctx.log("info", `Check passed: ${selector} is ${wanted ? "visible" : "not visible"}`);
+  },
+
+  "browser.verifyTitle": async (props, ctx) => {
+    const page = getPage(ctx);
+    const expected = String(props.text ?? "");
+    const match = matchOf(props.match);
+    const { passed, last } = await waitFor(() => page.title().catch(() => ""), (title) => textMatches(title, expected, match), Number(props.timeoutMs ?? 5000), ctx.signal);
+    if (!passed) throw new VerificationError(`Expected the page title to ${expectation(match, expected)}, but it is ${shown(last)}`);
+    ctx.log("info", "Check passed: page title");
+  },
+
+  "browser.verifyUrl": async (props, ctx) => {
+    const page = getPage(ctx);
+    const expected = String(props.text ?? "");
+    const match = matchOf(props.match);
+    const { passed, last } = await waitFor(async () => page.url(), (url) => textMatches(url, expected, match), Number(props.timeoutMs ?? 5000), ctx.signal);
+    if (!passed) throw new VerificationError(`Expected the page address to ${expectation(match, expected)}, but it is ${shown(last)}`);
+    ctx.log("info", "Check passed: page address");
+  },
 
   "browser.screenshot": async (props, ctx) => {
     const path = String(props.path || "screenshot.png");

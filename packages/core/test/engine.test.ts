@@ -146,3 +146,53 @@ describe("after each step (screenshots)", () => {
     expect(seen).toEqual(["core.log:ok:open", "core.log:ok:open", "core.throw:error:boom:open"]);
   });
 });
+
+describe("Call Workflow", () => {
+  const login = parseWorkflow({
+    id: "wf_login",
+    name: "Log in",
+    variables: [
+      { name: "user", type: "string", direction: "in" },
+      { name: "greeting", type: "string", direction: "out" },
+    ],
+    root: {
+      id: "root",
+      type: "core.sequence",
+      props: {},
+      slots: {
+        body: [
+          { id: "open", type: "test.open", props: {} },
+          { id: "set", type: "core.assign", props: { variable: "greeting", value: "\"Welcome, \" + user" } },
+        ],
+      },
+    },
+  });
+  const open: ActionHandler = (_p, ctx) => {
+    ctx.resources.set("browser", "open");
+    ctx.onDispose(() => ctx.resources.set("browser", "closed"));
+  };
+  const seen: unknown[] = [];
+  const check: ActionHandler = (_p, ctx) => void seen.push(ctx.resources.get("browser"));
+
+  it("runs the called workflow with its inputs, keeps its browser open for the caller, and returns its outputs", async () => {
+    const test = parseWorkflow({
+      id: "tc",
+      name: "Login works",
+      variables: [{ name: "result", type: "object", direction: "out" }],
+      root: step("core.sequence", {}, { body: [step("core.callWorkflow", { workflowId: "wf_login", inputs: { user: "Ivo" }, output: "result" }), step("test.check")] }),
+      workflows: { wf_login: login },
+    });
+    const result = await runWorkflow(test, { handlers: { ...handlers, "test.open": open, "test.check": check } });
+    expect(result.error).toBeUndefined();
+    expect(result.outputs.result).toEqual({ greeting: "Welcome, Ivo" });
+    expect(seen).toEqual(["open"]);
+  });
+
+  it("fails with the called workflow's error, and when the workflow is not there", async () => {
+    const broken = parseWorkflow({ id: "wf_b", name: "Broken", variables: [], root: step("core.sequence", {}, { body: [step("core.throw", { message: "boom" })] }) });
+    const call = (workflows: Record<string, unknown>) =>
+      runWorkflow(parseWorkflow({ id: "t", name: "t", variables: [], root: step("core.sequence", {}, { body: [step("core.callWorkflow", { workflowId: "wf_b" })] }), workflows }), { handlers });
+    expect((await call({ wf_b: broken })).error).toBe('Workflow "Broken" failed: boom');
+    expect((await call({})).error).toMatch(/not available/);
+  });
+});

@@ -1,6 +1,7 @@
 import { BUILTIN_ACTIONS, CONTROL_FLOW_TYPES } from "./catalog.js";
 import { evaluate, interpolate, interpolateDeep } from "./expressions.js";
 import type { ActionMeta, PropDef, Step, Workflow } from "./schema.js";
+import { WorkflowSchema } from "./schema.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -55,7 +56,20 @@ export interface RunOptions {
    * the run's resources close: e.g. to take a screenshot. Errors are ignored.
    */
   afterStep?: (info: AfterStepInfo) => unknown | Promise<unknown>;
+  /** Internal: a workflow run by a "Call Workflow" step shares its caller's resources (open browser...). */
+  shared?: SharedRun;
 }
+
+interface SharedRun {
+  resources: Map<string, unknown>;
+  disposers: Array<() => unknown | Promise<unknown>>;
+  /** Called workflows by id (from the top workflow's `workflows`). */
+  library: Record<string, unknown>;
+  depth: number;
+}
+
+/** Calls within calls, at most. */
+const MAX_CALL_DEPTH = 10;
 
 export interface AfterStepInfo {
   step: Step;
@@ -118,8 +132,11 @@ export async function runWorkflow(workflow: Workflow, options: RunOptions): Prom
   const metaByType = new Map(catalog.map((a) => [a.type, a]));
   const signal = options.signal ?? new AbortController().signal;
   const services = options.services ?? {};
-  const resources = new Map<string, unknown>();
-  const disposers: Array<() => unknown | Promise<unknown>> = [];
+  // A called workflow uses its caller's resources; the top run closes them at its end.
+  const resources = options.shared?.resources ?? new Map<string, unknown>();
+  const disposers: Array<() => unknown | Promise<unknown>> = options.shared?.disposers ?? [];
+  const library = options.shared?.library ?? workflow.workflows ?? {};
+  const depth = options.shared?.depth ?? 0;
   const emit = (event: EngineEvent) => {
     try {
       options.onEvent?.(event);
@@ -300,7 +317,25 @@ export async function runWorkflow(workflow: Workflow, options: RunOptions): Prom
     }
   };
 
+  /** "Call Workflow": runs another workflow with its own variables, in this run. */
+  const callWorkflow = async (step: Step): Promise<void> => {
+    const props = resolveProps(step);
+    const id = String(props.workflowId ?? "");
+    const parsed = WorkflowSchema.safeParse(library[id]);
+    if (!parsed.success) throw new Error(`The called workflow ${id} is not available to this run (deleted, or not saved)`);
+    if (depth >= MAX_CALL_DEPTH) throw new Error(`Workflows call each other more than ${MAX_CALL_DEPTH} levels deep`);
+    const called = parsed.data as Workflow;
+    const inputs = props.inputs && typeof props.inputs === "object" ? (props.inputs as Record<string, unknown>) : {};
+    emit({ type: "log", time: now(), level: "info", stepId: step.id, message: `Calling workflow "${called.name}"` });
+    const result = await runWorkflow(called, { ...options, inputs, shared: { resources, disposers, library, depth: depth + 1 } });
+    if (result.status === "cancelled") throw new CancelledError();
+    if (result.status === "failed") throw new Error(`Workflow "${called.name}" failed: ${result.error}`);
+    const target = step.props?.output;
+    if (typeof target === "string" && target) vars[target] = result.outputs;
+  };
+
   const runLeaf = async (step: Step): Promise<void> => {
+    if (step.type === "core.callWorkflow") return callWorkflow(step);
     const handler = options.handlers[step.type];
     if (!handler) throw new Error(`No handler registered for action "${step.type}"`);
     const props = resolveProps(step);
@@ -393,7 +428,8 @@ export async function runWorkflow(workflow: Workflow, options: RunOptions): Prom
       emit({ type: "log", time: now(), level: "error", message: error });
     }
   } finally {
-    for (const dispose of disposers.reverse()) {
+    // A called workflow leaves its resources (e.g. the open browser) to its caller.
+    for (const dispose of options.shared ? [] : disposers.reverse()) {
       try {
         await dispose();
       } catch (err) {

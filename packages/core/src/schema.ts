@@ -59,6 +59,11 @@ export const WorkflowSchema = z.object({
   description: z.string().optional(),
   variables: z.array(VariableDefSchema).default([]),
   root: StepSchema,
+  /**
+   * Workflows that "Call Workflow" steps run, by id. The server adds them when a job
+   * starts (as saved at that moment); the Designer never stores them.
+   */
+  workflows: z.record(z.string(), z.unknown()).optional(),
 });
 export type Workflow = z.infer<typeof WorkflowSchema>;
 
@@ -78,6 +83,7 @@ export const PropTypeSchema = z.enum([
   "enum",
   "json",
   "secret",
+  "workflow",
 ]);
 export type PropType = z.infer<typeof PropTypeSchema>;
 

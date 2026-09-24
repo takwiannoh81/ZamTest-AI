@@ -5,6 +5,7 @@ import type { Store } from "./store.js";
 import { releaseJobItems } from "./queues.js";
 import { HttpError } from "./errors.js";
 import { useRun } from "./plans.js";
+import { withCalledWorkflows } from "./calls.js";
 import { effectiveEnv, ENV_NAMES, environmentsOn, isIn } from "./cicd.js";
 import type { EnvironmentId, Job } from "./types.js";
 import { FINAL_JOB_STATUSES } from "./types.js";
@@ -37,6 +38,8 @@ export function createJob(store: Store, input: CreateJobInput): Job {
     version = pkg.version;
   }
   if (!definition) throw new HttpError(400, "Either packageId or definition is required");
+  // Workflows that "Call Workflow" steps run, as saved now.
+  definition = withCalledWorkflows(store, input.workspaceId, definition);
   const target = input.targetAgentId ? store.data.agents[input.targetAgentId] : undefined;
   if (input.targetAgentId && target?.workspaceId !== input.workspaceId) {
     throw new HttpError(404, `Agent ${input.targetAgentId} not found`);

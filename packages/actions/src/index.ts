@@ -9,6 +9,7 @@ import { officeHandlers } from "./office.js";
 import { pdfHandlers } from "./pdf.js";
 import { queueHandlers } from "./queue.js";
 import { systemHandlers } from "./system.js";
+import { verifyHandlers } from "./verify.js";
 
 export { actionTools, getAi } from "./ai.js";
 export { snapshotDom } from "./browser.js";
@@ -38,6 +39,7 @@ export const builtinHandlers: Record<string, ActionHandler> = {
   ...browserHandlers,
   ...desktopHandlers,
   ...aiHandlers,
+  ...verifyHandlers,
 };
 
 export const builtinPackage: ActionPackage = {

@@ -108,3 +108,64 @@ describe("test cases", () => {
     expect((await call(globex, "DELETE", `/api/test-folders/${folder.id}`)).statusCode).toBe(404);
   });
 });
+
+describe("test cases with their own steps", () => {
+  it("are built like workflows, call workflows, and keep those calls when a project is imported", async () => {
+    ({ app } = await buildApp({ config: { ...loadConfig({ ZAMTEST_AGENT_KEY: "k" }), dataDir: null }, ai: null }));
+    const login = (await call(open, "POST", "/api/workflows", { definition: { ...definition, id: "login", name: "Log in" } })).json();
+
+    // A new test case starts with no steps, and is edited like a workflow.
+    const created = (await call(open, "POST", "/api/test-cases", { name: "Login works" })).json();
+    expect(created).toMatchObject({ name: "Login works", steps: 0 });
+    expect(created.workflowId).toBeUndefined();
+    const steps = {
+      schemaVersion: 1,
+      id: "ignored",
+      name: "ignored",
+      variables: [],
+      root: {
+        id: "root",
+        type: "core.sequence",
+        props: {},
+        slots: {
+          body: [
+            { id: "call", type: "core.callWorkflow", props: { workflowId: login.id, inputs: { who: "Ivo" }, output: "login" } },
+            { id: "check", type: "verify.condition", props: { condition: "true" } },
+          ],
+        },
+      },
+    };
+    expect((await call(open, "PUT", `/api/test-cases/${created.id}`, { definition: steps })).json()).toMatchObject({ steps: 2 });
+    const full = (await call(open, "GET", `/api/test-cases/${created.id}`)).json();
+    expect(full.definition).toMatchObject({ id: created.id, name: "Login works" });
+
+    // Running it: the job carries the test's steps and the workflow it calls.
+    const { agentId } = (await app.inject({ method: "POST", url: "/api/agent/register", headers: agent, payload: { name: "bot" } })).json();
+    const run = (await call(open, "POST", "/api/test-runs", { caseIds: [created.id] })).json();
+    const job = (await app.inject({ method: "POST", url: "/api/agent/jobs/next", headers: agent, payload: { agentId } })).json();
+    expect(job.id).toBe(run.items[0].jobId);
+    expect(job.definition.root.slots.body.map((s: { type: string }) => s.type)).toEqual(["core.callWorkflow", "verify.condition"]);
+    expect(job.definition.workflows[login.id]).toMatchObject({ name: "Log in" });
+
+    // Calling a workflow that is gone is refused when the run starts.
+    await call(open, "DELETE", `/api/workflows/${login.id}`);
+    const again = (await call(open, "POST", "/api/test-runs", { caseIds: [created.id] })).json();
+    expect(again.items[0]).toMatchObject({ status: "failed", message: expect.stringContaining("does not exist") });
+
+    // A project file keeps test steps, and their calls point at the imported workflows.
+    const wf2 = (await call(open, "POST", "/api/workflows", { definition: { ...definition, id: "login2", name: "Log in again" } })).json();
+    const steps2 = structuredClone(steps);
+    steps2.root.slots.body[0]!.props.workflowId = wf2.id;
+    const tc2 = (await call(open, "POST", "/api/test-cases", { name: "Second", definition: steps2 })).json();
+    const project = (await call(open, "GET", "/api/project/export")).json();
+    const imported = (await call(open, "POST", "/api/project/import", project)).json();
+    expect(imported).toMatchObject({ workflows: 1, skipped: 0 });
+    const tree = (await call(open, "GET", "/api/tests")).json() as { cases: Array<{ id: string; name: string }> };
+    const copies = tree.cases.filter((c) => c.name === "Second" && c.id !== tc2.id);
+    expect(copies).toHaveLength(1);
+    const copy = (await call(open, "GET", `/api/test-cases/${copies[0]!.id}`)).json();
+    const newWorkflowId = copy.definition.root.slots.body[0].props.workflowId;
+    expect(newWorkflowId).not.toBe(wf2.id);
+    expect((await call(open, "GET", `/api/workflows/${newWorkflowId}`)).json().name).toBe("Log in again");
+  });
+});

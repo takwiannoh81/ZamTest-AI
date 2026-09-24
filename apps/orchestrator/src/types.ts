@@ -419,8 +419,9 @@ export interface TestFolder {
 }
 
 /**
- * A check of a workflow: run it (as saved in the Designer) with these inputs;
- * it passes when the run succeeds and every expected output has that value.
+ * A test: its own steps (with "Verify ..." checks, and "Call Workflow" steps),
+ * built in the Designer. It passes when its run succeeds. Test cases from before
+ * they had steps run a workflow (`workflowId`) and check its outputs instead.
  */
 export interface TestCase {
   id: string;
@@ -428,7 +429,10 @@ export interface TestCase {
   name: string;
   /** Unset: at the top level. */
   folderId?: string;
-  workflowId: string;
+  /** Its steps. */
+  definition?: Workflow;
+  /** Older test cases: the workflow they run (with `inputs` and `expectedOutputs`). */
+  workflowId?: string;
   inputs: Record<string, unknown>;
   expectedOutputs?: Record<string, unknown>;
   /** Run on this PC (else any PC that takes the job). */
