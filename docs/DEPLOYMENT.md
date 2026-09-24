@@ -92,7 +92,7 @@ docker compose --profile agent up -d --build
 
 This bot includes Playwright browsers and runs in headless mode.
 
-**On your own Windows PCs:** use the Windows installer (below). **On Mac or Linux machines:** install Node 20+ and pnpm, clone the repo, then connect the machine and start the agent:
+**On your own Windows PCs:** use the Windows installer (below). **On Linux machines (web automations only, e.g. a cloud server):** install Node 20+ and pnpm, clone the repo, then connect the machine and start the agent. macOS is not supported yet.
 
 ```bash
 pnpm install
