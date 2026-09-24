@@ -11,6 +11,7 @@
  *   STRIPE_PRICE_BUILDER_YEARLY     optional, per builder seat per year
  *   STRIPE_PRICE_BOT_YEARLY         optional, per bot per year
  *   STRIPE_AUTOMATIC_TAX=true       optional, when Stripe Tax is set up
+ *   STRIPE_PORTAL_CONFIGURATION     optional, customer portal settings (bpc_...) made by deploy/stripe-setup.mjs
  */
 import Stripe from "stripe";
 
@@ -21,6 +22,8 @@ export interface BillingConfig {
   webhookSecret: string;
   prices: { builder: Record<Interval, string | undefined>; bot: Record<Interval, string | undefined> };
   automaticTax: boolean;
+  /** Customer portal settings to use (bpc_...); unset = the account's default ones. */
+  portalConfiguration?: string;
 }
 
 export function loadBillingConfig(env = process.env): BillingConfig | null {
@@ -34,6 +37,7 @@ export function loadBillingConfig(env = process.env): BillingConfig | null {
       bot: { month: STRIPE_PRICE_BOT_MONTHLY, year: env.STRIPE_PRICE_BOT_YEARLY || undefined },
     },
     automaticTax: env.STRIPE_AUTOMATIC_TAX === "true",
+    portalConfiguration: env.STRIPE_PORTAL_CONFIGURATION || undefined,
   };
 }
 
@@ -134,7 +138,11 @@ export class StripeBilling implements BillingProvider {
   }
 
   async portal(input: { customerId: string; returnUrl: string }): Promise<string> {
-    const session = await this.stripe.billingPortal.sessions.create({ customer: input.customerId, return_url: input.returnUrl });
+    const session = await this.stripe.billingPortal.sessions.create({
+      customer: input.customerId,
+      return_url: input.returnUrl,
+      ...(this.config.portalConfiguration ? { configuration: this.config.portalConfiguration } : {}),
+    });
     return session.url;
   }
 

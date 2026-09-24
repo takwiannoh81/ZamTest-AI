@@ -232,21 +232,16 @@ The server enforces them: when a limit is reached the request is refused with *4
 
 **Taking payments with Stripe (Pro).** Customers pay per builder seat and per bot PC, monthly or yearly, on Stripe's own pages; card details never reach this server. Set it up in **test mode** first:
 
-1. Create a Stripe account for ZAMTECH&HOME LLC at <https://dashboard.stripe.com> and stay in **Test mode**.
-2. **Product catalog > Add product**: *ZamTech AI Pro - builder seat* with a recurring **per unit** price per month (and optionally one per year), and *ZamTech AI Pro - bot PC* likewise. Copy each price's ID (`price_...`).
-3. **Developers > Webhooks > Add endpoint**: URL `https://api.zamtechai.com/api/billing/webhook`, events `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`. Copy its **signing secret** (`whsec_...`).
-4. **Settings > Billing > Customer portal**: allow customers to update payment methods, view invoices, change quantities of the two products, and cancel.
-5. On the server, save the settings (each one asks for the value, hidden):
+1. In Stripe (<https://dashboard.stripe.com>), use a Stripe account of its own for ZamTech AI, not one shared with another product: the payment page, receipts and customer portal show that account's name. One login can have several accounts (account menu at the top left, **New account**). Set its public business name, support email, website and branding under **Settings**, and switch to **Test mode**.
+2. **Developers > API keys**: reveal the **Secret key** (`sk_test_...`). Do not send it to anyone.
+3. On your own PC, in the repository folder, run the setup script and answer its questions (the key is typed hidden; prices default to $29 per builder seat and per bot PC a month, $290 a year):
    ```bash
-   sudo bash ~/ZamTest-AI/deploy/set-env.sh STRIPE_SECRET_KEY            # sk_test_...
-   sudo bash ~/ZamTest-AI/deploy/set-env.sh STRIPE_WEBHOOK_SECRET        # whsec_...
-   sudo bash ~/ZamTest-AI/deploy/set-env.sh STRIPE_PRICE_BUILDER_MONTHLY # price_...
-   sudo bash ~/ZamTest-AI/deploy/set-env.sh STRIPE_PRICE_BOT_MONTHLY     # price_...
-   # optional: STRIPE_PRICE_BUILDER_YEARLY, STRIPE_PRICE_BOT_YEARLY, STRIPE_AUTOMATIC_TAX=true (with Stripe Tax)
+   node deploy/stripe-setup.mjs
    ```
-   The orchestrator's log then says `Billing: Stripe (test mode)`.
-6. Test: sign up a new workspace, open **Billing > Upgrade to Pro**, and pay with the test card `4242 4242 4242 4242` (any future date, any CVC). Within seconds the workspace shows **Pro** with the seats bought. Try **Manage billing** to change seats or cancel, and the card `4000 0000 0000 0341` to see a failed renewal (the plan stays Pro while Stripe retries; a warning shows under Billing).
-7. To go live, repeat steps 2-5 in **live mode** (live prices, a live webhook with its own secret, and the `sk_live_...` key).
+   It creates the two products and their prices, the customer portal settings (change seats, cards, invoices, cancel at the end of the period) and the webhook `https://api.zamtechai.com/api/billing/webhook`, then prints the lines for the server. Running it again is safe: it reuses what exists, and a changed price becomes a new price for new subscriptions.
+4. On the server, run `sudo bash ~/ZamTest-AI/deploy/set-env.sh --paste`, paste the printed lines (input hidden) and press Enter on an empty line. The orchestrator's log then says `Billing: Stripe (test mode)`. Optional: `STRIPE_AUTOMATIC_TAX=true` once Stripe Tax is set up.
+5. Test: sign up a new workspace, open **Billing > Upgrade to Pro**, and pay with the test card `4242 4242 4242 4242` (any future date, any CVC). Within seconds the workspace shows **Pro** with the seats bought. Try **Manage billing** to change seats or cancel, and the card `4000 0000 0000 0341` to see a failed renewal (the plan stays Pro while Stripe retries; a warning shows under Billing).
+6. To go live, switch Stripe to **live mode**, complete the account's activation (business details, bank account), and repeat steps 2-4 with the `sk_live_...` key.
 
 Enterprise customers are not billed through Checkout: agree the contract, invoice it (Stripe Invoicing or otherwise), and set the workspace to Enterprise with its limits under **Customers**. To show a **Contact sales** link for Enterprise on the Billing page, add `SALES_EMAIL=sales@your-domain` to `deploy/.env` and run `install.sh` again (it is built into the Portal).
 
