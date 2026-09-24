@@ -147,6 +147,8 @@ export const th: LocaleMessages = {
     "users.resetMfa": "รีเซ็ตสองขั้นตอน",
     "users.confirmResetMfa": "รีเซ็ตการลงชื่อเข้าใช้แบบสองขั้นตอนของ {name} หรือไม่ ผู้ใช้จะถูกออกจากระบบและต้องตั้งค่าใหม่",
     "users.sso": "บัญชีบริษัท",
+    "users.platformOwner": "เจ้าของแพลตฟอร์ม",
+    "users.platformOwnerHelp": "ควบคุมทั้งแพลตฟอร์ม: พื้นที่ทำงานของลูกค้าทุกราย แผน และการสำรองข้อมูล ต้องใช้การลงชื่อเข้าใช้สองขั้นตอน",
     "customers.ssoDomains": "โดเมน SSO (คั่นด้วยจุลภาค)",
     "env.dev": "การพัฒนา",
     "env.test": "ทดสอบ",

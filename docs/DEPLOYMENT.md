@@ -201,7 +201,8 @@ People sign in with their own email and password. Each account has one role:
 **First-time setup:**
 1. Open the Portal. On the sign-in screen, click **Use the master access token instead** and paste `ZAMTEST_ADMIN_TOKEN` from `deploy/.env`.
 2. Go to **Users**, then **+ New user**, and create your own **Admin** account. Then create an account for each teammate.
-3. Sign out and sign back in with your email and password.
+3. Edit your own account and tick **Platform owner**. That makes it the global account that controls the whole platform: the **Customers** page (every customer's workspace, plans, SSO domains) and backups. Admins of your workspace without the tick manage only your own workspace. Only a platform owner, or the master token, can give or remove the tick, and nobody can remove their own.
+4. Sign out and sign back in with your email and password. A platform owner must set up two-step sign-in (an authenticator app) at the first sign-in.
 
 People sign in only in the Portal. The Designer uses the same sign-in: an HttpOnly cookie for the whole domain (`ZAMTEST_COOKIE_DOMAIN`, set to `.zamtechai.com` by `docker-compose.yml`). Opening the Designer without a session goes to the Portal's sign-in and back, and signing out in either app signs out of both. Everyone signs in once more after the server is updated to this version.
 
@@ -227,7 +228,7 @@ Each customer company has its own **workspace**: its people, workflows, processe
 | Company sign-in (SSO) | no | no | yes |
 | Environments, Git, API tokens for CI | no | yes | yes |
 
-The server enforces them: when a limit is reached the request is refused with *402 Payment Required* and the Portal (or Designer) shows the reason with a **View plans** link. Nothing is deleted when a workspace moves to a smaller plan; its schedules simply stop running. Workspace Admins see their plan and this month's usage under **Billing**. You (the master token, or an Admin of the default workspace) see every workspace under **Customers**, where you can change a plan, set Pro seats by hand, or give an Enterprise customer agreed limits.
+The server enforces them: when a limit is reached the request is refused with *402 Payment Required* and the Portal (or Designer) shows the reason with a **View plans** link. Nothing is deleted when a workspace moves to a smaller plan; its schedules simply stop running. Workspace Admins see their plan and this month's usage under **Billing**. You (the master token, or a **platform owner** account, see section 5) see every workspace under **Customers**, where you can change a plan, set Pro seats by hand, or give an Enterprise customer agreed limits.
 
 **Taking payments with Stripe (Pro).** Customers pay per builder seat and per bot PC, monthly or yearly, on Stripe's own pages; card details never reach this server. Set it up in **test mode** first:
 

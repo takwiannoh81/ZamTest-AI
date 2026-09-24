@@ -147,6 +147,8 @@ export const sw: LocaleMessages = {
     "users.resetMfa": "Weka upya hatua mbili",
     "users.confirmResetMfa": "Weka upya kuingia kwa hatua mbili kwa {name}? Ataondolewa na kuiweka tena.",
     "users.sso": "Kuingia kwa kampuni",
+    "users.platformOwner": "Mmiliki wa jukwaa",
+    "users.platformOwnerHelp": "Hudhibiti jukwaa lote: eneo la kazi la kila mteja, mipango na nakala rudufu. Inahitaji kuingia kwa hatua mbili.",
     "customers.ssoDomains": "Vikoa vya SSO (vimetenganishwa kwa koma)",
     "env.dev": "Uundaji",
     "env.test": "Majaribio",

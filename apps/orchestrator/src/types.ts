@@ -313,6 +313,11 @@ export interface User {
   mfa?: UserMfa;
   /** "sso": the account signs in through the company's identity provider. */
   authSource?: "password" | "sso";
+  /**
+   * Controls the whole platform (every customer's workspace, plans, backups).
+   * Only for admins of the default workspace, and only with two-step sign-in.
+   */
+  platformOwner?: boolean;
   createdAt: string;
   lastLoginAt?: string;
 }
@@ -368,6 +373,8 @@ export interface Principal {
   workspaceId: string;
   /** Signed in, but may only use their own account until this is resolved. */
   restriction?: "email_unverified" | "mfa_setup_required";
+  /** A user account that controls the whole platform (see User.platformOwner). */
+  platformOwner?: boolean;
 }
 
 export interface Queue {

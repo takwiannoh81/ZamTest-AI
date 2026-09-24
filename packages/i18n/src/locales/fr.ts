@@ -147,6 +147,8 @@ export const fr: LocaleMessages = {
     "users.resetMfa": "Réinitialiser 2 étapes",
     "users.confirmResetMfa": "Réinitialiser la connexion en deux étapes de {name} ? La personne est déconnectée et la reconfigure.",
     "users.sso": "Connexion d'entreprise",
+    "users.platformOwner": "Propriétaire de la plateforme",
+    "users.platformOwnerHelp": "Contrôle toute la plateforme : l'espace de chaque client, les offres et les sauvegardes. Nécessite la connexion en deux étapes.",
     "customers.ssoDomains": "Domaines SSO (séparés par des virgules)",
     "env.dev": "Développement",
     "env.test": "Test",

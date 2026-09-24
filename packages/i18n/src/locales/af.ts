@@ -147,6 +147,8 @@ export const af: LocaleMessages = {
     "users.resetMfa": "Stel twee-stap terug",
     "users.confirmResetMfa": "Stel twee-stap-aanmelding vir {name} terug? Hulle word afgemeld en stel dit weer op.",
     "users.sso": "Maatskappy-aanmelding",
+    "users.platformOwner": "Platformeienaar",
+    "users.platformOwnerHelp": "Beheer die hele platform: elke kliënt se werkruimte, planne en rugsteun. Vereis tweestap-aanmelding.",
     "customers.ssoDomains": "SSO-domeine (geskei deur kommas)",
     "env.dev": "Ontwikkeling",
     "env.test": "Toets",

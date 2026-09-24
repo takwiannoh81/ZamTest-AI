@@ -147,6 +147,8 @@ export const es: LocaleMessages = {
     "users.resetMfa": "Restablecer dos pasos",
     "users.confirmResetMfa": "¿Restablecer el inicio en dos pasos de {name}? Se cerrará su sesión y lo configurará de nuevo.",
     "users.sso": "Inicio de la empresa",
+    "users.platformOwner": "Propietario de la plataforma",
+    "users.platformOwnerHelp": "Controla toda la plataforma: el espacio de trabajo de cada cliente, los planes y las copias de seguridad. Requiere inicio de sesión en dos pasos.",
     "customers.ssoDomains": "Dominios SSO (separados por comas)",
     "env.dev": "Desarrollo",
     "env.test": "Pruebas",

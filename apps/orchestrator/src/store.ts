@@ -25,6 +25,8 @@ export interface Data {
   ssoStates: Record<string, SsoState>;
   promotions: Record<string, Promotion>;
   apiTokens: Record<string, ApiToken>;
+  /** One-time data changes already made. */
+  migrations?: string[];
 }
 
 const MAX_LOGS_PER_JOB = 5000;
@@ -83,6 +85,14 @@ export class Store {
     for (const workspace of Object.values(this.data.workspaces)) workspace.plan ??= "free";
     // Accounts from before email confirmation existed were made by an admin: treat them as confirmed.
     for (const user of Object.values(this.data.users)) user.emailVerified ??= true;
+    // Platform owners used to be every admin of the default workspace; they keep it, once.
+    const done = (this.data.migrations ??= []);
+    if (!done.includes("platform-owner")) {
+      for (const user of Object.values(this.data.users)) {
+        if ((user.workspaceId ?? DEFAULT_WORKSPACE) === DEFAULT_WORKSPACE && user.role === "admin" && !user.disabled) user.platformOwner = true;
+      }
+      done.push("platform-owner");
+    }
     // Versions from before environments existed are in Production.
     for (const pkg of Object.values(this.data.packages)) pkg.deployments ??= { prod: { at: pkg.publishedAt, by: "ZamTech AI" } };
     const owned = [

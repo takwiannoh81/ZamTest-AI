@@ -147,6 +147,8 @@ export const zhCN: LocaleMessages = {
     "users.resetMfa": "重置两步登录",
     "users.confirmResetMfa": "重置 {name} 的两步登录？对方将被退出登录并需重新设置。",
     "users.sso": "公司登录",
+    "users.platformOwner": "平台所有者",
+    "users.platformOwnerHelp": "管理整个平台：所有客户的工作区、套餐和备份。需要两步登录。",
     "customers.ssoDomains": "SSO 域名（以逗号分隔）",
     "env.dev": "开发",
     "env.test": "测试",

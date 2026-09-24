@@ -89,6 +89,9 @@ export function publicUser(user: User) {
   return { ...rest, mfaEnabled: Boolean(mfa?.enabled) };
 }
 
+/** A platform owner: flagged, and still an active admin of the default workspace. */
+export const isPlatformOwner = (user: User) => Boolean(user.platformOwner && user.workspaceId === DEFAULT_WORKSPACE && user.role === "admin" && !user.disabled);
+
 /** The master access token administers the platform owner's own (default) workspace. */
 const MASTER_PRINCIPAL: Principal = { id: "token", name: "Access token", email: "", role: "admin", kind: "token", workspaceId: DEFAULT_WORKSPACE };
 
@@ -121,10 +124,12 @@ export function resolvePrincipal(
           role: user.role,
           kind: "user",
           workspaceId: user.workspaceId,
+          platformOwner: isPlatformOwner(user),
+          // Platform owners always need two-step sign-in; others when their workspace asks for it.
           restriction:
             user.emailVerified === false
               ? "email_unverified"
-              : store.data.workspaces[user.workspaceId]?.security?.requireMfa && !user.mfa?.enabled && user.authSource !== "sso"
+              : !user.mfa?.enabled && user.authSource !== "sso" && (isPlatformOwner(user) || store.data.workspaces[user.workspaceId]?.security?.requireMfa)
                 ? "mfa_setup_required"
                 : undefined,
         };

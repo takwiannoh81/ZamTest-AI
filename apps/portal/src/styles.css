@@ -245,3 +245,4 @@ code, pre, .mono, .log, .log-line { direction: ltr; unicode-bidi: isolate; }
 .env-badge.env-dev { background: color-mix(in srgb, #3b82f6 16%, transparent); color: #2563eb; }
 .env-badge.env-test { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }
 .env-badge.env-prod { background: color-mix(in srgb, #10b981 18%, transparent); color: #047857; }
+.owner-badge { background: color-mix(in srgb, #8b5cf6 18%, transparent); color: #6d28d9; margin-left: 4px; }

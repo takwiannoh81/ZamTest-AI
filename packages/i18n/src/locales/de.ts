@@ -147,6 +147,8 @@ export const de: LocaleMessages = {
     "users.resetMfa": "Zweistufig zurücksetzen",
     "users.confirmResetMfa": "Zweistufige Anmeldung für {name} zurücksetzen? Die Person wird abgemeldet und richtet sie neu ein.",
     "users.sso": "Firmenanmeldung",
+    "users.platformOwner": "Plattforminhaber",
+    "users.platformOwnerHelp": "Steuert die gesamte Plattform: die Arbeitsbereiche aller Kunden, Tarife und Sicherungen. Erfordert die Zwei-Schritt-Anmeldung.",
     "customers.ssoDomains": "SSO-Domains (durch Kommas getrennt)",
     "env.dev": "Entwicklung",
     "env.test": "Test",

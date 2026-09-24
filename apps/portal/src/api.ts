@@ -258,6 +258,8 @@ export interface User {
   mfaEnabled?: boolean;
   authSource?: "password" | "sso";
   emailVerified?: boolean;
+  /** Controls the whole platform (admins of the platform's own workspace only). */
+  platformOwner?: boolean;
   createdAt: string;
   lastLoginAt?: string;
 }

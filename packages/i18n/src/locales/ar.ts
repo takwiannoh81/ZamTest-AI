@@ -147,6 +147,8 @@ export const ar: LocaleMessages = {
     "users.resetMfa": "إعادة تعيين الخطوتين",
     "users.confirmResetMfa": "إعادة تعيين تسجيل الدخول بخطوتين لـ {name}؟ سيتم تسجيل خروجه وسيعيد إعداده.",
     "users.sso": "تسجيل دخول الشركة",
+    "users.platformOwner": "مالك المنصة",
+    "users.platformOwnerHelp": "يتحكم في المنصة بالكامل: مساحة عمل كل عميل والخطط والنسخ الاحتياطية. يتطلب تسجيل الدخول بخطوتين.",
     "customers.ssoDomains": "نطاقات SSO (مفصولة بفواصل)",
     "env.dev": "التطوير",
     "env.test": "الاختبار",

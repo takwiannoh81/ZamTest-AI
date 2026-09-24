@@ -158,6 +158,8 @@ export const en = {
   "users.resetMfa": "Reset two-step",
   "users.confirmResetMfa": "Reset two-step sign-in for {name}? They are signed out and set it up again.",
   "users.sso": "Company sign-in",
+  "users.platformOwner": "Platform owner",
+  "users.platformOwnerHelp": "Controls the whole platform: every customer's workspace, plans and backups. Needs two-step sign-in.",
   "customers.ssoDomains": "SSO domains (comma-separated)",
   "env.dev": "Development",
   "env.test": "Test",

@@ -239,7 +239,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   const mine = <T extends { workspaceId: string }>(collection: Record<string, T>, req: FastifyRequest): T[] =>
     Object.values(collection).filter((item) => item.workspaceId === ws(req));
   /** The platform owner (not customers): the master token, local open mode, or an admin of the default workspace. */
-  const platformAdmin = (p: Principal) => p.kind === "token" || p.kind === "open" || (p.kind === "user" && p.workspaceId === DEFAULT_WORKSPACE && p.role === "admin");
+  const platformAdmin = (p: Principal) => p.kind === "token" || p.kind === "open" || (p.kind === "user" && Boolean(p.platformOwner));
   const signupLimiter = new LoginLimiter(10, 60 * 60 * 1000);
   const mailLimiter = new LoginLimiter(5, 60 * 60 * 1000);
 
@@ -669,7 +669,14 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   app.put<{ Params: { id: string } }>("/api/users/:id", async (req) => {
     const user = own(store.data.users, req.params.id, "User", req);
-    const body = parse(UserBody.partial().extend({ password: passwordSchema.optional().or(z.literal("")) }), req.body);
+    const body = parse(UserBody.partial().extend({ password: passwordSchema.optional().or(z.literal("")), platformOwner: z.boolean().optional() }), req.body);
+    if (body.platformOwner !== undefined && body.platformOwner !== Boolean(user.platformOwner)) {
+      if (!platformAdmin(me(req))) throw new HttpError(403, "Only the platform owner can do this");
+      if (body.platformOwner && (user.workspaceId !== DEFAULT_WORKSPACE || (body.role ?? user.role) !== "admin")) {
+        throw new HttpError(400, "Platform owners are admins of the platform's own workspace");
+      }
+      if (!body.platformOwner && user.id === me(req).id) throw new HttpError(409, "You cannot remove your own platform ownership");
+    }
     const losesAdmin = user.role === "admin" && ((body.role && body.role !== "admin") || body.disabled === true);
     if (losesAdmin && activeAdmins(user.workspaceId).length <= 1) throw new HttpError(409, "Keep at least one active administrator");
     if (body.email && body.email !== user.email && findByEmail(body.email)) {
@@ -683,6 +690,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     if (body.name) user.name = body.name;
     if (body.role) user.role = body.role;
     if (body.disabled !== undefined) user.disabled = body.disabled;
+    if (body.platformOwner !== undefined) user.platformOwner = body.platformOwner || undefined;
+    // No longer an admin: no longer owns the platform.
+    if (user.role !== "admin") user.platformOwner = undefined;
     if (body.password) user.passwordHash = await hashPassword(body.password);
     if (body.password || body.disabled) deleteUserSessions(store, user.id);
     store.save();

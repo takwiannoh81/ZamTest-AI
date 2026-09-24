@@ -147,6 +147,8 @@ export const nl: LocaleMessages = {
     "users.resetMfa": "Twee stappen resetten",
     "users.confirmResetMfa": "Aanmelden in twee stappen resetten voor {name}? De persoon wordt afgemeld en stelt het opnieuw in.",
     "users.sso": "Bedrijfsaanmelding",
+    "users.platformOwner": "Platformeigenaar",
+    "users.platformOwnerHelp": "Beheert het hele platform: de werkruimte van elke klant, abonnementen en back-ups. Vereist aanmelden in twee stappen.",
     "customers.ssoDomains": "SSO-domeinen (door komma's gescheiden)",
     "env.dev": "Ontwikkeling",
     "env.test": "Test",

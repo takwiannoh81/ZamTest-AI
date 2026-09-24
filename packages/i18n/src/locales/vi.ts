@@ -147,6 +147,8 @@ export const vi: LocaleMessages = {
     "users.resetMfa": "Đặt lại hai bước",
     "users.confirmResetMfa": "Đặt lại đăng nhập hai bước cho {name}? Người đó sẽ bị đăng xuất và thiết lập lại.",
     "users.sso": "Đăng nhập công ty",
+    "users.platformOwner": "Chủ sở hữu nền tảng",
+    "users.platformOwnerHelp": "Quản lý toàn bộ nền tảng: không gian làm việc của mọi khách hàng, gói dịch vụ và bản sao lưu. Cần đăng nhập hai bước.",
     "customers.ssoDomains": "Tên miền SSO (phân cách bằng dấu phẩy)",
     "env.dev": "Phát triển",
     "env.test": "Kiểm thử",

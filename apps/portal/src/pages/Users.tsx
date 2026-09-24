@@ -62,6 +62,7 @@ export function Users() {
                 <td>
                   <span className="role-badge">{t(`role.${u.role}` as MessageKey)}</span>
                   {u.authSource === "sso" && <span className="role-badge">{t("users.sso")}</span>}
+                  {u.platformOwner && <span className="role-badge owner-badge">{t("users.platformOwner")}</span>}
                 </td>
                 <td>{u.disabled ? t("users.disabled") : t("users.active")}</td>
                 <td>{u.lastLoginAt ? timeAgo(u.lastLoginAt) : t("users.never")}</td>
@@ -121,11 +122,20 @@ export function Users() {
 
 function UserModal({ initial, onClose, onSaved }: { initial: Partial<User>; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
+  const me = useMe();
   const [form, setForm] = useState<Partial<User> & { password?: string }>(initial);
   const [error, setError] = useState<string>();
+  // Only the platform owner hands platform ownership on, to admins of the platform's own workspace.
+  const canGrantOwner = Boolean(me?.platformAdmin && initial.id && me.workspace.id === "ws_default");
 
   const save = async () => {
-    const body = { email: form.email, name: form.name, role: form.role, password: form.password || undefined };
+    const body = {
+      email: form.email,
+      name: form.name,
+      role: form.role,
+      password: form.password || undefined,
+      ...(canGrantOwner && Boolean(form.platformOwner) !== Boolean(initial.platformOwner) ? { platformOwner: Boolean(form.platformOwner) } : {}),
+    };
     try {
       if (initial.id) await api(`/api/users/${initial.id}`, { method: "PUT", body });
       else await api("/api/users", { method: "POST", body });
@@ -169,6 +179,20 @@ function UserModal({ initial, onClose, onSaved }: { initial: Partial<User>; onCl
       <Field label={t("auth.password")} hint={initial.id ? `${t("users.passwordHint")} ${t("users.passwordKeep")}` : t("users.passwordHint")}>
         <input type="password" autoComplete="new-password" value={form.password ?? ""} onChange={(e) => setForm({ ...form, password: e.target.value })} />
       </Field>
+      {canGrantOwner && form.role === "admin" && (
+        <>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={Boolean(form.platformOwner)}
+              disabled={initial.id === me?.id}
+              onChange={(e) => setForm({ ...form, platformOwner: e.target.checked })}
+            />
+            <strong>{t("users.platformOwner")}</strong>
+          </label>
+          <p className="muted small">{t("users.platformOwnerHelp")}</p>
+        </>
+      )}
     </Modal>
   );
 }

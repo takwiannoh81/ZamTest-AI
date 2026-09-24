@@ -147,6 +147,8 @@ export const ptBR: LocaleMessages = {
     "users.resetMfa": "Redefinir duas etapas",
     "users.confirmResetMfa": "Redefinir o login em duas etapas de {name}? A pessoa sai e configura de novo.",
     "users.sso": "Login da empresa",
+    "users.platformOwner": "Proprietário da plataforma",
+    "users.platformOwnerHelp": "Controla toda a plataforma: o espaço de trabalho de cada cliente, os planos e os backups. Exige login em duas etapas.",
     "customers.ssoDomains": "Domínios SSO (separados por vírgula)",
     "env.dev": "Desenvolvimento",
     "env.test": "Teste",

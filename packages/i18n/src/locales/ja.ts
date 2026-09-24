@@ -147,6 +147,8 @@ export const ja: LocaleMessages = {
     "users.resetMfa": "2 段階をリセット",
     "users.confirmResetMfa": "{name} の 2 段階サインインをリセットしますか？サインアウトされ、再設定が必要になります。",
     "users.sso": "会社サインイン",
+    "users.platformOwner": "プラットフォーム所有者",
+    "users.platformOwnerHelp": "プラットフォーム全体を管理します：すべての顧客のワークスペース、プラン、バックアップ。2 段階サインインが必要です。",
     "customers.ssoDomains": "SSO ドメイン (カンマ区切り)",
     "env.dev": "開発",
     "env.test": "テスト",
