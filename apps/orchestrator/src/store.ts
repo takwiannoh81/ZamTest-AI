@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Agent, Asset, EmailToken, Enrollment, InstallKey, MfaChallenge, Job, JobLog, Package, Queue, QueueItem, Schedule, Session, User, WorkflowDraft, Workspace } from "./types.js";
+import type { Agent, Asset, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Queue, QueueItem, Schedule, Session, User, WorkflowDraft, Workspace } from "./types.js";
 import { DEFAULT_WORKSPACE } from "./types.js";
 
 export interface Data {
@@ -22,6 +22,7 @@ export interface Data {
   usage: Record<string, { runs: number; ai: number }>;
   emailTokens: Record<string, EmailToken>;
   mfaChallenges: Record<string, MfaChallenge>;
+  ssoStates: Record<string, SsoState>;
 }
 
 const MAX_LOGS_PER_JOB = 5000;
@@ -44,6 +45,7 @@ const empty = (): Data => ({
   usage: {},
   emailTokens: {},
   mfaChallenges: {},
+  ssoStates: {},
 });
 
 /**

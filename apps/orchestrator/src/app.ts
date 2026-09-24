@@ -34,6 +34,7 @@ import { PAID_STATUSES } from "./billing.js";
 import type { BillingProvider, SubscriptionState } from "./billing.js";
 import { emails } from "./mailer.js";
 import { hashRecoveryCode, newRecoveryCodes, newTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
+import { emailDomain, OidcClient, SsoError } from "./sso.js";
 import type { Mail, Mailer } from "./mailer.js";
 import type { OrchestratorConfig } from "./config.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
@@ -64,6 +65,8 @@ export interface AppOptions {
   billing?: BillingProvider | null;
   /** Sends confirmation and password-reset emails; null/undefined when SMTP is not configured. */
   mailer?: Mailer | null;
+  /** OpenID Connect client for company sign-in (tests point it at a fake identity provider). */
+  oidc?: OidcClient;
 }
 
 
@@ -157,6 +160,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     "/api/auth/password-reset/request",
     "/api/auth/password-reset",
     "/api/auth/login/mfa",
+    "/api/auth/sso/discover",
+    "/api/auth/sso/start",
+    "/api/auth/sso/callback",
     "/api/billing/webhook",
   ]);
   // What a signed-in person may still do while their account is restricted (email not confirmed, ...).
@@ -339,6 +345,109 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     return { ok: true, email: Boolean(mailer) };
   });
 
+  /* ----------------------- company sign-in (SSO) ----------------------- */
+  const oidc = options.oidc ?? new OidcClient();
+  // The identity provider sends people back to the Portal's own address (so the cookie is set there).
+  const ssoRedirectUri = `${config.portalUrl}/api/auth/sso/callback`;
+  const ssoWorkspaceFor = (email: string) => {
+    const domain = emailDomain(email);
+    return Object.values(store.data.workspaces).find((w) => w.sso?.enabled && w.ssoDomains?.includes(domain) && limitsOf(w).sso);
+  };
+  const safeReturn = (value?: string) => {
+    if (!value) return undefined;
+    try {
+      const url = new URL(value, config.portalUrl);
+      return [new URL(config.portalUrl).origin, new URL(config.designerUrl).origin].includes(url.origin) ? url.href : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const ssoFailure = (message: string) => `${config.portalUrl}/?sso_error=${encodeURIComponent(message)}`;
+
+  // The Portal asks after the email is typed: does this person sign in with their company?
+  app.post("/api/auth/sso/discover", async (req) => {
+    const body = parse(z.object({ email: z.string().trim().toLowerCase(), return: z.string().optional() }), req.body);
+    const workspace = ssoWorkspaceFor(body.email);
+    if (!workspace) return { sso: false };
+    const params = new URLSearchParams({ workspace: workspace.id, login_hint: body.email });
+    if (body.return) params.set("return", body.return);
+    return { sso: true, enforced: Boolean(workspace.sso!.enforce), startUrl: `/api/auth/sso/start?${params}` };
+  });
+
+  app.get<{ Querystring: { workspace?: string; return?: string; login_hint?: string } }>("/api/auth/sso/start", async (req, reply) => {
+    const workspace = store.data.workspaces[req.query.workspace ?? ""];
+    if (!workspace?.sso?.enabled || !limitsOf(workspace).sso) return reply.redirect(ssoFailure("Company sign-in is not set up for this workspace"));
+    const state = newSecret();
+    const nonce = newSecret();
+    const codeVerifier = newSecret();
+    store.data.ssoStates[hashToken(state)] = {
+      id: hashToken(state),
+      workspaceId: workspace.id,
+      nonce,
+      codeVerifier,
+      returnTo: safeReturn(req.query.return),
+      expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    };
+    store.save();
+    try {
+      return reply.redirect(await oidc.authorizationUrl(workspace.sso, { redirectUri: ssoRedirectUri, state, nonce, codeVerifier, loginHint: req.query.login_hint }));
+    } catch (err) {
+      return reply.redirect(ssoFailure((err as Error).message));
+    }
+  });
+
+  app.get<{ Querystring: { code?: string; state?: string; error?: string; error_description?: string } }>("/api/auth/sso/callback", async (req, reply) => {
+    const q = req.query;
+    const saved = q.state ? store.data.ssoStates[hashToken(q.state)] : undefined;
+    if (saved) delete store.data.ssoStates[saved.id];
+    const fail = (message: string) => {
+      store.save();
+      return reply.redirect(ssoFailure(message));
+    };
+    if (q.error) return fail(q.error_description ?? q.error);
+    if (!saved || Date.parse(saved.expiresAt) < Date.now() || !q.code) return fail("The sign-in took too long or was already used. Please try again.");
+    const workspace = store.data.workspaces[saved.workspaceId];
+    if (!workspace?.sso?.enabled) return fail("Company sign-in is not set up for this workspace");
+    let identity;
+    try {
+      identity = await oidc.signIn(workspace.sso, { code: q.code, redirectUri: ssoRedirectUri, codeVerifier: saved.codeVerifier, nonce: saved.nonce });
+    } catch (err) {
+      app.log.warn(`SSO for workspace ${workspace.id} failed: ${(err as Error).message}`);
+      return fail(err instanceof SsoError ? err.message : "Company sign-in failed");
+    }
+    if (!workspace.ssoDomains?.includes(emailDomain(identity.email))) return fail(`${identity.email} is not an address of this company's domains`);
+    let user = findByEmail(identity.email);
+    if (user && user.workspaceId !== workspace.id) return fail("This email already has an account in another workspace");
+    if (user?.disabled) return fail("This account is disabled; ask your administrator");
+    if (!user) {
+      if (!workspace.sso.autoProvision) return fail("You do not have an account yet; ask your administrator to add you");
+      try {
+        if (isBuilder(workspace.sso.defaultRole)) checkBuilders(store, workspace.id);
+      } catch (err) {
+        return fail((err as Error).message);
+      }
+      user = {
+        id: newId("usr"),
+        workspaceId: workspace.id,
+        email: identity.email,
+        name: identity.name,
+        role: workspace.sso.defaultRole,
+        // No password: this account signs in through the company.
+        passwordHash: "sso$",
+        emailVerified: true,
+        authSource: "sso",
+        createdAt: nowIso(),
+      };
+      store.data.users[user.id] = user;
+    }
+    user.authSource = "sso";
+    user.emailVerified = true;
+    user.lastLoginAt = nowIso();
+    reply.header("set-cookie", sessionCookie(createSession(store, user), cookieOptions));
+    store.save();
+    return reply.redirect(saved.returnTo ?? `${config.portalUrl}/`);
+  });
+
   app.post("/api/auth/password-reset", async (req) => {
     const body = parse(z.object({ token: z.string().min(10), password: passwordSchema }), req.body);
     const user = takeEmailToken(body.token, "reset");
@@ -352,6 +461,11 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   app.post("/api/auth/login", async (req, reply) => {
     const body = parse(z.object({ email: z.string().trim().toLowerCase(), password: z.string() }), req.body);
+    const ssoWorkspace = ssoWorkspaceFor(body.email);
+    const existing = findByEmail(body.email);
+    if (ssoWorkspace?.sso?.enforce && (!existing || existing.workspaceId === ssoWorkspace.id)) {
+      return reply.status(403).send({ error: "Sign in with your company account", code: "sso_required" });
+    }
     const keys = [`ip:${req.ip}`, `email:${body.email}`];
     if (limiter.blocked(...keys)) return reply.status(429).send({ error: "Too many attempts", code: "rate_limited" });
     const user = findByEmail(body.email);
@@ -1287,7 +1401,14 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* ------------------------- workspace and plan ------------------------ */
+  // Anyone can have an address there, so no company can claim them for SSO.
+  const PUBLIC_EMAIL_DOMAINS = new Set([
+    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "msn.com", "yahoo.com", "ymail.com",
+    "icloud.com", "me.com", "mac.com", "aol.com", "proton.me", "protonmail.com", "gmx.com", "gmx.net", "mail.com",
+    "zoho.com", "yandex.com", "yandex.ru", "qq.com", "163.com", "126.com",
+  ]);
   const workspaceSummary = (workspace: Workspace) => ({
+    ssoDomains: workspace.ssoDomains ?? [],
     billingAvailable: Boolean(options.billing),
     id: workspace.id,
     name: workspace.name,
@@ -1312,6 +1433,46 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     workspace.name = body.name;
     store.save();
     return workspaceSummary(workspace);
+  });
+
+  const requireAdmin = (req: FastifyRequest) => {
+    if (me(req).role !== "admin") throw new HttpError(403, "This needs the admin role");
+  };
+  app.get("/api/workspace/sso", async (req) => {
+    requireAdmin(req);
+    const workspace = get(store.data.workspaces, ws(req), "Workspace");
+    const { clientSecret, ...settings } = workspace.sso ?? { enabled: false, issuer: "", clientId: "", clientSecret: "", defaultRole: "operator", autoProvision: true, enforce: false };
+    return { available: limitsOf(workspace).sso, domains: workspace.ssoDomains ?? [], redirectUri: ssoRedirectUri, settings: { ...settings, secretSet: Boolean(clientSecret) } };
+  });
+  app.put("/api/workspace/sso", async (req) => {
+    requireAdmin(req);
+    const workspace = get(store.data.workspaces, ws(req), "Workspace");
+    checkFeature(store, workspace.id, "sso");
+    const body = parse(
+      z.object({
+        enabled: z.boolean(),
+        issuer: z.string().trim().url().or(z.literal("")),
+        clientId: z.string().trim().max(300),
+        clientSecret: z.string().max(2000).optional(),
+        defaultRole: z.enum(["admin", "developer", "operator", "viewer"]).default("operator"),
+        autoProvision: z.boolean().default(true),
+        enforce: z.boolean().default(false),
+      }),
+      req.body,
+    );
+    const clientSecret = body.clientSecret || workspace.sso?.clientSecret || "";
+    if (body.enabled) {
+      if (!workspace.ssoDomains?.length) throw new HttpError(409, "ZamTech AI has not set up your company's email domains yet; contact us to add them");
+      if (!body.issuer || !body.clientId || !clientSecret) throw new HttpError(400, "Enter the issuer, client ID and client secret from your identity provider");
+      try {
+        await oidc.discover(body.issuer);
+      } catch (err) {
+        throw new HttpError(400, (err as Error).message);
+      }
+    }
+    workspace.sso = { ...body, issuer: body.issuer.replace(/\/+$/, ""), clientSecret };
+    store.save();
+    return { ok: true };
   });
 
   app.get("/api/workspace/security", async (req) => get(store.data.workspaces, ws(req), "Workspace").security ?? {});
@@ -1353,12 +1514,21 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       z.object({
         name: z.string().trim().min(2).max(100).optional(),
         plan: z.enum(["free", "pro", "enterprise"]).optional(),
+        ssoDomains: z.array(z.string().trim().toLowerCase().regex(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/, "Enter domains like acme.com")).max(50).optional(),
         seats: z.object({ builders: z.number().int().min(1), bots: z.number().int().min(1) }).optional(),
         customLimits: LimitsBody.nullable().optional(),
       }),
       req.body,
     );
     if (body.name) workspace.name = body.name;
+    if (body.ssoDomains) {
+      for (const domain of body.ssoDomains) {
+        if (PUBLIC_EMAIL_DOMAINS.has(domain)) throw new HttpError(400, `${domain} is a public email service and cannot belong to one company`);
+        const other = Object.values(store.data.workspaces).find((w) => w.id !== workspace.id && w.ssoDomains?.includes(domain));
+        if (other) throw new HttpError(409, `${domain} already belongs to ${other.name}`);
+      }
+      workspace.ssoDomains = [...new Set(body.ssoDomains)];
+    }
     if (body.plan) workspace.plan = body.plan;
     if (body.seats) workspace.seats = body.seats;
     if (body.customLimits !== undefined) workspace.customLimits = body.customLimits ?? undefined;
@@ -1482,6 +1652,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     }
     for (const c of Object.values(store.data.mfaChallenges)) {
       if (Date.parse(c.expiresAt) < Date.now()) delete store.data.mfaChallenges[c.id];
+    }
+    for (const s of Object.values(store.data.ssoStates)) {
+      if (Date.parse(s.expiresAt) < Date.now()) delete store.data.ssoStates[s.id];
     }
   }, 5_000);
   sweeper.unref();

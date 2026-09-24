@@ -27,9 +27,11 @@ export interface Limits {
   schedules: boolean;
   /** Install keys for silent rollouts. */
   installKeys: boolean;
+  /** Company sign-in (SSO) with the customer's identity provider. */
+  sso: boolean;
 }
 
-export const FREE_LIMITS: Limits = { builders: 1, bots: 1, runsPerMonth: 100, aiPerMonth: 20, schedules: false, installKeys: false };
+export const FREE_LIMITS: Limits = { builders: 1, bots: 1, runsPerMonth: 100, aiPerMonth: 20, schedules: false, installKeys: false, sso: false };
 
 /** Pro: what each paid seat adds. */
 export const PRO = {
@@ -45,6 +47,7 @@ export const UNLIMITED: Limits = {
   aiPerMonth: Number.MAX_SAFE_INTEGER,
   schedules: true,
   installKeys: true,
+  sso: true,
 };
 
 export function limitsOf(workspace: Workspace): Limits {
@@ -52,7 +55,7 @@ export function limitsOf(workspace: Workspace): Limits {
   if (workspace.plan === "pro") {
     const builders = Math.max(1, workspace.seats?.builders ?? 1);
     const bots = Math.max(1, workspace.seats?.bots ?? 1);
-    return { builders, bots, runsPerMonth: bots * PRO.runsPerBot, aiPerMonth: builders * PRO.aiPerBuilder, schedules: true, installKeys: false };
+    return { builders, bots, runsPerMonth: bots * PRO.runsPerBot, aiPerMonth: builders * PRO.aiPerBuilder, schedules: true, installKeys: false, sso: false };
   }
   return FREE_LIMITS;
 }
@@ -146,9 +149,9 @@ export function checkBuilders(store: Store, workspaceId: string) {
   }
 }
 
-export function checkFeature(store: Store, workspaceId: string, feature: "schedules" | "installKeys") {
+export function checkFeature(store: Store, workspaceId: string, feature: "schedules" | "installKeys" | "sso") {
   if (limitsOf(workspaceOf(store, workspaceId))[feature]) return;
-  const what = feature === "schedules" ? "Schedules are" : "Install keys are";
+  const what = { schedules: "Schedules are", installKeys: "Install keys are", sso: "Company sign-in (SSO) is" }[feature];
   throw new PlanLimitError(feature, `${what} not included in your plan. ${UPGRADE}`);
 }
 

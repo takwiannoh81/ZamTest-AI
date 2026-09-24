@@ -19,6 +19,38 @@ export interface Workspace {
   customLimits?: Partial<import("./plans.js").Limits>;
   billing?: WorkspaceBilling;
   security?: WorkspaceSecurity;
+  /** Company sign-in, set up by the workspace's admin (Enterprise). */
+  sso?: WorkspaceSso;
+  /**
+   * Email domains whose people sign in through this workspace's SSO. Set by the
+   * platform owner (after checking the customer owns them), never by the customer.
+   */
+  ssoDomains?: string[];
+}
+
+export interface WorkspaceSso {
+  enabled: boolean;
+  /** OpenID Connect issuer, e.g. https://login.microsoftonline.com/<tenant>/v2.0 */
+  issuer: string;
+  clientId: string;
+  clientSecret: string;
+  /** Role for people who sign in for the first time. */
+  defaultRole: Role;
+  /** Create accounts on first sign-in (otherwise an admin adds people first). */
+  autoProvision: boolean;
+  /** People of the company's domains cannot sign in with a password. */
+  enforce: boolean;
+}
+
+/** A company sign-in in progress (between leaving for the identity provider and coming back). */
+export interface SsoState {
+  /** SHA-256 of the state parameter. */
+  id: string;
+  workspaceId: string;
+  nonce: string;
+  codeVerifier: string;
+  returnTo?: string;
+  expiresAt: string;
 }
 
 export interface WorkspaceSecurity {
