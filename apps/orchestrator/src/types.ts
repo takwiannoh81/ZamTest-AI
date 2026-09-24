@@ -237,7 +237,7 @@ export interface Job {
   inputs: Record<string, unknown>;
   outputs?: Record<string, unknown>;
   status: JobStatus;
-  source: "manual" | "schedule" | "designer" | "api";
+  source: "manual" | "schedule" | "designer" | "api" | "test";
   scheduleId?: string;
   targetAgentId?: string;
   agentId?: string;
@@ -406,4 +406,47 @@ export interface QueueItem {
   createdAt: string;
   startedAt?: string;
   finishedAt?: string;
+}
+
+/** A folder of test cases (folders nest). */
+export interface TestFolder {
+  id: string;
+  workspaceId: string;
+  name: string;
+  /** Unset: at the top level. */
+  parentId?: string;
+  createdAt: string;
+}
+
+/**
+ * A check of a workflow: run it (as saved in the Designer) with these inputs;
+ * it passes when the run succeeds and every expected output has that value.
+ */
+export interface TestCase {
+  id: string;
+  workspaceId: string;
+  name: string;
+  /** Unset: at the top level. */
+  folderId?: string;
+  workflowId: string;
+  inputs: Record<string, unknown>;
+  expectedOutputs?: Record<string, unknown>;
+  /** Run on this PC (else any PC that takes the job). */
+  targetAgentId?: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+  /** The job of its latest run. */
+  lastJobId?: string;
+}
+
+/** Running several test cases at once (a folder, or all of them). */
+export interface TestRun {
+  id: string;
+  workspaceId: string;
+  /** "All test cases", or the folder's path. */
+  name: string;
+  startedBy: string;
+  startedAt: string;
+  items: Array<{ testCaseId: string; name: string; path: string; jobId?: string; error?: string }>;
 }

@@ -2,7 +2,7 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { AiClient, AiNotConfiguredError, AiRefusalError, ZamAI } from "@zamtest/ai";
+import { AiApiError, AiClient, AiNotConfiguredError, AiRefusalError, ZamAI } from "@zamtest/ai";
 import { BUILTIN_ACTIONS, WorkflowSchema } from "@zamtest/core";
 import { languageName } from "@zamtest/i18n";
 import type { EngineEvent, Step } from "@zamtest/core";
@@ -40,6 +40,7 @@ import type { OrchestratorConfig } from "./config.js";
 import { parse } from "./errors.js";
 import { apiTokenPrincipal, effectiveEnv, ENV_NAMES, environmentsOn, isIn, publishWorkflow, registerCicd } from "./cicd.js";
 import { GitRepos } from "./git.js";
+import { registerTestCases } from "./testcases.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
 import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
@@ -113,7 +114,7 @@ const JobBody = z.object({
   inputs: z.record(z.unknown()).optional(),
   targetAgentId: z.string().optional(),
   environment: z.enum(["dev", "test", "prod"]).optional(),
-  source: z.enum(["manual", "designer", "api"]).default("manual"),
+  source: z.enum(["manual", "designer", "api", "test"]).default("manual"),
 });
 
 const ScheduleBody = z.object({
@@ -157,6 +158,17 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     }
     if (err instanceof AiNotConfiguredError) return reply.status(503).send({ error: err.message });
     if (err instanceof AiRefusalError) return reply.status(422).send({ error: err.message });
+    // Errors from Anthropic's API: say what to do instead of showing its raw answer.
+    if (err instanceof AiApiError) {
+      app.log.warn(`AI: ${err.status} ${err.message}`);
+      if (err.status === 401 || err.status === 403) {
+        return reply.status(503).send({ error: "The AI service rejected this server's API key. An administrator must set a valid ANTHROPIC_API_KEY.", code: "ai_key_invalid" });
+      }
+      if (err.status === 429 || err.status === 529 || (err.status ?? 0) >= 500) {
+        return reply.status(503).send({ error: "The AI service is busy right now. Try again in a minute.", code: "ai_busy" });
+      }
+      return reply.status(502).send({ error: `The AI service could not handle this request: ${err.message.slice(0, 300)}`, code: "ai_error" });
+    }
     const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
     if (status >= 500) app.log.error(err);
     return reply.status(status).send({ error: err.message });
@@ -1604,6 +1616,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       agents: mine(store.data.agents, req).map(({ tokenHash: _t, ...agent }) => agent),
       installKeys: mine(store.data.installKeys, req).map(({ keyHash: _k, ...key }) => key),
       apiTokens: mine(store.data.apiTokens, req).map(({ tokenHash: _h, ...token }) => token),
+      testFolders: mine(store.data.testFolders, req),
+      testCases: mine(store.data.testCases, req),
+      testRuns: mine(store.data.testRuns, req),
       promotions: mine(store.data.promotions, req),
       jobs: jobs.map((job) => ({ ...job, logs: store.data.jobLogs[job.id] ?? [] })),
       usage: Object.fromEntries(
@@ -1783,6 +1798,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       return { received: true };
     });
   });
+
+  /* ---------------------------- test cases -------------------------- */
+  registerTestCases(app, { store, me, own, mine });
 
   /* ---------------------- source control and CI/CD ------------------ */
   registerCicd(app, {

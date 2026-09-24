@@ -28,6 +28,9 @@ export class AiRefusalError extends Error {
   }
 }
 
+/** An error answered by Anthropic's API (bad key, rate limit, overload...); `status` is its HTTP status. */
+export const AiApiError = Anthropic.APIError;
+
 export type BetaMessage = Anthropic.Beta.Messages.BetaMessage;
 export type BetaMessageParam = Anthropic.Beta.Messages.BetaMessageParam;
 type CreateParams = Omit<MessageCreateParamsNonStreaming, "model"> & { model?: string };

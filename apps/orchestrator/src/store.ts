@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Agent, ApiToken, Asset, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, User, WorkflowDraft, Workspace } from "./types.js";
+import type { Agent, ApiToken, Asset, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, TestCase, TestFolder, TestRun, User, WorkflowDraft, Workspace } from "./types.js";
 import { DEFAULT_WORKSPACE } from "./types.js";
 
 export interface Data {
@@ -25,6 +25,9 @@ export interface Data {
   ssoStates: Record<string, SsoState>;
   promotions: Record<string, Promotion>;
   apiTokens: Record<string, ApiToken>;
+  testFolders: Record<string, TestFolder>;
+  testCases: Record<string, TestCase>;
+  testRuns: Record<string, TestRun>;
   /** One-time data changes already made. */
   migrations?: string[];
 }
@@ -52,6 +55,9 @@ const empty = (): Data => ({
   ssoStates: {},
   promotions: {},
   apiTokens: {},
+  testFolders: {},
+  testCases: {},
+  testRuns: {},
 });
 
 /**
@@ -97,7 +103,7 @@ export class Store {
     for (const pkg of Object.values(this.data.packages)) pkg.deployments ??= { prod: { at: pkg.publishedAt, by: "ZamTech AI" } };
     const owned = [
       this.data.workflows, this.data.packages, this.data.agents, this.data.jobs, this.data.schedules, this.data.assets,
-      this.data.users, this.data.queues, this.data.queueItems, this.data.installKeys, this.data.promotions, this.data.apiTokens,
+      this.data.users, this.data.queues, this.data.queueItems, this.data.installKeys, this.data.promotions, this.data.apiTokens, this.data.testFolders, this.data.testCases, this.data.testRuns,
     ] as Array<Record<string, { workspaceId?: string }>>;
     for (const collection of owned) {
       for (const record of Object.values(collection)) record.workspaceId ??= DEFAULT_WORKSPACE;
