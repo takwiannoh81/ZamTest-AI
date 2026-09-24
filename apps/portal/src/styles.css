@@ -19,8 +19,9 @@
   background: var(--bg);
 }
 
+/* Dark colours: when the device is dark (unless Light was chosen), or when Dark was chosen. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0f1117;
     --surface: #171a23;
     --surface-2: #1e2230;
@@ -34,7 +35,27 @@
     --warn: #f0b44c;
     --info: #6aa5ff;
     --shadow: none;
+    color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1117;
+  --surface: #171a23;
+  --surface-2: #1e2230;
+  --border: #2a2f3f;
+  --text: #e6e8ef;
+  --muted: #9097ab;
+  --accent: #8b85ff;
+  --accent-soft: #25244a;
+  --danger: #ff6b81;
+  --ok: #3ccf8e;
+  --warn: #f0b44c;
+  --info: #6aa5ff;
+  --shadow: none;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }

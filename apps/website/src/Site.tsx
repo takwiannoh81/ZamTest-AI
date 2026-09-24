@@ -1,6 +1,6 @@
 import { LOCALES } from "@zamtest/i18n";
 import type { MessageKey } from "@zamtest/i18n";
-import { LanguageSelect, useI18n } from "@zamtest/i18n/react";
+import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
 
 const PORTAL_URL = import.meta.env.VITE_PORTAL_URL ?? "http://localhost:5173";
 const DESIGNER_URL = import.meta.env.VITE_DESIGNER_URL ?? "http://localhost:5174";
@@ -62,6 +62,7 @@ export function Site() {
           </nav>
           <div className="header-actions">
             <LanguageSelect className="lang" />
+            <ThemeSelect className="lang" />
             <a className="btn btn-small" href={PORTAL_URL}>
               {t("site.nav.signIn")}
             </a>

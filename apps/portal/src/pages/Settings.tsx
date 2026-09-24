@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { MessageKey } from "@zamtest/i18n";
-import { LanguageSelect, useI18n } from "@zamtest/i18n/react";
+import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
 import { api } from "../api";
 import type { BackupStatus } from "../api";
 import { usePoll } from "../hooks";
@@ -19,6 +19,9 @@ export function Settings() {
         <h2>{t("common.language")}</h2>
         <p className="muted">{t("settings.languageHelp")}</p>
         <LanguageSelect />
+        <h2 className="card-sub">{t("theme.label")}</h2>
+        <p className="muted">{t("theme.help")}</p>
+        <ThemeSelect />
       </section>
       {me?.kind === "user" && <AccountCard name={me.name} email={me.email} role={me.role} />}
       {atLeast(me, "admin") && <BackupCard />}

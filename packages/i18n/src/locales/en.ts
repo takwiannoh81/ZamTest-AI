@@ -32,6 +32,11 @@ export const en = {
   "common.runOn": "Run on",
   "common.anyAgent": "Any available agent",
   "common.language": "Language",
+  "theme.label": "Colours",
+  "theme.auto": "Automatic",
+  "theme.light": "Light",
+  "theme.dark": "Dark",
+  "theme.help": "Automatic follows your device's light or dark setting. Your choice is kept on this browser for the website, Portal and Designer.",
   "common.justNow": "just now",
 
   /* statuses and sources */

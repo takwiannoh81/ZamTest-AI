@@ -6,6 +6,13 @@
     <meta name="robots" content="noindex" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ZamTech AI Portal</title>
+    <!-- The chosen colours (Light/Dark), before the page draws, so it does not flash. -->
+    <script>
+      try {
+        var t = /(?:^|;\s*)zt_theme=(light|dark)/.exec(document.cookie);
+        if (t) document.documentElement.setAttribute("data-theme", t[1]);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

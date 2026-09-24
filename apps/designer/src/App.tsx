@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ActionMeta, Step, Workflow } from "@zamtest/core";
-import { LanguageSelect, useI18n } from "@zamtest/i18n/react";
+import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
 import { api } from "./api";
 import type { Job, WorkflowDraft, WorkflowSummary } from "./api";
 import { AiGenerateModal, JsonModal, SelectorAssistModal } from "./components/AiModals";
@@ -161,6 +161,7 @@ function StartScreen({ onOpen }: { onOpen: (id: string) => void }) {
           {t("designer.openPortal")}
         </a>
         <LanguageSelect className="lang-select" />
+        <ThemeSelect className="lang-select" />
         <UserMenu />
       </div>
       {notice && <p className="notice">{notice}</p>}
@@ -436,6 +437,7 @@ function Editor({ id, catalog, aiEnabled, onExit }: { id: string; catalog: Actio
           🗑
         </button>
         <LanguageSelect className="lang-select" />
+        <ThemeSelect className="lang-select" />
       </header>
       {showIssues && issues.length > 0 && (
         <div className="issues">

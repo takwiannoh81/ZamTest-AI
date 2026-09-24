@@ -13,6 +13,13 @@
     <meta property="og:description" content="Low-code automation with AI built in: visual Designer, central Portal, bot agents and self-healing selectors." />
     <meta property="og:image" content="https://zamtechai.com/designer.png" />
     <meta name="theme-color" content="#4f46e5" />
+    <!-- The chosen colours (Light/Dark), before the page draws, so it does not flash. -->
+    <script>
+      try {
+        var t = /(?:^|;\s*)zt_theme=(light|dark)/.exec(document.cookie);
+        if (t) document.documentElement.setAttribute("data-theme", t[1]);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

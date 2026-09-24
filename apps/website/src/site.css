@@ -14,8 +14,9 @@
   background: var(--bg);
   line-height: 1.55;
 }
+/* Dark colours: when the device is dark (unless Light was chosen), or when Dark was chosen. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0d0f16;
     --bg-alt: #12151f;
     --surface: #171a25;
@@ -24,7 +25,22 @@
     --muted: #9aa1b6;
     --accent: #8b85ff;
     --accent-soft: #221f45;
+    color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #0d0f16;
+  --bg-alt: #12151f;
+  --surface: #171a25;
+  --border: #262b3b;
+  --text: #e8eaf2;
+  --muted: #9aa1b6;
+  --accent: #8b85ff;
+  --accent-soft: #221f45;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 :root[dir="rtl"] { font-family: "Segoe UI", "Noto Sans Arabic", "Noto Kufi Arabic", Tahoma, system-ui, sans-serif; }
 

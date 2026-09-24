@@ -1,5 +1,5 @@
 import type { MessageKey } from "@zamtest/i18n";
-import { LanguageSelect, useI18n } from "@zamtest/i18n/react";
+import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
 import { useHashRoute } from "./hooks";
 import { Agents } from "./pages/Agents";
 import { Assets } from "./pages/Assets";
@@ -93,6 +93,7 @@ export function App() {
             </div>
           )}
           <LanguageSelect className="lang-select" />
+          <ThemeSelect className="lang-select" />
           <a className="download-link" href={AGENT_DOWNLOAD_URL}>
             {t("agents.downloadWindows")}
           </a>
