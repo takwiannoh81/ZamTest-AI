@@ -12,6 +12,8 @@ try {
 export const UNAUTHORIZED_EVENT = "zamtest:unauthorized";
 /** Fired when the signed-in user's role does not allow the request. */
 export const FORBIDDEN_EVENT = "zamtest:forbidden";
+/** Fired (detail: the server's message) when the workspace's plan does not allow the request (402). */
+export const LIMIT_EVENT = "zamtest:limit";
 
 export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -28,6 +30,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
   if (res.status === 403) window.dispatchEvent(new Event(FORBIDDEN_EVENT));
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
+  if (res.status === 402) window.dispatchEvent(new CustomEvent(LIMIT_EVENT, { detail: (data as { error?: string }).error ?? "" }));
   if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
   return data as T;
 }

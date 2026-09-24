@@ -12,6 +12,8 @@ try {
 export const UNAUTHORIZED_EVENT = "zamtest:unauthorized";
 /** Fired when the signed-in user's role does not allow the request. */
 export const FORBIDDEN_EVENT = "zamtest:forbidden";
+/** Fired (detail: the server's message) when the workspace's plan does not allow the request (402). */
+export const LIMIT_EVENT = "zamtest:limit";
 
 export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -28,6 +30,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
   if (res.status === 403) window.dispatchEvent(new Event(FORBIDDEN_EVENT));
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
+  if (res.status === 402) window.dispatchEvent(new CustomEvent(LIMIT_EVENT, { detail: (data as { error?: string }).error ?? "" }));
   if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
   return data as T;
 }
@@ -53,6 +56,38 @@ export interface Agent {
   currentJobId?: string;
   lastHeartbeat: string;
   approvedBy?: string;
+}
+
+export interface Limits {
+  builders: number;
+  bots: number;
+  runsPerMonth: number;
+  aiPerMonth: number;
+  schedules: boolean;
+  installKeys: boolean;
+}
+
+export type PlanId = "free" | "pro" | "enterprise";
+
+/** GET /api/workspace (and each row of /api/platform/workspaces). */
+export interface WorkspaceSummary {
+  billingAvailable: boolean;
+  id: string;
+  name: string;
+  plan: PlanId;
+  seats?: { builders: number; bots: number };
+  limits: Limits;
+  usage: { builders: number; bots: number; runs: number; ai: number };
+  billing?: { status?: string; interval?: "month" | "year"; currentPeriodEnd?: string; cancelAtPeriodEnd?: boolean };
+  createdAt?: string;
+  users?: number;
+}
+
+/** GET /api/billing/plans: prices come from Stripe, in the currency's smallest unit. */
+export interface BillingPlans {
+  configured: boolean;
+  prices?: { currency: string; builder: { month?: number; year?: number }; bot: { month?: number; year?: number } };
+  included: { free: Limits; pro: { runsPerBot: number; aiPerBuilder: number } };
 }
 
 /** A PC waiting to be approved (Connect this PC). */

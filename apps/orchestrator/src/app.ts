@@ -1116,12 +1116,14 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     const workspace = get(store.data.workspaces, req.params.id, "Workspace");
     const body = parse(
       z.object({
+        name: z.string().trim().min(2).max(100).optional(),
         plan: z.enum(["free", "pro", "enterprise"]).optional(),
         seats: z.object({ builders: z.number().int().min(1), bots: z.number().int().min(1) }).optional(),
         customLimits: LimitsBody.nullable().optional(),
       }),
       req.body,
     );
+    if (body.name) workspace.name = body.name;
     if (body.plan) workspace.plan = body.plan;
     if (body.seats) workspace.seats = body.seats;
     if (body.customLimits !== undefined) workspace.customLimits = body.customLimits ?? undefined;

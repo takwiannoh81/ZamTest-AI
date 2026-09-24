@@ -3,6 +3,8 @@ import { LanguageSelect, useI18n } from "@zamtest/i18n/react";
 import { useHashRoute } from "./hooks";
 import { Agents } from "./pages/Agents";
 import { Assets } from "./pages/Assets";
+import { Billing } from "./pages/Billing";
+import { Customers } from "./pages/Customers";
 import { Connect } from "./pages/Connect";
 import { Dashboard } from "./pages/Dashboard";
 import { JobDetail, Jobs } from "./pages/Jobs";
@@ -14,7 +16,7 @@ import { Users } from "./pages/Users";
 import { AGENT_DOWNLOAD_URL, DESIGNER_URL } from "./links";
 import { atLeast, signOut, useMe } from "./session";
 
-const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolean }> = [
+const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolean; platform?: boolean }> = [
   { path: "/", label: "nav.dashboard", icon: "◎" },
   { path: "/processes", label: "nav.processes", icon: "▣" },
   { path: "/jobs", label: "nav.jobs", icon: "▶" },
@@ -23,7 +25,9 @@ const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolea
   { path: "/agents", label: "nav.agents", icon: "⚙" },
   { path: "/assets", label: "nav.assets", icon: "🔑" },
   { path: "/users", label: "nav.users", icon: "👥", admin: true },
+  { path: "/billing", label: "nav.billing", icon: "💳", admin: true },
   { path: "/settings", label: "nav.settings", icon: "☰" },
+  { path: "/customers", label: "nav.customers", icon: "🏢", platform: true },
 ];
 
 export function App() {
@@ -36,6 +40,8 @@ export function App() {
 
   let page;
   if (route === "/connect") page = <Connect query={query} />;
+  else if (route === "/billing") page = <Billing query={query} />;
+  else if (route === "/customers") page = <Customers />;
   else if (route.startsWith("/jobs/")) page = <JobDetail id={route.slice("/jobs/".length)} />;
   else if (route.startsWith("/queues/")) page = <QueueDetail id={route.slice("/queues/".length)} />;
   else if (route === "/queues") page = <Queues />;
@@ -59,7 +65,7 @@ export function App() {
           </div>
         </div>
         <nav>
-          {NAV.filter((n) => !n.admin || atLeast(me, "admin")).map((n) => (
+          {NAV.filter((n) => (!n.admin || atLeast(me, "admin")) && (!n.platform || me?.platformAdmin)).map((n) => (
             <a key={n.path} href={`#${n.path}`} className={active === n.path ? "active" : ""}>
               <span className="nav-icon">{n.icon}</span>
               {t(n.label)}
@@ -70,6 +76,7 @@ export function App() {
           {me && me.kind !== "open" && (
             <div className="user-chip">
               <strong>{me.kind === "token" ? t("role.token") : me.name}</strong>
+              {me.workspace.name && <span className="workspace-name">{me.workspace.name}</span>}
               <span className="role">{t(`role.${me.role}` as MessageKey)}</span>
               <button className="link-btn" onClick={() => void signOut()}>
                 {t("auth.signOut")}

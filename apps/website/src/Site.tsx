@@ -146,7 +146,7 @@ export function Site() {
           <div className="wrap cta">
             <h2>{t("site.cta.title")}</h2>
             <p>{t("site.cta.text")}</p>
-            <a className="btn" href={PORTAL_URL}>
+            <a className="btn" href={`${PORTAL_URL}/?signup=1`}>
               {t("site.cta.button")}
             </a>
           </div>

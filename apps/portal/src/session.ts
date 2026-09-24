@@ -10,6 +10,9 @@ export interface Me {
   role: Role;
   /** "open" = local development without sign-in. */
   kind: "user" | "token" | "open";
+  workspace: { id: string; name: string };
+  /** The platform owner (sees all customers), not a customer. */
+  platformAdmin: boolean;
 }
 
 const ORDER: Role[] = ["viewer", "operator", "developer", "admin"];

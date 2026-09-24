@@ -11,6 +11,8 @@ services:
       target: web
       args:
         SITE_DOMAIN: ${SITE_DOMAIN}
+        # Shown as "Contact sales" for Enterprise on the Billing page (rebuild after changing).
+        SALES_EMAIL: ${SALES_EMAIL:-}
     ports:
       - "80:80"
       - "443:443"
@@ -39,6 +41,16 @@ services:
       ZAMTEST_COOKIE_DOMAIN: .${SITE_DOMAIN}
       ZAMTEST_PORTAL_URL: https://portal.${SITE_DOMAIN}
       ZAMTEST_DESIGNER_URL: https://designer.${SITE_DOMAIN}
+      # Anyone may create an account and workspace in the Portal (the hosted service).
+      ZAMTEST_ALLOW_SIGNUP: ${ZAMTEST_ALLOW_SIGNUP:-false}
+      # Paying for Pro with Stripe (optional; see docs/DEPLOYMENT.md, "Plans and billing").
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_BUILDER_MONTHLY: ${STRIPE_PRICE_BUILDER_MONTHLY:-}
+      STRIPE_PRICE_BOT_MONTHLY: ${STRIPE_PRICE_BOT_MONTHLY:-}
+      STRIPE_PRICE_BUILDER_YEARLY: ${STRIPE_PRICE_BUILDER_YEARLY:-}
+      STRIPE_PRICE_BOT_YEARLY: ${STRIPE_PRICE_BOT_YEARLY:-}
+      STRIPE_AUTOMATIC_TAX: ${STRIPE_AUTOMATIC_TAX:-false}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ZAMTEST_AI_MODEL: ${ZAMTEST_AI_MODEL:-}
       # Nightly S3 backups (optional; see docs/DEPLOYMENT.md)

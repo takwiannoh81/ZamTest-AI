@@ -201,3 +201,27 @@ code, pre, .mono, .log, .log-line { direction: ltr; unicode-bidi: isolate; }
 .key-form .field { margin-bottom: 0; }
 @media (max-width: 720px) { .key-form { grid-template-columns: 1fr; } }
 .small { font-size: 12px; }
+
+/* Billing */
+.billing-card { max-width: 760px; }
+.billing-plan { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
+.billing-plan h2 { margin: 0; }
+.plan-badge { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; background: var(--surface-2); color: var(--text); }
+.plan-pro { background: var(--accent-soft); color: var(--accent); }
+.plan-enterprise { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
+.meters { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px 24px; margin-bottom: 14px; }
+.meter { display: flex; flex-direction: column; gap: 5px; }
+.meter-head { display: flex; justify-content: space-between; gap: 8px; }
+.meter-bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.meter-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.meter-fill.full { background: var(--danger); }
+.features { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 8px; }
+.billing-manage { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
+.segmented button { background: transparent; border: none; padding: 7px 14px; color: var(--text); }
+.segmented button.active { background: var(--accent); color: white; }
+.seat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.billing-total { font-size: 18px; font-weight: 700; margin: 4px 0 14px; }
+.workspace-name { font-size: 12px; color: var(--muted); }
+.auth-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.toast-link { margin-inline-start: 10px; color: inherit; font-weight: 700; text-decoration: underline; }

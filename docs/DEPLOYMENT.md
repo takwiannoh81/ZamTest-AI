@@ -207,6 +207,46 @@ People sign in only in the Portal. The Designer uses the same sign-in: an HttpOn
 
 After that, keep the master token for emergencies only, for example if every admin is locked out. Sessions last 7 days. Changing a password signs that person out everywhere else. Repeated failed sign-ins are blocked for a few minutes.
 
+## 5b. Customers, plans and billing
+
+Each customer company has its own **workspace**: its people, workflows, processes, bot PCs, assets, queues, schedules and jobs are invisible to every other workspace. Everything that existed before workspaces is in the **default workspace**, which is yours (the platform owner's), on the Enterprise plan without limits. Rename it on the Portal's **Customers** page.
+
+**Sign-up.** With `ZAMTEST_ALLOW_SIGNUP=true` in `deploy/.env`, anyone can click **Get started** on zamtechai.com (or **Create an account** on the Portal's sign-in) and get a new workspace on the Free plan, with themselves as its Admin. Leave it `false` (the default) for a private installation; people then only get accounts from an Admin under **Users**.
+
+**Plans.** What each plan includes is set in one file, `apps/orchestrator/src/plans.ts`:
+
+| | Free | Pro | Enterprise |
+|---|---|---|---|
+| Designer | yes | yes | yes |
+| Builder seats (Developers and Admins; Operators and Viewers are free) | 1 | as bought | agreed |
+| Bot PCs | 1 | as bought | agreed |
+| Runs per month | 100 | 5,000 per bot | agreed |
+| AI requests per month | 20 | 500 per builder | agreed |
+| Schedules | no (kept, paused) | yes | yes |
+| Install keys | no | no | yes |
+
+The server enforces them: when a limit is reached the request is refused with *402 Payment Required* and the Portal (or Designer) shows the reason with a **View plans** link. Nothing is deleted when a workspace moves to a smaller plan; its schedules simply stop running. Workspace Admins see their plan and this month's usage under **Billing**. You (the master token, or an Admin of the default workspace) see every workspace under **Customers**, where you can change a plan, set Pro seats by hand, or give an Enterprise customer agreed limits.
+
+**Taking payments with Stripe (Pro).** Customers pay per builder seat and per bot PC, monthly or yearly, on Stripe's own pages; card details never reach this server. Set it up in **test mode** first:
+
+1. Create a Stripe account for ZAMTECH&HOME LLC at <https://dashboard.stripe.com> and stay in **Test mode**.
+2. **Product catalog > Add product**: *ZamTech AI Pro - builder seat* with a recurring **per unit** price per month (and optionally one per year), and *ZamTech AI Pro - bot PC* likewise. Copy each price's ID (`price_...`).
+3. **Developers > Webhooks > Add endpoint**: URL `https://api.zamtechai.com/api/billing/webhook`, events `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`. Copy its **signing secret** (`whsec_...`).
+4. **Settings > Billing > Customer portal**: allow customers to update payment methods, view invoices, change quantities of the two products, and cancel.
+5. On the server, save the settings (each one asks for the value, hidden):
+   ```bash
+   sudo bash ~/ZamTest-AI/deploy/set-env.sh STRIPE_SECRET_KEY            # sk_test_...
+   sudo bash ~/ZamTest-AI/deploy/set-env.sh STRIPE_WEBHOOK_SECRET        # whsec_...
+   sudo bash ~/ZamTest-AI/deploy/set-env.sh STRIPE_PRICE_BUILDER_MONTHLY # price_...
+   sudo bash ~/ZamTest-AI/deploy/set-env.sh STRIPE_PRICE_BOT_MONTHLY     # price_...
+   # optional: STRIPE_PRICE_BUILDER_YEARLY, STRIPE_PRICE_BOT_YEARLY, STRIPE_AUTOMATIC_TAX=true (with Stripe Tax)
+   ```
+   The orchestrator's log then says `Billing: Stripe (test mode)`.
+6. Test: sign up a new workspace, open **Billing > Upgrade to Pro**, and pay with the test card `4242 4242 4242 4242` (any future date, any CVC). Within seconds the workspace shows **Pro** with the seats bought. Try **Manage billing** to change seats or cancel, and the card `4000 0000 0000 0341` to see a failed renewal (the plan stays Pro while Stripe retries; a warning shows under Billing).
+7. To go live, repeat steps 2-5 in **live mode** (live prices, a live webhook with its own secret, and the `sk_live_...` key).
+
+Enterprise customers are not billed through Checkout: agree the contract, invoice it (Stripe Invoicing or otherwise), and set the workspace to Enterprise with its limits under **Customers**. To show a **Contact sales** link for Enterprise on the Billing page, add `SALES_EMAIL=sales@your-domain` to `deploy/.env` and run `install.sh` again (it is built into the Portal).
+
 ## 6. Backups to Amazon S3
 
 The orchestrator writes a compressed, encrypted (SSE-S3) copy of the database to S3 every night at 03:00 server time, and deletes copies older than 30 days. Admins see the status under **Settings**, where there is also a **Back up now** button.

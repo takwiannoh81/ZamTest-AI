@@ -169,3 +169,4 @@ code, pre, .mono, .log, .log-line { direction: ltr; unicode-bidi: isolate; }
 .user-chip { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; }
 .user-chip .role { color: var(--muted); font-size: 12px; }
 .role-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--accent-soft); color: var(--accent); }
+.toast-link { margin-inline-start: 10px; color: inherit; font-weight: 700; text-decoration: underline; }

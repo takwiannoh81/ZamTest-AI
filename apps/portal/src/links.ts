@@ -1,6 +1,9 @@
 /** Where the other ZamTech AI apps and downloads live (set at build time for production). */
 export const DESIGNER_URL = (import.meta.env.VITE_DESIGNER_URL ?? "http://localhost:5174").replace(/\/+$/, "");
 
+/** Where Enterprise enquiries go (the Billing page); unset = no link. */
+export const SALES_EMAIL: string | undefined = import.meta.env.VITE_SALES_EMAIL || undefined;
+
 /** The Windows agent installer: the latest GitHub release unless the deployment hosts its own copy. */
 export const AGENT_DOWNLOAD_URL =
   import.meta.env.VITE_AGENT_DOWNLOAD_URL ?? "https://github.com/takwiannoh81/ZamTest-AI/releases/latest/download/ZamTechAI-Agent-Setup.exe";

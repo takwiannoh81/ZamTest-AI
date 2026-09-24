@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useI18n } from "@zamtest/i18n/react";
-import { FORBIDDEN_EVENT, UNAUTHORIZED_EVENT } from "../api";
+import { FORBIDDEN_EVENT, LIMIT_EVENT, UNAUTHORIZED_EVENT } from "../api";
 
 /** People sign in only in the Portal; the session cookie is shared with the Designer. */
 export const PORTAL_URL = (import.meta.env.VITE_PORTAL_URL ?? "http://localhost:5173").replace(/\/+$/, "");
@@ -17,31 +17,41 @@ export function portalSignInUrl(): string {
  */
 export function AuthGate({ children }: { children: ReactNode }) {
   const { t } = useI18n();
-  const [forbidden, setForbidden] = useState(false);
+  const [notice, setNotice] = useState<{ text: string; upgrade: boolean }>();
 
   useEffect(() => {
     const onUnauthorized = () => window.location.assign(portalSignInUrl());
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const onForbidden = () => {
-      setForbidden(true);
+    const show = (text: string, upgrade: boolean) => {
+      setNotice({ text, upgrade });
       clearTimeout(timer);
-      timer = setTimeout(() => setForbidden(false), 6000);
+      timer = setTimeout(() => setNotice(undefined), 8000);
     };
+    const onForbidden = () => show(t("auth.forbidden"), false);
+    // The plan does not allow it (e.g. this month's runs or AI requests are used up).
+    const onLimit = (e: Event) => show((e as CustomEvent<string>).detail, true);
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
     window.addEventListener(FORBIDDEN_EVENT, onForbidden);
+    window.addEventListener(LIMIT_EVENT, onLimit);
     return () => {
       window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
       window.removeEventListener(FORBIDDEN_EVENT, onForbidden);
+      window.removeEventListener(LIMIT_EVENT, onLimit);
       clearTimeout(timer);
     };
-  }, []);
+  }, [t]);
 
   return (
     <>
       {children}
-      {forbidden && (
-        <div className="toast" role="alert" onClick={() => setForbidden(false)}>
-          {t("auth.forbidden")}
+      {notice && (
+        <div className="toast" role="alert" onClick={() => setNotice(undefined)}>
+          {notice.text}
+          {notice.upgrade && (
+            <a className="toast-link" href={`${PORTAL_URL}/#/billing`} target="_blank" rel="noreferrer">
+              {t("billing.viewPlans")}
+            </a>
+          )}
         </div>
       )}
     </>
