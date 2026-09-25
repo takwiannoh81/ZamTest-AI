@@ -150,6 +150,8 @@ export function registerBugReports(app: FastifyInstance, ctx: BugReportContext):
           "",
           `Open it: ${ctx.portalUrl}/#/bug-reports?id=${report.id}`,
         ].join("\n"),
+        // Reply in the mail program: it goes to the person who reported it.
+        headers: report.email ? { "Reply-To": report.email } : undefined,
       });
     }
     return reply.status(201).send(mineView(report));

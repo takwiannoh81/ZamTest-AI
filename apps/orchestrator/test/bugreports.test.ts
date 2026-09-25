@@ -41,6 +41,7 @@ describe("Report a problem", () => {
     expect(mailer.sent).toHaveLength(1);
     expect(mailer.sent[0]).toMatchObject({ to: "support@zamtechai.com", subject: "🔴 Bug report from Default workspace: Run does nothing" });
     expect(mailer.sent[0]!.text).toContain("POST /api/jobs -> 500: boom");
+    expect(mailer.sent[0]!.headers).toEqual({ "Reply-To": "viewer@example.com" });
     expect(mailer.sent[0]!.text).toContain(`/#/bug-reports?id=${id}`);
 
     expect((await app.inject({ method: "GET", url: "/api/bug-reports/mine", headers: vee })).json()).toMatchObject([{ id, status: "new" }]);
