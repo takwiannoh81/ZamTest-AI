@@ -3,9 +3,10 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import type { VariableDef } from "@zamtest/core";
 import { useI18n } from "@zamtest/i18n/react";
 import type { MessageKey } from "@zamtest/i18n";
-import { api } from "../api";
+import { api, BASE } from "../api";
 import type { Agent, WorkflowDraft, WorkflowSummary } from "../api";
 import { ErrorBanner, Field } from "./ui";
+import { TestDataModal } from "./TestDataModal";
 
 type Status = "pending" | "running" | "passed" | "failed" | "cancelled";
 
@@ -27,6 +28,8 @@ interface TestCase {
   expectedOutputs?: Record<string, unknown>;
   targetAgentId?: string;
   last?: { jobId: string; at: string; status: Status; message?: string };
+  /** Test data: runs once per row. */
+  dataSize?: { columns: number; rows: number };
 }
 interface TestRun {
   id: string;
@@ -37,7 +40,7 @@ interface TestRun {
   passed: number;
   failed: number;
   running: number;
-  items: Array<{ testCaseId: string; name: string; path: string; jobId?: string; status: Status; message?: string }>;
+  items: Array<{ testCaseId: string; name: string; path: string; jobId?: string; status: Status; message?: string; row?: number; rowLabel?: string }>;
 }
 
 /** What is selected in the tree: everything (the root), a folder, or a test case. */
@@ -50,6 +53,7 @@ interface Menu {
 
 const PORTAL_URL = import.meta.env.VITE_PORTAL_URL ?? "http://localhost:5173";
 const jobLink = (jobId: string) => `${PORTAL_URL}/#/jobs/${jobId}`;
+const reportLink = (runId: string) => `${BASE}/api/test-runs/${runId}/report`;
 const STATUS_ICON: Record<Status, string> = { pending: "◌", running: "◔", passed: "✓", failed: "✕", cancelled: "–" };
 
 /** Typed values stay typed: numbers, true/false and JSON; anything else is text. */
@@ -259,7 +263,7 @@ export function TestCases({ workflows, onOpen }: { workflows: WorkflowSummary[];
         </nav>
         <section className="tests-detail">
           {selectedCase && !selectedCase.workflowId ? (
-            <CaseSummary testCase={selectedCase} onOpen={() => onOpen(selectedCase.id)} onRun={() => void run({ kind: "case", id: selectedCase.id })} />
+            <CaseSummary testCase={selectedCase} onOpen={() => onOpen(selectedCase.id)} onRun={() => void run({ kind: "case", id: selectedCase.id })} onChanged={() => void load()} />
           ) : selectedCase ? (
             <CaseEditor key={selectedCase.id} testCase={selectedCase} workflows={workflows} onSaved={load} onRun={() => void run({ kind: "case", id: selectedCase.id })} />
           ) : (
@@ -308,8 +312,9 @@ function pathOf(folders: Folder[], id: string): string {
 }
 
 /** A test case with its own steps: its last result, and Open (in the editor) / Run. */
-function CaseSummary({ testCase, onOpen, onRun }: { testCase: TestCase; onOpen: () => void; onRun: () => void }) {
+function CaseSummary({ testCase, onOpen, onRun, onChanged }: { testCase: TestCase; onOpen: () => void; onRun: () => void; onChanged: () => void }) {
   const { t, dateTime } = useI18n();
+  const [editData, setEditData] = useState(false);
   return (
     <div className="case-editor">
       <div className="case-head">
@@ -334,7 +339,15 @@ function CaseSummary({ testCase, onOpen, onRun }: { testCase: TestCase; onOpen: 
       ) : (
         <p className="muted">{t("tests.neverRun")}</p>
       )}
+      <h3 className="case-sub">{t("testData.title")}</h3>
+      <p className="muted small">
+        {testCase.dataSize?.rows ? t("testData.summary", { rows: testCase.dataSize.rows, columns: testCase.dataSize.columns }) : t("testData.none")}{" "}
+        <button className="link-btn" onClick={() => setEditData(true)}>
+          {testCase.dataSize ? t("testData.edit") : t("testData.add")}
+        </button>
+      </p>
       <p className="muted small">{t("tests.howTo")}</p>
+      {editData && <TestDataModal testCaseId={testCase.id} onClose={() => setEditData(false)} onSaved={onChanged} />}
     </div>
   );
 }
@@ -473,15 +486,25 @@ function RunList({ runs, dateTime }: { runs: TestRun[]; dateTime: (d: string | n
             <span className="muted tiny">
               {dateTime(r.startedAt)} · {r.startedBy}
             </span>
+            <a className="tiny" href={reportLink(r.id)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+              📄 {t("tests.report")}
+            </a>
           </summary>
           <table>
             <tbody>
               {r.items.map((i) => (
-                <tr key={i.testCaseId + (i.jobId ?? "")}>
+                <tr key={i.testCaseId + (i.jobId ?? "") + (i.row ?? "")}>
                   <td className={`status-${i.status}`}>{STATUS_ICON[i.status]}</td>
                   <td>
                     {i.path && <span className="muted">{i.path} / </span>}
                     {i.name}
+                    {i.row && (
+                      <span className="muted">
+                        {" "}
+                        · {t("testData.row", { row: i.row })}
+                        {i.rowLabel ? `: ${i.rowLabel}` : ""}
+                      </span>
+                    )}
                     {i.message && <div className="muted tiny">{i.message}</div>}
                   </td>
                   <td>{t(`tests.status.${i.status}` as MessageKey)}</td>

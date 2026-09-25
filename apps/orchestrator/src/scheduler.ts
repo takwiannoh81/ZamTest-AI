@@ -53,6 +53,7 @@ export class Scheduler {
           workspaceId: schedule.workspaceId,
           ...schedule.tests,
           startedBy: `schedule: ${schedule.name}`,
+          source: "schedule",
           targetAgentId: schedule.targetAgentId,
         });
         schedule.lastRunAt = nowIso();
@@ -75,6 +76,7 @@ export class Scheduler {
       this.log(`Schedule "${schedule.name}" queued job ${job.id}`);
     } catch (err) {
       this.log(`Schedule "${schedule.name}" failed to queue a job: ${err instanceof Error ? err.message : err}`);
+      this.store.onScheduleFailed?.(schedule, err instanceof Error ? err.message : String(err));
     }
   }
 }

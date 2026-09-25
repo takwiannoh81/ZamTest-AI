@@ -304,3 +304,32 @@ code, pre, .mono, .log, .log-line { direction: ltr; unicode-bidi: isolate; }
 .check-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; cursor: pointer; }
 .announcement-preview { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin: 10px 0; background: var(--surface-2); }
 .announcement-preview .md p { margin: 8px 0; }
+
+/* Test reports and the audit log */
+.report-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.report-filters .segmented { margin-bottom: 0; }
+.report-filters .search { min-width: 260px; flex: 1; max-width: 420px; }
+.day-chart { display: flex; align-items: flex-end; gap: 2px; height: 140px; padding-top: 6px; }
+.day-col { flex: 1; min-width: 3px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
+.day-bar { display: block; width: 100%; }
+.day-bar.passed { background: var(--ok); border-radius: 2px 2px 0 0; }
+.day-bar.failed { background: var(--danger); border-radius: 2px 2px 0 0; }
+.day-bar.failed + .day-bar.passed { border-radius: 0; }
+.day-axis { display: flex; justify-content: space-between; margin-top: 6px; gap: 8px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; }
+.dot.passed { background: var(--ok); }
+.dot.failed { background: var(--danger); }
+.history { display: inline-flex; gap: 3px; }
+.ok-text { color: var(--ok); }
+.warn-text { color: var(--warn); }
+.bad-text { color: var(--danger); }
+.chip.warn-chip { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); margin-inline-start: 8px; font-size: 11px; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.nowrap { white-space: nowrap; }
+tr.highlight td { background: var(--accent-soft); }
+.masked { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.masked code { word-break: break-all; }
+.card.wide { max-width: none; }
+.report-filters select, .report-filters input[type="date"] { width: auto; }
+.section-head select { width: auto; }
+.tiles + .card.wide { margin-top: 16px; }

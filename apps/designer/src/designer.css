@@ -239,3 +239,17 @@
 .list-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .list-summary { font-size: 13px; margin: 6px 0 10px; }
 .list-hint { margin: 4px 0 10px; }
+
+/* Test data (data-driven tests) */
+.test-data-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.test-data-grid { max-height: 52vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.test-data-grid table { border-collapse: collapse; width: max-content; min-width: 100%; }
+.test-data-grid th, .test-data-grid td { border-bottom: 1px solid var(--border); padding: 3px 4px; text-align: start; vertical-align: top; }
+.test-data-grid thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.test-data-grid input { width: 150px; }
+.test-data-grid input.invalid { border-color: var(--danger); }
+.test-data-grid .col-head { display: flex; gap: 2px; align-items: center; }
+.test-data-grid .row-no { width: 34px; text-align: end; }
+.modal:has(.test-data-grid) { width: min(920px, 100%); }
+.modal .notice { background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; margin: 8px 0; }
+.test-data-grid th { text-transform: none; letter-spacing: normal; }

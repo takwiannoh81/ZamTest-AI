@@ -19,6 +19,8 @@ import { SourceControl } from "./pages/SourceControl";
 import { Settings } from "./pages/Settings";
 import { Users } from "./pages/Users";
 import { Docs } from "./pages/Docs";
+import { TestReports } from "./pages/TestReports";
+import { AuditLog } from "./pages/AuditLog";
 import { AGENT_DOWNLOAD_URL, DESIGNER_URL } from "./links";
 import { atLeast, signOut, useMe } from "./session";
 
@@ -31,10 +33,12 @@ const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolea
   { path: "/jobs", label: "nav.jobs", icon: "▶" },
   { path: "/schedules", label: "nav.schedules", icon: "◷" },
   { path: "/queues", label: "nav.queues", icon: "☷" },
+  { path: "/test-reports", label: "nav.testReports", icon: "📊" },
   { path: "/agents", label: "nav.agents", icon: "⚙" },
   { path: "/assets", label: "nav.assets", icon: "🔑" },
   { path: "/source-control", label: "nav.sourceControl", icon: "⎇", developer: true },
   { path: "/users", label: "nav.users", icon: "👥", admin: true },
+  { path: "/audit", label: "nav.audit", icon: "📜", admin: true },
   { path: "/billing", label: "nav.billing", icon: "💳", admin: true },
   { path: "/security", label: "nav.security", icon: "🛡" },
   { path: "/settings", label: "nav.settings", icon: "☰" },
@@ -61,6 +65,8 @@ export function App() {
   else if (route.startsWith("/queues/")) page = <QueueDetail id={route.slice("/queues/".length)} />;
   else if (route === "/queues") page = <Queues />;
   else if (route === "/processes") page = <Processes />;
+  else if (route === "/test-reports") page = <TestReports query={query} />;
+  else if (route === "/audit") page = <AuditLog />;
   else if (route === "/jobs") page = <Jobs />;
   else if (route === "/schedules") page = <Schedules />;
   else if (route === "/agents") page = <Agents />;

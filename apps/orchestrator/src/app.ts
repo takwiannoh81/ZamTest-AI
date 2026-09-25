@@ -43,7 +43,7 @@ import type { OrchestratorConfig } from "./config.js";
 import { parse } from "./errors.js";
 import { apiTokenPrincipal, effectiveEnv, ENV_NAMES, environmentsOn, isIn, publishWorkflow, registerCicd } from "./cicd.js";
 import { GitRepos } from "./git.js";
-import { registerTestCases } from "./testcases.js";
+import { recordTestResult, registerTestCases } from "./testcases.js";
 import { registerRecordings } from "./recordings.js";
 import type { Recordings } from "./recordings.js";
 import { liveOf, registerAiFix } from "./ai-fix.js";
@@ -51,6 +51,10 @@ import { registerHelp } from "./help.js";
 import { registerOutreach } from "./outreach.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
 import { createJob, finishJob, HttpError, isFinal, jobWaiting, sweep } from "./jobs.js";
+import { Alerts, registerAlerts } from "./alerts.js";
+import { recordAudit, registerAudit } from "./audit.js";
+import { registerReports } from "./reports.js";
+import { parseTestData } from "./testdata.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
 import { checkBots, checkBuilders, checkFeature, currentUsage, FREE_LIMITS, isBuilder, limitsOf, PlanLimitError, PRO, useAi } from "./plans.js";
 import { Scheduler, timeZoneOf, validateCron } from "./scheduler.js";
@@ -84,6 +88,8 @@ export interface AppOptions {
   git?: GitRepos;
   /** Step screenshots of jobs (files next to the database). */
   screenshots?: ScreenshotStore;
+  /** Slack and Teams calls of alerts (tests catch them). */
+  fetch?: typeof fetch;
 }
 
 
@@ -291,6 +297,20 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   const sessionToken = (req: FastifyRequest) => bearer(req) || readCookie(req.headers.cookie, SESSION_COOKIE) || "";
   /** How an approval or key is attributed in the Portal. */
   const who = (p: Principal) => (p.kind === "user" ? `${p.name} <${p.email}>` : p.name);
+  registerAudit(app, { store, me, who });
+  /** Sign-ins, and sign-ins that failed for an account that exists. */
+  const auditSignIn = (user: User, req: FastifyRequest, how: "password" | "code" | "sso", failed?: "password" | "code") =>
+    recordAudit(store, {
+      workspaceId: user.workspaceId,
+      actor: `${user.name} <${user.email}>`,
+      actorKind: "user",
+      ip: req.ip,
+      action: failed ? "session.signInFailed" : "session.signIn",
+      method: req.method,
+      route: req.routeOptions.url ?? "",
+      status: failed ? 401 : 200,
+      details: failed ? { wrong: failed } : { with: how },
+    });
   const limiter = new LoginLimiter();
   const emailSchema = z.string().trim().toLowerCase().email();
   const passwordSchema = z.string().min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`).max(200);
@@ -518,6 +538,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     user.authSource = "sso";
     user.emailVerified = true;
     user.lastLoginAt = nowIso();
+    auditSignIn(user, req, "sso");
     reply.header("set-cookie", sessionCookie(createSession(store, user), cookieOptions));
     store.save();
     return reply.redirect(saved.returnTo ?? `${config.portalUrl}/`);
@@ -547,6 +568,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     const ok = await verifyPassword(body.password, user?.passwordHash);
     if (!user || !ok || user.disabled) {
       limiter.fail(...keys);
+      if (user) auditSignIn(user, req, "password", "password");
       return reply.status(401).send({ error: "Email or password is incorrect", code: "invalid_login" });
     }
     limiter.reset(...keys);
@@ -557,6 +579,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       store.save();
       return { mfaRequired: true, mfaToken };
     }
+    auditSignIn(user, req, "password");
     return signIn(user, reply);
   });
 
@@ -599,9 +622,11 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       challenge.attempts++;
       if (challenge.attempts >= 5) delete store.data.mfaChallenges[challenge.id];
       store.save();
+      auditSignIn(user, req, "code", "code");
       return reply.status(401).send({ error: "That code is not right", code: challenge.attempts >= 5 ? "mfa_expired" : "invalid_code" });
     }
     delete store.data.mfaChallenges[challenge.id];
+    auditSignIn(user, req, "code");
     return signIn(user, reply);
   });
 
@@ -1921,6 +1946,24 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   /* ---------------------------- test cases -------------------------- */
   registerTestCases(app, { store, me, own, mine });
+  registerReports(app, { store, screenshots, me, own });
+
+  /* ------------------------------ alerts ---------------------------- */
+  const alerts = new Alerts({ store, mailer, screenshots, portalUrl: config.portalUrl, designerUrl: config.designerUrl, log: (m) => app.log.warn(m), fetch: options.fetch });
+  store.onJobFinished = (job) => {
+    recordTestResult(store, job);
+    alerts.jobFinished(job);
+  };
+  store.onTestRunFinished = (run) => alerts.testRunFinished(run);
+  store.onAgentOffline = (agent) => alerts.agentOffline(agent);
+  store.onScheduleFailed = (schedule, message) => alerts.scheduleFailed(schedule, message);
+  registerAlerts(app, { store, alerts, me, requireAdmin, emailReady: Boolean(mailer) });
+
+  /** A CSV or Excel file as test data (the Designer's Import). */
+  app.post("/api/test-data/parse", async (req) => {
+    const body = parse(z.object({ fileName: z.string().max(300), base64: z.string().max(8 * 1024 * 1024) }), req.body);
+    return parseTestData(body.fileName, Buffer.from(body.base64, "base64"));
+  });
 
   /* ------------------------ recording from the Designer -------------- */
   recordings = registerRecordings(app, { store, me, own, who, agentFor });

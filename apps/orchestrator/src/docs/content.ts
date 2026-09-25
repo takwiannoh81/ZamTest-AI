@@ -598,10 +598,36 @@ The web and desktop checks wait up to their **Timeout (ms)** (default 5000) for 
 
 ## Running tests
 
-- **▶ Run** in the editor runs one test case.
-- **Run** on a test case, **Run this folder**, or **▷ Run all** runs several at once.
+- **▶ Run** in the editor runs one test case (with test data: its first row).
+- **Run** on a test case, **Run this folder**, or **▷ Run all** runs several at once (with test data: every row).
+- A **schedule** runs test cases at set times, for example every night (see **Processes and schedules**).
 
 Each test runs as a job on an available PC, like any other run. Tests from Run all or Run this folder run one after another as PCs become free.
+
+## Test data: one test, many rows
+
+A data-driven test runs once for each row of a table, for example a login test with 50 user names.
+
+1. In the **Test cases** tab, click the test case. Under **Test data**, click **Add test data**.
+2. Each **column** is a variable. Give columns names such as \`username\` and \`password\` (letters, digits and _, not starting with a digit).
+3. Type the rows, or click **Import CSV or Excel**. The first row of the file names the columns; names with spaces or other characters are changed (\`First name\` becomes \`First_name\`). Up to 1,000 rows.
+4. Click **Save**.
+5. In the test's steps, use a column like any variable: \`{{ username }}\` in **Type Into**, or in a check.
+
+**Run** in the Test cases tab (or a schedule) runs every row; each row is its own job, and the results list each row with its first value, for example "Login · row 2: bob". **▶ Run** in the editor tries the first row only. Every row counts as one run of your plan.
+
+Keep passwords out of test data: anyone who can open the test case can read it. Store them in **Assets** as a credential and use **Get Asset** instead.
+
+## Test reports
+
+Open **Test reports** in the Portal to see how your tests do over time, for the last 7, 30 or 90 days and for all folders or one:
+- **Pass rate**, tests run, failures, **flaky tests** (passed and failed among their last 10 results, often a timing problem), and the average time.
+- **Results per day**, as a chart.
+- Each test with its latest results (green and red dots), pass rate, runs and average time. Sort by the lowest pass rate, the slowest or the most runs.
+- **Most common failures**: alike error messages counted together, with the tests they happened in.
+- **Test runs**: each run with **Open report**, a page to read, print or save as PDF, with the screen of every failed test. **Download** saves it as a file to share.
+
+**Download CSV** saves the numbers per test for a spreadsheet. In the Designer, each test run has a **📄 Report** link too.
 
 ## Test runs and results
 
@@ -618,6 +644,50 @@ Test cases created before steps were available work differently: they pick a **W
 ## Saving tests on your PC
 
 **Export project** on the start screen saves all workflows, test folders and test cases in one file. **Import from PC** brings them back.`,
+  },
+
+  /* ------------------------------------------------------------------ */
+  {
+    id: "alerts-reports-audit",
+    title: "Alerts, test reports and the audit log",
+    summary: "Hear about failures by email, Slack or Teams; follow test results; see who did what",
+    body: `## Alerts
+
+Alerts tell you when something needs attention, so nobody has to watch schedules. Until an admin sets them up, failed runs are emailed to the workspace's admins.
+
+An **Admin** sets them up in the Portal under **Settings**, **Alerts**:
+
+**Send an alert when**
+- **A process run fails**: started by a schedule, the API or someone in the Portal.
+- **Test runs started by a schedule or a CI pipeline**: **Only when a test fails**, **Every time**, or **Never**.
+- **A bot PC goes offline** (off by default: PCs that are switched off at night would send one every evening).
+
+A schedule that could not start at all (for example, no runs left this month) is reported too. Runs you start yourself in the Designer are not reported: you see them as they happen.
+
+**Send it to**
+- **Email addresses**, separated by commas. A team mailbox works too.
+- **Slack**: in Slack, add the **Incoming Webhooks** app to a channel and paste the webhook address (\`https://hooks.slack.com/...\`).
+- **Microsoft Teams**: in the channel's **...** menu, choose **Workflows**, then **Post to a channel when a webhook request is received**, and paste the address it gives you.
+
+Click **Save**, then **Send a test alert** to check each one; the page says whether each was sent. Once saved, a Slack or Teams address is shown shortened: it works like a password. **Remove** takes it away.
+
+An alert says what failed, the error and the step, who started it, the PC and when, with a button to open the job (with its log, screenshots and **Fix with AI**) or the test report. Emails include the screen at the moment it failed. At most 30 alerts are sent per workspace an hour, so a schedule that fails every minute does not flood anyone.
+
+## Test reports
+
+See **Test cases** for **Test reports** in the Portal: pass rate over time, flaky tests, the most common failures, and a report of each test run to print, save as PDF or download.
+
+## Audit log
+
+**Admins** open **Audit log** in the Portal to see who did what, and when:
+- Changes: workflows (created, changed, published, deleted), processes, schedules, assets, users and roles, queues, test cases, PCs approved or removed, install keys, API tokens, security, SSO, alerts, Git and environment settings.
+- Runs started, cancelled or run again, test runs, and imports and exports (including exporting the audit log itself).
+- Sign-ins, how the person signed in (password, code or company sign-in), sign-ins that failed, and sign-outs.
+- Requests someone was not allowed to make (**Not allowed**).
+
+Each line shows when, who, what, which record (its name at that moment), the result and the IP address. The same person saving the same thing several times within 10 minutes is one line with a count (×3). Search by a name, an action or an IP address, pick dates with **From** and **To**, and click **Export CSV** to save what is shown.
+
+Values are never recorded: no passwords, secrets or asset values, only which record changed and a few safe facts (for example a new role). Entries are kept for about a year, up to 20,000 per workspace.`,
   },
 
   /* ------------------------------------------------------------------ */
@@ -720,17 +790,22 @@ The job appears under **Jobs**. With environments on, the dialog says in which e
 
 ## Schedules
 
-Schedules start a process automatically. They are part of the Pro and Enterprise plans. On the Free plan, schedules are kept but paused.
+Schedules start a process, or run test cases, automatically. They are part of the Pro and Enterprise plans. On the Free plan, schedules are kept but paused.
 
 ### Create a schedule
 
 1. In the Portal, open **Schedules** and click **+ New schedule**.
-2. Enter a **Name** and choose the **Process** (**Select a process...**).
-3. Enter a **Cron expression**, or click a preset: **Every 5 minutes**, **Hourly**, **Weekdays 09:00**, **Daily 06:00** or **Mondays 08:00**.
-4. **Time zone**: an IANA name such as \`Europe/London\` or \`Africa/Nairobi\`. Empty means the server's time.
-5. With environments on, choose the **Environment**.
-6. **Run on**: a PC, or **Any available agent**.
-7. Click **Save**.
+2. Enter a **Name**.
+3. In **What to run**, choose:
+   - **A process**, then the process. Only published workflows are listed: open the workflow in the Designer and click **Publish** first.
+   - **Test cases**, then **All test cases**, a 📁 folder (with its subfolders) or one 🧪 test case. It runs like **Run all** in the Designer, and its results appear in the Designer's **Test cases** tab and in **Test reports**.
+4. Enter a **Cron expression**, or click a preset: **Every 5 minutes**, **Hourly**, **Weekdays 09:00**, **Daily 06:00** or **Mondays 08:00**.
+5. **Time zone**: pick one from the list or type one, such as \`America/Chicago\` or \`Africa/Nairobi\`. The usual abbreviations work too: \`CST\`, \`EST\`, \`PST\`. It starts with your computer's time zone. Empty means the server's time.
+6. With environments on, choose the **Environment**.
+7. **Run on**: a PC, or **Any available agent**.
+8. Click **Save**.
+
+When a scheduled run fails, the workspace's admins get an email (see **Alerts, test reports and the audit log**).
 
 ### Cron expressions
 

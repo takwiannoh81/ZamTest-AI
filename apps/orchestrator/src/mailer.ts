@@ -18,6 +18,8 @@ export interface Mail {
   html?: string;
   /** Extra headers, e.g. List-Unsubscribe for one-click unsubscribe. */
   headers?: Record<string, string>;
+  /** Files, e.g. an alert's screenshot (shown in the html with src="cid:<cid>"). */
+  attachments?: Array<{ filename: string; content: Buffer; contentType: string; cid?: string }>;
 }
 
 export interface Mailer {
@@ -35,7 +37,7 @@ export class SmtpMailer implements Mailer {
   }
 
   async send(mail: Mail): Promise<void> {
-    await this.transport.sendMail({ from: this.from, to: mail.to, subject: mail.subject, text: mail.text, html: mail.html, headers: mail.headers });
+    await this.transport.sendMail({ from: this.from, to: mail.to, subject: mail.subject, text: mail.text, html: mail.html, headers: mail.headers, attachments: mail.attachments });
   }
 
   /** Signs in to the SMTP server without sending anything. */

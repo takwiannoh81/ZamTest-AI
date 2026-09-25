@@ -236,7 +236,7 @@ export function hasRole(principal: Principal, needed: Role): boolean {
  * users, backups and removing agents need Admin.
  */
 export function requiredRole(method: string, path: string): Role {
-  if (path.startsWith("/api/users") || path.startsWith("/api/admin/") || path.startsWith("/api/billing/") || path.startsWith("/api/platform/") || path.startsWith("/api/api-tokens")) return "admin";
+  if (path.startsWith("/api/users") || path.startsWith("/api/admin/") || path.startsWith("/api/billing/") || path.startsWith("/api/platform/") || path.startsWith("/api/api-tokens") || path.startsWith("/api/audit")) return "admin";
   if (method === "GET" || method === "HEAD") return "viewer";
   if (method === "POST" && path === "/api/help/chat") return "viewer"; // help is for everyone
   if (path === "/api/auth/me/preferences") return "viewer"; // everyone's own email choices

@@ -397,8 +397,9 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
     await save(override);
     try {
       if (isTest) {
-        // A test case runs as a test run, so its result shows in the Test cases tab too.
-        const testRunResult = await api<{ items: Array<{ jobId?: string; message?: string }> }>("/api/test-runs", { method: "POST", body: { caseIds: [id] } });
+        // A test case runs as a test run, so its result shows in the Test cases tab too. With test data:
+        // the first row here (every row: Run in the Test cases tab, or a schedule).
+        const testRunResult = await api<{ items: Array<{ jobId?: string; message?: string }> }>("/api/test-runs", { method: "POST", body: { caseIds: [id], firstRowOnly: true } });
         const item = testRunResult.items[0];
         if (!item?.jobId) throw new Error(item?.message ?? "Not started");
         setRun({ jobId: item.jobId });

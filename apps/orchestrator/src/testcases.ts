@@ -16,7 +16,7 @@ import { remapCalls } from "./calls.js";
 import { PlanLimitError } from "./plans.js";
 import { newId, nowIso } from "./store.js";
 import type { Store } from "./store.js";
-import type { Job, Principal, TestCase, TestFolder, TestRun, WorkflowDraft } from "./types.js";
+import type { Job, Principal, TestCase, TestData, TestFolder, TestRun, TestRunItem, WorkflowDraft } from "./types.js";
 
 export interface TestCaseContext {
   store: Store;
@@ -46,6 +46,40 @@ export function resultOf(job: Job | undefined, expected?: Record<string, unknown
 const PROJECT_FORMAT = "zamtech-ai-project";
 
 const FolderBody = z.object({ name: z.string().trim().min(1).max(200), parentId: z.string().nullish() });
+
+export const MAX_DATA_ROWS = 1000;
+export const MAX_DATA_COLUMNS = 50;
+/** Test data: column names are variable names; every row has a value for each column. */
+export const TestDataSchema = z
+  .object({
+    columns: z
+      .array(z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, "Column names are variable names: letters, digits and _, not starting with a digit"))
+      .min(1)
+      .max(MAX_DATA_COLUMNS),
+    rows: z.array(z.array(z.string().max(10_000))).max(MAX_DATA_ROWS, `Test data can have up to ${MAX_DATA_ROWS} rows`),
+  })
+  .superRefine((d, ctx) => {
+    if (new Set(d.columns).size !== d.columns.length) ctx.addIssue({ code: "custom", message: "Two columns have the same name" });
+    d.rows.forEach((r, i) => {
+      if (r.length !== d.columns.length) ctx.addIssue({ code: "custom", message: `Row ${i + 1} has ${r.length} values for ${d.columns.length} columns` });
+    });
+  });
+
+/** The row's values by column, as a job's inputs. */
+export function rowInputs(data: TestData, row: string[]): Record<string, string> {
+  return Object.fromEntries(data.columns.map((c, i) => [c, row[i] ?? ""]));
+}
+
+/** The steps with a variable for each column that the job's inputs fill in (as "in" arguments). */
+export function withDataVariables(definition: Workflow, data: TestData): Workflow {
+  const variables = definition.variables.map((v) =>
+    data.columns.includes(v.name) && v.direction !== "in" && v.direction !== "inout" ? { ...v, direction: v.direction === "out" ? ("inout" as const) : ("in" as const) } : v,
+  );
+  for (const column of data.columns) {
+    if (!variables.some((v) => v.name === column)) variables.push({ name: column, type: "string", direction: "in" });
+  }
+  return { ...definition, variables };
+}
 const CaseBody = z.object({
   name: z.string().trim().min(1).max(200),
   folderId: z.string().nullish(),
@@ -55,6 +89,7 @@ const CaseBody = z.object({
   expectedOutputs: z.record(z.unknown()).nullish(),
   targetAgentId: z.string().nullish(),
   description: z.string().max(2000).nullish(),
+  data: TestDataSchema.nullish(),
 });
 
 /** "Invoices / Europe" for a folder. */
@@ -95,7 +130,10 @@ export interface TestSelection {
  * Starts a test run: a job per test case, as "Run all" does. Used by the Designer
  * and by schedules. Throws when there is nothing to run.
  */
-export function startTestRun(store: Store, input: TestSelection & { workspaceId: string; startedBy: string; targetAgentId?: string }): TestRun {
+export function startTestRun(
+  store: Store,
+  input: TestSelection & { workspaceId: string; startedBy: string; targetAgentId?: string; source?: TestRun["source"]; firstRowOnly?: boolean },
+): TestRun {
   const all = Object.values(store.data.testCases).filter((c) => c.workspaceId === input.workspaceId);
   let cases: TestCase[];
   let name: string;
@@ -114,41 +152,89 @@ export function startTestRun(store: Store, input: TestSelection & { workspaceId:
   if (!cases.length) throw new HttpError(400, "There are no test cases to run here");
   cases.sort((a, b) => testPath(store, a.folderId).localeCompare(testPath(store, b.folderId)) || a.name.localeCompare(b.name));
 
-  const run: TestRun = { id: newId("trn"), workspaceId: input.workspaceId, name, startedBy: input.startedBy, startedAt: nowIso(), items: [] };
+  const run: TestRun = { id: newId("trn"), workspaceId: input.workspaceId, name, startedBy: input.startedBy, startedAt: nowIso(), source: input.source ?? "person", items: [] };
+  store.data.testRuns[run.id] = run;
   for (const c of cases) {
-    const item: TestRun["items"][number] = { testCaseId: c.id, name: c.name, path: testPath(store, c.folderId) };
     // Its own steps; older test cases run their workflow.
     const wf: WorkflowDraft | undefined = c.workflowId ? store.data.workflows[c.workflowId] : undefined;
-    const definition = c.definition ?? (wf && wf.workspaceId === run.workspaceId ? wf.definition : undefined);
-    if (!definition) item.error = "Its workflow was deleted";
-    else {
-      try {
-        const agent = input.targetAgentId ?? c.targetAgentId;
-        const job = createJob(store, {
-          workspaceId: run.workspaceId,
-          definition,
-          inputs: c.inputs,
-          targetAgentId: agent && store.data.agents[agent] ? agent : undefined,
-          source: "test",
-          startedBy: `${input.startedBy} (test: ${c.name})`,
-        });
-        item.jobId = job.id;
-        c.lastJobId = job.id;
-      } catch (err) {
-        // Out of runs for the month, a PC in another environment...: this case fails, the others still run.
-        item.error = err instanceof PlanLimitError || err instanceof HttpError ? err.message : String(err);
+    const steps = c.definition ?? (wf && wf.workspaceId === run.workspaceId ? wf.definition : undefined);
+    // Data-driven: once per row of its test data (a try-out in the Designer: the first row).
+    const data = c.data?.rows.length ? c.data : undefined;
+    const rows = data ? (input.firstRowOnly ? data.rows.slice(0, 1) : data.rows) : [undefined];
+    rows.forEach((row, index) => {
+      const item: TestRunItem = { testCaseId: c.id, name: c.name, path: testPath(store, c.folderId) };
+      if (data && row) {
+        item.row = index + 1;
+        item.rowLabel = (row.find((v) => v.trim()) ?? "").slice(0, 60) || undefined;
       }
-    }
-    run.items.push(item);
+      if (!steps) item.error = "Its workflow was deleted";
+      else {
+        try {
+          const agent = input.targetAgentId ?? c.targetAgentId;
+          const job = createJob(store, {
+            workspaceId: run.workspaceId,
+            definition: data ? withDataVariables(steps, data) : steps,
+            inputs: data && row ? { ...c.inputs, ...rowInputs(data, row) } : c.inputs,
+            targetAgentId: agent && store.data.agents[agent] ? agent : undefined,
+            source: "test",
+            startedBy: `${input.startedBy} (test: ${c.name}${item.row ? `, row ${item.row}` : ""})`,
+          });
+          job.testRunId = run.id;
+          if (item.row) job.name = `${c.name} · row ${item.row}`;
+          item.jobId = job.id;
+          c.lastJobId = job.id;
+        } catch (err) {
+          // Out of runs for the month, a PC in another environment...: this one fails, the others still run.
+          item.error = err instanceof PlanLimitError || err instanceof HttpError ? err.message : String(err);
+        }
+      }
+      if (item.error) item.result = { status: "failed", message: item.error, finishedAt: nowIso() };
+      run.items.push(item);
+    });
   }
-  store.data.testRuns[run.id] = run;
-  // Keep the 50 newest runs of each workspace.
+  // Keep the newest runs of each workspace (for reports): up to MAX_TEST_RESULTS tests in all, and always the last 50 runs.
   const runs = Object.values(store.data.testRuns)
     .filter((r) => r.workspaceId === input.workspaceId)
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-  for (const old of runs.slice(50)) delete store.data.testRuns[old.id];
+  let kept = 0;
+  runs.forEach((r, i) => {
+    kept += r.items.length;
+    if (i >= 50 && kept > MAX_TEST_RESULTS) delete store.data.testRuns[r.id];
+  });
   store.save();
+  // Nothing could start: the run is over already.
+  if (run.items.every((i) => i.result)) finishTestRun(store, run);
   return run;
+}
+
+/** Test results kept per workspace (the newest runs'), for reports. */
+export const MAX_TEST_RESULTS = 25_000;
+
+/** Keeps a finished test's result in its test run; ends the run when it was the last. */
+export function recordTestResult(store: Store, job: Job): void {
+  const run = job.testRunId ? store.data.testRuns[job.testRunId] : undefined;
+  if (!run) return;
+  const item = run.items.find((i) => i.jobId === job.id);
+  if (!item || item.result) return;
+  const result = resultOf(job, store.data.testCases[item.testCaseId]?.expectedOutputs);
+  if (!result || result.status === "pending" || result.status === "running") return;
+  const started = job.startedAt ? Date.parse(job.startedAt) : NaN;
+  const finishedAt = job.finishedAt ?? nowIso();
+  item.result = {
+    status: result.status,
+    message: result.message,
+    finishedAt,
+    durationMs: Number.isFinite(started) ? Math.max(0, Date.parse(finishedAt) - started) : undefined,
+  };
+  store.save();
+  if (run.items.every((i) => i.result)) finishTestRun(store, run);
+}
+
+function finishTestRun(store: Store, run: TestRun): void {
+  if (run.finishedAt) return;
+  run.finishedAt = nowIso();
+  store.save();
+  store.onTestRunFinished?.(run);
 }
 
 export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): void {
@@ -159,10 +245,11 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
   const pathOf = (folderId: string | undefined): string => testPath(store, folderId);
   const subtree = (workspaceId: string, folderId: string): Set<string> => folderSubtree(store, workspaceId, folderId);
   /** A test case in the tree: without its steps (open it for those). */
-  const caseView = ({ definition, ...c }: TestCase) => {
+  const caseView = ({ definition, data, ...c }: TestCase) => {
     const job = c.lastJobId ? store.data.jobs[c.lastJobId] : undefined;
     return {
       ...c,
+      dataSize: data ? { columns: data.columns.length, rows: data.rows.length } : undefined,
       steps: definition ? (definition.root.slots?.body ?? []).length : undefined,
       workflowName: c.workflowId ? store.data.workflows[c.workflowId]?.name : undefined,
       last: job ? { jobId: job.id, at: job.finishedAt ?? job.createdAt, ...resultOf(job, c.expectedOutputs) } : undefined,
@@ -230,6 +317,7 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
       expectedOutputs: body.expectedOutputs ?? undefined,
       targetAgentId: body.targetAgentId ?? undefined,
       description: body.description ?? undefined,
+      data: body.data ?? undefined,
       createdAt: nowIso(),
       updatedAt: nowIso(),
     };
@@ -252,6 +340,7 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
     if (body.expectedOutputs !== undefined) testCase.expectedOutputs = body.expectedOutputs ?? undefined;
     if (body.targetAgentId !== undefined) testCase.targetAgentId = body.targetAgentId ?? undefined;
     if (body.description !== undefined) testCase.description = body.description ?? undefined;
+    if (body.data !== undefined) testCase.data = body.data ?? undefined;
     testCase.updatedAt = nowIso();
     store.save();
     return caseView(testCase);
@@ -260,7 +349,7 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
   /** A test case with its steps (the Designer opens it). */
   app.get<{ Params: { id: string } }>("/api/test-cases/:id", async (req) => {
     const testCase = ctx.own(store.data.testCases, req.params.id, "Test case", req);
-    return { ...caseView(testCase), definition: testCase.definition };
+    return { ...caseView(testCase), definition: testCase.definition, data: testCase.data };
   });
 
   app.delete<{ Params: { id: string } }>("/api/test-cases/:id", async (req, reply) => {
@@ -272,9 +361,13 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
 
   /* ---------- running ---------- */
   const runView = (run: TestRun) => {
-    const items = run.items.map((item) => {
+    const items = run.items.map(({ result: kept, ...item }) => {
       const job = item.jobId ? store.data.jobs[item.jobId] : undefined;
-      const result = item.error ? { status: "failed" as const, message: item.error } : (resultOf(job, store.data.testCases[item.testCaseId]?.expectedOutputs) ?? { status: "failed" as const, message: "The job was deleted" });
+      const result = kept
+        ? { status: kept.status, message: kept.message, durationMs: kept.durationMs }
+        : item.error
+          ? { status: "failed" as const, message: item.error }
+          : (resultOf(job, store.data.testCases[item.testCaseId]?.expectedOutputs) ?? { status: "failed" as const, message: "The job was deleted" });
       return { ...item, ...result };
     });
     const count = (s: TestStatus) => items.filter((i) => i.status === s).length;
@@ -284,12 +377,19 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
 
   /** Runs one test case, a folder (with its subfolders), or all of them. */
   app.post("/api/test-runs", async (req, reply) => {
-    const body = parse(z.object({ folderId: z.string().nullish(), caseIds: z.array(z.string()).max(1000).optional() }), req.body ?? {});
+    const body = parse(z.object({ folderId: z.string().nullish(), caseIds: z.array(z.string()).max(1000).optional(), firstRowOnly: z.boolean().optional() }), req.body ?? {});
     // Only this account's cases and folders.
     for (const id of body.caseIds ?? []) ctx.own(store.data.testCases, id, "Test case", req);
     if (body.folderId) ctx.own(store.data.testFolders, body.folderId, "Folder", req);
     const p = ctx.me(req);
-    const run = startTestRun(store, { workspaceId: ws(req), caseIds: body.caseIds, folderId: body.folderId, startedBy: p.email || p.name });
+    const run = startTestRun(store, {
+      workspaceId: ws(req),
+      caseIds: body.caseIds,
+      folderId: body.folderId,
+      startedBy: p.email || p.name,
+      source: p.kind === "api" ? "api" : "person",
+      firstRowOnly: body.firstRowOnly,
+    });
     return reply.status(201).send(runView(run));
   });
 
@@ -313,7 +413,7 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
       testFolders: ctx.mine(store.data.testFolders, req).map(({ id, name, parentId }) => ({ id, name, parentId })),
       testCases: ctx
         .mine(store.data.testCases, req)
-        .map(({ id, name, folderId, definition, workflowId, inputs, expectedOutputs, description }) => ({ id, name, folderId, definition, workflowId, inputs, expectedOutputs, description })),
+        .map(({ id, name, folderId, definition, workflowId, inputs, expectedOutputs, description, data }) => ({ id, name, folderId, definition, workflowId, inputs, expectedOutputs, description, data })),
     };
     return reply.header("content-type", "application/json; charset=utf-8").send(JSON.stringify(data, null, 2));
   });
@@ -336,6 +436,7 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
               inputs: z.record(z.unknown()).default({}),
               expectedOutputs: z.record(z.unknown()).nullish(),
               description: z.string().nullish(),
+              data: TestDataSchema.nullish(),
             }),
           )
           .max(10000)
@@ -381,6 +482,7 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
         inputs: c.inputs,
         expectedOutputs: c.expectedOutputs ?? undefined,
         description: c.description ?? undefined,
+        data: c.data ?? undefined,
         createdAt: nowIso(),
         updatedAt: nowIso(),
       };

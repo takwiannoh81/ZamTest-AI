@@ -28,6 +28,49 @@ export interface Workspace {
   ssoDomains?: string[];
   /** Environments, promotion and Git (Pro and Enterprise). */
   cicd?: WorkspaceCicd;
+  /** Who hears about failed runs, and how. */
+  alerts?: WorkspaceAlerts;
+}
+
+/** Messages when something needs attention: by email, in Slack or in Microsoft Teams. */
+export interface WorkspaceAlerts {
+  /** Email addresses (people of the workspace or a team mailbox). */
+  emails: string[];
+  /** A Slack incoming webhook (https://hooks.slack.com/services/...). Never returned in full. */
+  slackUrl?: string;
+  /** A Microsoft Teams Workflows webhook. Never returned in full. */
+  teamsUrl?: string;
+  /** A process run that failed (started by a schedule, the API or someone in the Portal; not Designer try-outs). */
+  jobFailed: boolean;
+  /** Test runs started by a schedule or a pipeline: only when a test failed, every time, or never. */
+  testRuns: "failures" | "always" | "off";
+  /** A PC stopped answering. */
+  agentOffline: boolean;
+}
+
+/** Something a person (or pipeline) did in the workspace, for its admins. */
+export interface AuditEvent {
+  id: string;
+  workspaceId: string;
+  at: string;
+  /** "Name <email>", a token's name, or the email someone tried to sign in with. */
+  actor: string;
+  actorKind: "user" | "token" | "api" | "open" | "anonymous";
+  ip?: string;
+  /** What was done, e.g. "workflow.publish" (see audit.ts). */
+  action: string;
+  method: string;
+  /** The route, e.g. /api/workflows/:id/publish. */
+  route: string;
+  targetId?: string;
+  /** The record's name when it was done (it may be renamed or deleted later). */
+  target?: string;
+  /** HTTP status: under 400 done, 401/403 refused. */
+  status: number;
+  /** A few safe facts (a new role, on/off); never passwords or secret values. */
+  details?: Record<string, unknown>;
+  /** The same change made again shortly after (e.g. saving a workflow): how many times. */
+  count?: number;
 }
 
 /** Where automations run: built and tried in Development, checked in Test, used for real in Production. */
@@ -243,6 +286,8 @@ export interface Job {
   status: JobStatus;
   source: "manual" | "schedule" | "designer" | "api" | "test";
   scheduleId?: string;
+  /** The test run it is part of. */
+  testRunId?: string;
   targetAgentId?: string;
   agentId?: string;
   /** Only PCs of this environment take the job (Production when unset). */
@@ -472,6 +517,14 @@ export interface TestCase {
   updatedAt: string;
   /** The job of its latest run. */
   lastJobId?: string;
+  /** Test data: the test runs once per row, each column's value in the variable of that name. */
+  data?: TestData;
+}
+
+/** A table of values for a data-driven test. Column names are variable names. */
+export interface TestData {
+  columns: string[];
+  rows: string[][];
 }
 
 /** Running several test cases at once (a folder, or all of them). */
@@ -482,5 +535,23 @@ export interface TestRun {
   name: string;
   startedBy: string;
   startedAt: string;
-  items: Array<{ testCaseId: string; name: string; path: string; jobId?: string; error?: string }>;
+  /** Who started it: a person (Designer), a schedule, or a pipeline (API token). */
+  source?: "person" | "schedule" | "api";
+  items: TestRunItem[];
+  /** Set when every test finished (and the alerts went out). */
+  finishedAt?: string;
+}
+
+export interface TestRunItem {
+  testCaseId: string;
+  name: string;
+  path: string;
+  jobId?: string;
+  /** Could not start (no runs left this month, the workflow was deleted, ...). */
+  error?: string;
+  /** Data-driven: the row of the test data (1 = the first), and its first value. */
+  row?: number;
+  rowLabel?: string;
+  /** Kept when the test finished, so results outlive the job. */
+  result?: { status: "passed" | "failed" | "cancelled"; message?: string; finishedAt: string; durationMs?: number };
 }

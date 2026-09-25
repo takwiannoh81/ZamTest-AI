@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Agent, Announcement, ApiToken, Asset, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, TestCase, TestFolder, TestRun, User, WorkflowDraft, Workspace } from "./types.js";
+import type { Agent, Announcement, ApiToken, Asset, AuditEvent, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, TestCase, TestFolder, TestRun, User, WorkflowDraft, Workspace } from "./types.js";
 import { DEFAULT_WORKSPACE } from "./types.js";
 
 export interface Data {
@@ -36,6 +36,8 @@ export interface Data {
   announcements: Record<string, Announcement>;
   /** Server-made secrets, e.g. for signing unsubscribe links. */
   secrets: { unsubscribe?: string };
+  /** What people did, per workspace (newest last). */
+  audit: Record<string, AuditEvent[]>;
   /** One-time data changes already made. */
   migrations?: string[];
 }
@@ -70,6 +72,7 @@ const empty = (): Data => ({
   helpUsage: {},
   announcements: {},
   secrets: {},
+  audit: {},
 });
 
 /**
@@ -81,6 +84,14 @@ export class Store {
   data: Data;
   private file: string | null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** Told when a job ends (test results, alerts). */
+  onJobFinished?: (job: Job) => void;
+  /** Told when every test of a test run finished. */
+  onTestRunFinished?: (run: TestRun) => void;
+  /** Told when a schedule could not start its run. */
+  onScheduleFailed?: (schedule: Schedule, message: string) => void;
+  /** Told when a PC stops answering. */
+  onAgentOffline?: (agent: Agent) => void;
 
   constructor(dataDir: string | null) {
     this.file = dataDir ? join(dataDir, "db.json") : null;

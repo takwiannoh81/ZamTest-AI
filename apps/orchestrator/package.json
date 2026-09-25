@@ -17,6 +17,7 @@
     "@zamtest/core": "workspace:*",
     "@zamtest/i18n": "workspace:*",
     "croner": "^9.0.0",
+    "exceljs": "^4.4.0",
     "fastify": "^5.2.0",
     "jose": "^6.2.12",
     "nodemailer": "^10.0.10",

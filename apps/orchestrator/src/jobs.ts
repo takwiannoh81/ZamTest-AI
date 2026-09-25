@@ -98,6 +98,11 @@ export function finishJob(store: Store, job: Job, status: Job["status"], error?:
   ]);
   releaseJobItems(store, job.id, `Job ${status} before the item was completed${error ? `: ${error}` : ""}`);
   store.save();
+  try {
+    store.onJobFinished?.(job);
+  } catch (err) {
+    console.error(`After job ${job.id}: ${(err as Error).message}`);
+  }
 }
 
 /** Why a pending job has not started, so the Designer and Portal can say what to do. */
@@ -136,6 +141,11 @@ export function sweep(store: Store, config: OrchestratorConfig, now = Date.now()
     if (silentFor > config.agentOfflineMs && agent.status !== "offline") {
       agent.status = "offline";
       store.save();
+      try {
+        store.onAgentOffline?.(agent);
+      } catch (err) {
+        console.error(`After ${agent.name} went offline: ${(err as Error).message}`);
+      }
     }
   }
   for (const job of Object.values(store.data.jobs)) {
