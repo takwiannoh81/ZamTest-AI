@@ -120,6 +120,31 @@ async function withSelector<T>(
   }
 }
 
+/**
+ * Try-out runs from the Designer leave their visible browser open at the end, so
+ * the person sees where it stopped (a run can be over in a second). It closes
+ * when the next run starts, or after LINGER_MS. Other jobs close their browsers.
+ */
+const LINGER_MS = 10 * 60_000;
+let keepOpen = false;
+const lingering = new Set<Browser>();
+
+/** For the next run: leave its visible browsers open at the end (Designer try-outs). */
+export function keepBrowsersOpen(on: boolean): void {
+  keepOpen = on;
+}
+
+/** Closes browsers an earlier try-out left open; how many there were. */
+export async function closeLingeringBrowsers(): Promise<number> {
+  const open = [...lingering];
+  lingering.clear();
+  await Promise.all(open.map((b) => b.close().catch(() => undefined)));
+  return open.length;
+}
+
+/** Browsers left open by the run that just ended. */
+export const lingeringBrowsers = () => lingering.size;
+
 export const browserHandlers: Record<string, ActionHandler> = {
   "browser.open": async (props, ctx) => {
     const pw = await loadPlaywright();
@@ -138,9 +163,18 @@ export const browserHandlers: Record<string, ActionHandler> = {
     ctx.resources.set(SESSION, session);
     ctx.onDispose(async () => {
       if (ctx.resources.get(SESSION) === session) ctx.resources.delete(SESSION);
+      if (keepOpen && !headless && browser.isConnected()) {
+        lingering.add(browser);
+        setTimeout(() => {
+          if (lingering.delete(browser)) void browser.close().catch(() => undefined);
+        }, LINGER_MS).unref?.();
+        return;
+      }
       await browser.close().catch(() => undefined);
     });
     await page.goto(String(props.url));
+    // In front of the Designer and other windows, so the person sees it work.
+    if (!headless) await page.bringToFront().catch(() => undefined);
     ctx.log("info", `Opened ${kind} at ${props.url}`);
   },
 

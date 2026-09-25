@@ -1,6 +1,6 @@
 import { hostname, platform, release } from "node:os";
 import { parseWorkflow, sleep } from "@zamtest/core";
-import { captureStep } from "@zamtest/actions";
+import { captureStep, closeLingeringBrowsers, keepBrowsersOpen, lingeringBrowsers } from "@zamtest/actions";
 import type { QueueItem } from "@zamtest/actions";
 import type { AfterStepInfo, EngineEvent } from "@zamtest/core";
 import { execute } from "./runtime.js";
@@ -24,9 +24,11 @@ interface JobPayload {
   name: string;
   definition: unknown;
   inputs: Record<string, unknown>;
+  /** designer / test: a try-out from the Designer (its browser stays open at the end). */
+  source?: string;
 }
 
-const VERSION = "0.3.3";
+const VERSION = "0.3.4";
 
 /** A timer that does not keep the process alive. */
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref());
@@ -198,6 +200,10 @@ export class AgentConnection {
     const controller = new AbortController();
     this.current = { id: job.id, controller };
     this.log(`Running job ${job.id} (${job.name})`);
+    // The browser a previous try-out left open closes now; a try-out's own stays open at its end.
+    await closeLingeringBrowsers();
+    const tryOut = job.source === "designer" || job.source === "test";
+    keepBrowsersOpen(tryOut);
 
     let buffer: EngineEvent[] = [];
     const flush = async () => {
@@ -262,6 +268,9 @@ export class AgentConnection {
         },
       });
       ({ status, error, outputs } = result);
+      if (tryOut && lingeringBrowsers() > 0) {
+        buffer.push({ type: "log", time: new Date().toISOString(), level: "info", message: "The browser stays open so you can see where the run ended; it closes when you run again (or after 10 minutes)." } as EngineEvent);
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {

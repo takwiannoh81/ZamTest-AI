@@ -1284,7 +1284,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     agent.currentJobId = job.id;
     store.appendLogs(job.id, [{ time: job.startedAt, level: "info", message: `Started on agent ${agent.name}` }]);
     store.save();
-    return { id: job.id, name: job.name, definition: job.definition, inputs: job.inputs };
+    return { id: job.id, name: job.name, definition: job.definition, inputs: job.inputs, source: job.source };
   });
 
   const agentJob = (req: FastifyRequest<{ Params: { id: string } }>) => {

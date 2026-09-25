@@ -12,7 +12,7 @@ import { systemHandlers } from "./system.js";
 import { verifyHandlers } from "./verify.js";
 
 export { actionTools, getAi } from "./ai.js";
-export { snapshotDom } from "./browser.js";
+export { closeLingeringBrowsers, keepBrowsersOpen, lingeringBrowsers, snapshotDom } from "./browser.js";
 export { captureStep } from "./screenshots.js";
 export type { StepScreenshot } from "./screenshots.js";
 export * as desktop from "./desktop/index.js";
