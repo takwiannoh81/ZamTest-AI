@@ -402,6 +402,8 @@ export const zhCN: LocaleMessages = {
     "connect.system": "系统",
     "connect.code": "代码",
     "connect.checkCode": "请确认那台电脑上的 ZamTech AI 图标显示相同的代码。只批准你自己正在设置的电脑：它将能够使用你工作区中保存的凭据。",
+    "connect.reconnects": "此电脑之前以“{name}”连接过。批准后会恢复该机器人（名称、环境和历史不变），而不是新增一个。",
+    "agents.offlineHelp": "请在此电脑上启动 ZamTech AI 代理（位于系统托盘）。重新安装过？再次批准即可：它会作为此机器人回到这里。",
     "connect.approve": "批准这台电脑",
     "connect.deny": "拒绝",
     "connect.approved": "这台电脑已连接，现在可以运行自动化。",

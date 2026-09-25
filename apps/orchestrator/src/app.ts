@@ -1385,10 +1385,12 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     if (pending >= MAX_PENDING_ENROLLMENTS) return reply.status(503).send({ error: "Too many PCs are waiting for approval; try again later" });
     let approvedBy: string | undefined;
     let approvedFor: string | undefined;
+    let replacesAgentId: string | undefined;
     if (body.installKey) {
       const key = usableInstallKey(body.installKey);
       if (!key) return reply.status(401).send({ error: "The install key is invalid, expired or used up", code: "invalid_install_key" });
-      checkBots(store, key.workspaceId);
+      replacesAgentId = earlierBot(key.workspaceId, body)?.id;
+      if (!replacesAgentId) checkBots(store, key.workspaceId);
       key.uses++;
       approvedBy = `Install key "${key.name}"`;
       approvedFor = key.workspaceId;
@@ -1407,6 +1409,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       status: approvedBy ? "approved" : "pending",
       approvedBy,
       workspaceId: approvedFor,
+      replacesAgentId,
       createdAt: nowIso(),
       expiresAt: new Date(Date.now() + ENROLL_TTL_MS).toISOString(),
     };
@@ -1436,6 +1439,19 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     }
     // The credential is handed over once and only its hash is kept.
     const agentToken = newSecret();
+    const earlier = enrollment.replacesAgentId ? store.data.agents[enrollment.replacesAgentId] : undefined;
+    if (earlier && earlier.workspaceId === (enrollment.workspaceId ?? DEFAULT_WORKSPACE)) {
+      // The same bot again (its name in the Portal, environment and history stay); the old credential stops working.
+      Object.assign(earlier, {
+        os: enrollment.os,
+        version: enrollment.version,
+        tokenHash: hashToken(agentToken),
+        approvedBy: enrollment.approvedBy,
+        lastHeartbeat: nowIso(),
+      });
+      store.save();
+      return { status: "approved", agentId: earlier.id, agentToken, name: earlier.name, approvedBy: earlier.approvedBy, reconnected: true, portalUrl: config.portalUrl, designerUrl: config.designerUrl };
+    }
     const agent: Agent = {
       id: newId("agt"),
       workspaceId: enrollment.workspaceId ?? DEFAULT_WORKSPACE,
@@ -1453,6 +1469,18 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     store.save();
     return { status: "approved", agentId: agent.id, agentToken, name: agent.name, approvedBy: agent.approvedBy, portalUrl: config.portalUrl, designerUrl: config.designerUrl };
   });
+
+  /**
+   * The bot this PC already has in the workspace, when it is connected again (the agent was reinstalled, so
+   * its credential is gone): same computer, not connected now; the one with the same name first.
+   */
+  const earlierBot = (workspaceId: string, e: Pick<Enrollment, "name" | "machine">): Agent | undefined => {
+    const same = (a?: string, b?: string) => (a ?? "").toLowerCase() === (b ?? "").toLowerCase();
+    const candidates = Object.values(store.data.agents).filter(
+      (a) => a.workspaceId === workspaceId && a.tokenHash !== undefined && a.status === "offline" && e.machine && same(a.machine, e.machine),
+    );
+    return candidates.find((a) => same(a.name, e.name)) ?? candidates.sort((a, b) => b.lastHeartbeat.localeCompare(a.lastHeartbeat))[0];
+  };
 
   const enrollmentByCode = (code: string): Enrollment => {
     const wanted = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -1473,7 +1501,11 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   const decide = (req: FastifyRequest<{ Params: { code: string } }>, status: "approved" | "denied") => {
     const enrollment = enrollmentByCode(req.params.code);
     if (enrollment.status !== "pending") throw new HttpError(409, `This PC was already ${enrollment.status}`);
-    if (status === "approved") checkBots(store, ws(req));
+    if (status === "approved") {
+      const earlier = earlierBot(ws(req), enrollment);
+      if (earlier) enrollment.replacesAgentId = earlier.id;
+      else checkBots(store, ws(req));
+    }
     enrollment.status = status;
     enrollment.approvedBy = who(me(req));
     // The PC joins the approver's workspace.
@@ -1486,7 +1518,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     const enrollment = enrollmentByCode(req.params.code);
     // Once decided, a request is only visible in the workspace that decided it.
     if (enrollment.status !== "pending" && enrollment.workspaceId !== ws(req)) throw new HttpError(404, "This code has expired or does not exist.");
-    return publicEnrollment(enrollment);
+    // A PC connected before (reinstalled): approving brings back that bot, not a new one.
+    const earlier = enrollment.status === "pending" ? earlierBot(ws(req), enrollment) : undefined;
+    return { ...publicEnrollment(enrollment), reconnects: earlier?.name };
   });
   app.post<{ Params: { code: string } }>("/api/enrollments/:code/approve", async (req) => decide(req, "approved"));
   app.post<{ Params: { code: string } }>("/api/enrollments/:code/deny", async (req) => decide(req, "denied"));

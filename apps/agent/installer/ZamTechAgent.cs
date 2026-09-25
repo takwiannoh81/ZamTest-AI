@@ -365,7 +365,7 @@ class AgentTray : ApplicationContext {
     // Just installed on a PC that is already connected (an upgrade): open the Designer right away.
     if (firstRun && settings.Complete) {
       this.firstRun = false;
-      OpenSite(true);
+      OpenSite(true, true);
     }
     StartAgent();
   }
@@ -400,10 +400,11 @@ class AgentTray : ApplicationContext {
   }
 
   /// Opens the Designer or the Portal, asking the server where they are if needed.
-  void OpenSite(bool designer) {
+  /// signIn: after setup, the person signs in again (whoever was signed in in the browser is signed out).
+  void OpenSite(bool designer, bool signIn = false) {
     var s = LoadSettings();
     string known = designer ? s.DesignerUrl : s.PortalUrl;
-    if (known.Length > 0) { OpenUrl(known); return; }
+    if (known.Length > 0) { OpenUrl(signIn ? WithSignIn(known) : known); return; }
     string server = s.Server;
     ThreadPool.QueueUserWorkItem(delegate {
       string url = "";
@@ -421,8 +422,12 @@ class AgentTray : ApplicationContext {
       } catch { }
       // Fall back to the usual layout: api.example.com -> designer.example.com / portal.example.com.
       if (url.Length == 0 && server.Contains("://api.")) url = server.Replace("://api.", designer ? "://designer." : "://portal.");
-      if (url.Length > 0) OpenUrl(url);
+      if (url.Length > 0) OpenUrl(signIn ? WithSignIn(url) : url);
     });
+  }
+
+  static string WithSignIn(string url) {
+    return url + (url.Contains("?") ? "&" : "?") + "signin=1";
   }
 
   /* ---------------------------- agent process ---------------------------- */
@@ -697,7 +702,7 @@ class AgentTray : ApplicationContext {
     if (firstRun) {
       firstRun = false;
       // signin=1: the person signs in, not whoever was signed in in that browser.
-      if (s.DesignerUrl.Length > 0 && !approvedInBrowser) OpenUrl(s.DesignerUrl + (s.DesignerUrl.Contains("?") ? "&" : "?") + "signin=1");
+      if (s.DesignerUrl.Length > 0 && !approvedInBrowser) OpenUrl(WithSignIn(s.DesignerUrl));
     }
     announced = false;
     StartAgent();

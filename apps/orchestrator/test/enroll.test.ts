@@ -63,6 +63,40 @@ describe("one sign-in for the Portal and the Designer", () => {
 });
 
 describe("connecting a PC", () => {
+  it("brings back the same bot when a reinstalled PC is approved again, even on a plan with one bot", async () => {
+    await setup({ ZAMTEST_ALLOW_SIGNUP: "true" });
+    // A new customer on the Free plan (1 bot).
+    const signup = await app.inject({ method: "POST", url: "/api/auth/signup", payload: { company: "Small Co", name: "Sam", email: "sam@small.example", password: PASSWORD } });
+    const owner = { cookie: cookieOf(signup), "x-zamtech-client": "portal" };
+    const connect = async () => {
+      const { deviceCode, userCode } = (await app.inject({ method: "POST", url: "/api/agent/enroll/start", payload: pc })).json();
+      const seen = (await app.inject({ method: "GET", url: `/api/enrollments/${userCode}`, headers: owner })).json();
+      const approve = await app.inject({ method: "POST", url: `/api/enrollments/${userCode}/approve`, headers: owner });
+      expect(approve.statusCode, approve.body).toBe(200);
+      return { seen, done: (await app.inject({ method: "POST", url: "/api/agent/enroll/poll", payload: { deviceCode } })).json() };
+    };
+
+    const first = await connect();
+    expect(first.seen.reconnects).toBeUndefined();
+
+    // Uninstalled and installed again: the old credential is gone, the bot is offline, and approving brings it back.
+    const again = await connect();
+    expect(again.seen.reconnects).toBe("finance-pc-01");
+    expect(again.done).toMatchObject({ status: "approved", agentId: first.done.agentId, reconnected: true });
+    const agents = (await app.inject({ method: "GET", url: "/api/agents", headers: owner })).json();
+    expect(agents).toHaveLength(1);
+    // Only the new credential works.
+    const old = await app.inject({ method: "POST", url: "/api/agent/heartbeat", headers: { "x-agent-token": first.done.agentToken }, payload: {} });
+    expect(old.statusCode).toBe(401);
+    const reg = await app.inject({ method: "POST", url: "/api/agent/register", headers: { "x-agent-token": again.done.agentToken }, payload: pc });
+    expect(reg.json()).toEqual({ agentId: first.done.agentId });
+
+    // While it is connected, another PC with the same name is a new bot (and needs a free bot seat).
+    const { userCode } = (await app.inject({ method: "POST", url: "/api/agent/enroll/start", payload: pc })).json();
+    expect((await app.inject({ method: "GET", url: `/api/enrollments/${userCode}`, headers: owner })).json().reconnects).toBeUndefined();
+    expect((await app.inject({ method: "POST", url: `/api/enrollments/${userCode}/approve`, headers: owner })).statusCode).toBe(402);
+  });
+
   it("gives a PC its own credential once a Developer approves it in the Portal", async () => {
     await setup();
     const start = await app.inject({ method: "POST", url: "/api/agent/enroll/start", payload: pc });

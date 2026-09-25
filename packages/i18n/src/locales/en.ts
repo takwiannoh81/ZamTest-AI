@@ -413,6 +413,8 @@ export const en = {
   "connect.system": "System",
   "connect.code": "Code",
   "connect.checkCode": "Check that the ZamTech AI icon on that PC shows the same code. Only approve a PC you are setting up yourself: it will be able to use your workspace's stored credentials.",
+  "connect.reconnects": "This PC was connected before as \"{name}\". Approving brings back that bot (same name, environment and history) instead of adding a new one.",
+  "agents.offlineHelp": "Start the ZamTech AI Agent on this PC (in the system tray). Reinstalled it? Approve it again: it comes back here as this bot.",
   "connect.approve": "Approve this PC",
   "connect.deny": "Decline",
   "connect.approved": "This PC is connected and can now run automations.",

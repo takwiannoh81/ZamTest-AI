@@ -402,6 +402,8 @@ export const ja: LocaleMessages = {
     "connect.system": "システム",
     "connect.code": "コード",
     "connect.checkCode": "その PC の ZamTech AI アイコンに同じコードが表示されていることを確認してください。自分で設定中の PC だけを承認してください。承認した PC はワークスペースに保存された資格情報を使用できます。",
+    "connect.reconnects": "この PC は以前「{name}」として接続されていました。承認すると、新しいボットを追加せずにそのボット（同じ名前・環境・履歴）が戻ります。",
+    "agents.offlineHelp": "この PC で ZamTech AI エージェントを起動してください（システムトレイ）。再インストールした場合は、もう一度承認するとこのボットとして戻ります。",
     "connect.approve": "この PC を承認",
     "connect.deny": "拒否",
     "connect.approved": "この PC は接続され、自動化を実行できるようになりました。",

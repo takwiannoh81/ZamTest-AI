@@ -97,6 +97,7 @@ export function Connect({ query }: { query: string }) {
             {enrollment.status === "pending" && (
               <>
                 <p className="notice">{t("connect.checkCode")}</p>
+                {enrollment.reconnects && <p className="notice">{t("connect.reconnects", { name: enrollment.reconnects })}</p>}
                 {canApprove ? (
                   <div className="actions">
                     <button className="btn" onClick={() => void decide("approve")} disabled={busy}>

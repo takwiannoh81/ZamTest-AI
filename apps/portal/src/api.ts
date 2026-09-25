@@ -165,6 +165,8 @@ export interface Enrollment {
   status: "pending" | "approved" | "denied";
   approvedBy?: string;
   expiresAt: string;
+  /** Connected before (reinstalled): approving brings back this bot instead of adding one. */
+  reconnects?: string;
 }
 
 export interface InstallKey {

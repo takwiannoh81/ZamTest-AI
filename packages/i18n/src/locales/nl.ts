@@ -402,6 +402,8 @@ export const nl: LocaleMessages = {
     "connect.system": "Systeem",
     "connect.code": "Code",
     "connect.checkCode": "Controleer of het ZamTech AI-pictogram op die pc dezelfde code toont. Keur alleen een pc goed die u zelf instelt: die kan de opgeslagen inloggegevens van uw werkruimte gebruiken.",
+    "connect.reconnects": "Deze pc was eerder verbonden als \"{name}\". Goedkeuren brengt die bot terug (zelfde naam, omgeving en geschiedenis) in plaats van een nieuwe toe te voegen.",
+    "agents.offlineHelp": "Start de ZamTech AI-agent op deze pc (in het systeemvak). Opnieuw geïnstalleerd? Keur hem opnieuw goed: hij komt hier terug als deze bot.",
     "connect.approve": "Deze pc goedkeuren",
     "connect.deny": "Weigeren",
     "connect.approved": "Deze pc is verbonden en kan nu automatiseringen uitvoeren.",

@@ -402,6 +402,8 @@ export const af: LocaleMessages = {
     "connect.system": "Stelsel",
     "connect.code": "Kode",
     "connect.checkCode": "Maak seker dat die ZamTech AI-ikoon op daardie rekenaar dieselfde kode wys. Keur net 'n rekenaar goed wat jy self opstel: dit sal jou werkruimte se gestoorde geloofsbriewe kan gebruik.",
+    "connect.reconnects": "Hierdie rekenaar was voorheen gekoppel as \"{name}\". Goedkeuring bring daardie bot terug (dieselfde naam, omgewing en geskiedenis) in plaas daarvan om 'n nuwe een by te voeg.",
+    "agents.offlineHelp": "Begin die ZamTech AI-agent op hierdie rekenaar (in die stelselbalk). Weer geïnstalleer? Keur dit weer goed: dit kom hier terug as hierdie bot.",
     "connect.approve": "Keur hierdie rekenaar goed",
     "connect.deny": "Weier",
     "connect.approved": "Hierdie rekenaar is gekoppel en kan nou outomatiserings uitvoer.",

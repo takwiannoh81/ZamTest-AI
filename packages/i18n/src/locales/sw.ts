@@ -402,6 +402,8 @@ export const sw: LocaleMessages = {
     "connect.system": "Mfumo",
     "connect.code": "Msimbo",
     "connect.checkCode": "Hakikisha ikoni ya ZamTech AI kwenye kompyuta hiyo inaonyesha msimbo uleule. Idhinisha tu kompyuta unayoisanidi mwenyewe: itaweza kutumia vitambulisho vilivyohifadhiwa vya eneo lako la kazi.",
+    "connect.reconnects": "Kompyuta hii iliunganishwa awali kama \"{name}\". Kuidhinisha kunarudisha boti hiyo (jina, mazingira na historia ileile) badala ya kuongeza mpya.",
+    "agents.offlineHelp": "Anzisha wakala wa ZamTech AI kwenye kompyuta hii (kwenye trei ya mfumo). Umesakinisha upya? Idhinisha tena: itarudi hapa kama boti hii.",
     "connect.approve": "Idhinisha kompyuta hii",
     "connect.deny": "Kataa",
     "connect.approved": "Kompyuta hii imeunganishwa na sasa inaweza kuendesha otomatiki.",

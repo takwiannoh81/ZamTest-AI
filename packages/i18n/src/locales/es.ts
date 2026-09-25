@@ -402,6 +402,8 @@ export const es: LocaleMessages = {
     "connect.system": "Sistema",
     "connect.code": "Código",
     "connect.checkCode": "Compruebe que el icono de ZamTech AI en ese PC muestra el mismo código. Apruebe solo un PC que usted mismo esté configurando: podrá usar las credenciales guardadas de su espacio de trabajo.",
+    "connect.reconnects": "Este equipo ya estuvo conectado como \"{name}\". Al aprobarlo vuelve ese bot (mismo nombre, entorno e historial) en lugar de añadir uno nuevo.",
+    "agents.offlineHelp": "Inicia el agente de ZamTech AI en este equipo (en la bandeja del sistema). ¿Lo reinstalaste? Apruébalo de nuevo: vuelve aquí como este bot.",
     "connect.approve": "Aprobar este PC",
     "connect.deny": "Rechazar",
     "connect.approved": "Este PC está conectado y ya puede ejecutar automatizaciones.",

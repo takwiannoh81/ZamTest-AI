@@ -402,6 +402,8 @@ export const de: LocaleMessages = {
     "connect.system": "System",
     "connect.code": "Code",
     "connect.checkCode": "Prüfen Sie, ob das ZamTech-AI-Symbol auf diesem PC denselben Code zeigt. Geben Sie nur einen PC frei, den Sie selbst einrichten: Er kann die gespeicherten Zugangsdaten Ihres Arbeitsbereichs verwenden.",
+    "connect.reconnects": "Dieser PC war schon als „{name}“ verbunden. Die Freigabe bringt diesen Bot zurück (gleicher Name, gleiche Umgebung und Historie), statt einen neuen hinzuzufügen.",
+    "agents.offlineHelp": "Starten Sie den ZamTech AI Agent auf diesem PC (im Infobereich). Neu installiert? Geben Sie ihn erneut frei: Er kommt als dieser Bot hierher zurück.",
     "connect.approve": "Diesen PC freigeben",
     "connect.deny": "Ablehnen",
     "connect.approved": "Dieser PC ist verbunden und kann jetzt Automatisierungen ausführen.",

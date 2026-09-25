@@ -204,6 +204,8 @@ export interface Enrollment {
   approvedBy?: string;
   /** Set when approved: the approver's workspace. */
   workspaceId?: string;
+  /** Set when approved: this PC's earlier bot (reinstalled), which gets the new credential instead of a new bot being added. */
+  replacesAgentId?: string;
   createdAt: string;
   expiresAt: string;
 }

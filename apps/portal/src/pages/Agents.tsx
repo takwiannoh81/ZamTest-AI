@@ -70,6 +70,7 @@ export function Agents() {
                 </td>
                 <td>
                   <Badge status={a.status} />
+                  {a.status === "offline" && <div className="muted small offline-help">{t("agents.offlineHelp")}</div>}
                 </td>
                 {envsOn && (
                   <td>

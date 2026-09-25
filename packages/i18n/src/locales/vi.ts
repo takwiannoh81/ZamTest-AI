@@ -402,6 +402,8 @@ export const vi: LocaleMessages = {
     "connect.system": "Hệ thống",
     "connect.code": "Mã",
     "connect.checkCode": "Hãy kiểm tra biểu tượng ZamTech AI trên máy đó hiển thị cùng mã. Chỉ phê duyệt máy mà chính bạn đang thiết lập: máy đó sẽ dùng được thông tin đăng nhập đã lưu của không gian làm việc.",
+    "connect.reconnects": "Máy tính này đã từng được kết nối với tên \"{name}\". Phê duyệt sẽ đưa bot đó trở lại (cùng tên, môi trường và lịch sử) thay vì thêm bot mới.",
+    "agents.offlineHelp": "Hãy khởi động tác nhân ZamTech AI trên máy tính này (ở khay hệ thống). Đã cài lại? Hãy phê duyệt lại: nó sẽ quay lại đây dưới dạng bot này.",
     "connect.approve": "Phê duyệt máy này",
     "connect.deny": "Từ chối",
     "connect.approved": "Máy này đã được kết nối và có thể chạy tự động hóa.",
