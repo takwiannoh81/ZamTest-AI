@@ -736,6 +736,7 @@ export const nl: LocaleMessages = {
     "indicate.helpDesktop": "Open eerst de toepassing. Om aan te melden of een menu te openen voordat je aanwijst, druk je op F2 om te pauzeren en daarna weer op F2.",
     "indicate.nothing": "Er is geen element gekozen.",
     "indicate.tooOld": "Werk de agent op deze pc bij om elementen aan te wijzen (Downloaden voor Windows in het Portaal).",
+    "indicate.updateForPause": "De agent van deze pc ({version}) heeft nog geen Pauze of \"de stappen hiervoor uitvoeren\". Werk hem bij: Downloaden voor Windows in het Portaal.",
     "indicate.done": "Element ingesteld: {element}",
     "auth.email": "E-mail",
     "auth.password": "Wachtwoord",

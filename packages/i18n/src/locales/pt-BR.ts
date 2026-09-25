@@ -736,6 +736,7 @@ export const ptBR: LocaleMessages = {
     "indicate.helpDesktop": "Abra o aplicativo primeiro. Para fazer login ou abrir um menu antes de indicar, pressione F2 para pausar e depois F2 de novo.",
     "indicate.nothing": "Nenhum elemento foi escolhido.",
     "indicate.tooOld": "Atualize o agente deste PC para indicar elementos (Baixar para Windows no Portal).",
+    "indicate.updateForPause": "O agente deste PC ({version}) ainda não tem Pausar nem \"executar as etapas anteriores\". Atualize-o: Baixar para Windows no Portal.",
     "indicate.done": "Elemento definido: {element}",
     "auth.email": "E-mail",
     "auth.password": "Senha",

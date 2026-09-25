@@ -736,6 +736,7 @@ export const sw: LocaleMessages = {
     "indicate.helpDesktop": "Fungua programu kwanza. Ili kuingia au kufungua menyu kabla ya kuonyesha, bonyeza F2 kusitisha, kisha F2 tena.",
     "indicate.nothing": "Hakuna kipengele kilichochaguliwa.",
     "indicate.tooOld": "Sasisha wakala kwenye kompyuta hii ili kuonyesha vipengele (Pakua kwa Windows kwenye Lango).",
+    "indicate.updateForPause": "Wakala wa kompyuta hii ({version}) bado hana Sitisha wala \"tekeleza hatua zilizotangulia\". Isasishe: Pakua kwa Windows kwenye Lango.",
     "indicate.done": "Kipengele kimewekwa: {element}",
     "auth.email": "Barua pepe",
     "auth.password": "Nenosiri",

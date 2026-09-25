@@ -736,6 +736,7 @@ export const zhCN: LocaleMessages = {
     "indicate.helpDesktop": "请先打开应用程序。如需在指定前登录或打开菜单，按 F2 暂停，完成后再按一次 F2。",
     "indicate.nothing": "未选择任何元素。",
     "indicate.tooOld": "请更新此电脑上的代理以指定元素（在门户中下载 Windows 版）。",
+    "indicate.updateForPause": "此电脑的代理（{version}）尚不支持“暂停”和“先运行此前的步骤”。请更新：在门户中下载 Windows 版。",
     "indicate.done": "已设置元素：{element}",
     "auth.email": "电子邮件",
     "auth.password": "密码",

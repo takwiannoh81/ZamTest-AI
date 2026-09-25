@@ -736,6 +736,7 @@ export const ar: LocaleMessages = {
     "indicate.helpDesktop": "افتح التطبيق أولاً. لتسجيل الدخول أو فتح قائمة قبل التحديد، اضغط F2 للإيقاف المؤقت ثم F2 مرة أخرى.",
     "indicate.nothing": "لم يتم اختيار أي عنصر.",
     "indicate.tooOld": "حدّث الوكيل على هذا الجهاز لتحديد العناصر (التنزيل لنظام Windows في البوابة).",
+    "indicate.updateForPause": "وكيل هذا الجهاز ({version}) لا يدعم الإيقاف المؤقت أو \"تشغيل الخطوات السابقة\" بعد. حدّثه: التنزيل لنظام Windows في البوابة.",
     "indicate.done": "تم تعيين العنصر: {element}",
     "auth.email": "البريد الإلكتروني",
     "auth.password": "كلمة المرور",

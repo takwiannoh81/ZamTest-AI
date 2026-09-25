@@ -8,6 +8,9 @@ interface PickPc {
   id: string;
   name: string;
   canPick?: boolean;
+  /** Pause on the page and "run the steps before first" (agent 0.3.6). */
+  canPickAfterSteps?: boolean;
+  version?: string;
 }
 
 interface Pick {
@@ -67,6 +70,7 @@ export function IndicateModal({
   const [runBefore, setRunBefore] = useState(Boolean(prefix));
   const before = useRef(runBefore);
   before.current = runBefore;
+  const newer = useRef(true);
 
   const start = async (agentId: string) => {
     setError(undefined);
@@ -84,7 +88,7 @@ export function IndicateModal({
       setPick(
         await api<Pick>("/api/recordings", {
           method: "POST",
-          body: { agentId, kind: "pick", target, url, hint, texts, prefix: before.current ? prefix : undefined },
+          body: { agentId, kind: "pick", target, url, hint, texts, prefix: before.current && newer.current ? prefix : undefined },
         }),
       );
     } catch (e) {
@@ -130,6 +134,7 @@ export function IndicateModal({
   };
 
   const pc = pcs?.find((p) => p.id === pcId);
+  newer.current = pc?.canPickAfterSteps !== false;
   return (
     <Modal
       title={t("indicate.title")}
@@ -176,10 +181,11 @@ export function IndicateModal({
           </Field>
           {prefix && (
             <label className="check-row">
-              <input type="checkbox" checked={runBefore} onChange={(e) => setRunBefore(e.target.checked)} />
+              <input type="checkbox" checked={runBefore && pc?.canPickAfterSteps !== false} disabled={pc?.canPickAfterSteps === false} onChange={(e) => setRunBefore(e.target.checked)} />
               <span>{t("indicate.runBefore", { count: prefix.root.slots?.body?.length ?? 0 })}</span>
             </label>
           )}
+          {pc?.canPick && pc.canPickAfterSteps === false && <p className="warn-text tiny">{t("indicate.updateForPause", { version: pc.version || "?" })}</p>}
           {pc && !pc.canPick && <p className="muted tiny">{t("indicate.tooOld")}</p>}
           {pcs && !pcs.length && <p className="muted tiny">{t("record.noPcHelp")}</p>}
           {message && <p className="muted">{message}</p>}

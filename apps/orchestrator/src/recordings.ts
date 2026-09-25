@@ -75,6 +75,8 @@ function atLeast(version: string | undefined, since: number[]): boolean {
 export const canIndicate = (version: string | undefined) => atLeast(version, [0, 3, 1]);
 export const canInspect = (version: string | undefined) => atLeast(version, [0, 3, 2]);
 export const canPick = (version: string | undefined) => atLeast(version, [0, 3, 3]);
+/** Pause on the page, and running the steps before a step first. */
+export const canPickAfterSteps = (version: string | undefined) => atLeast(version, [0, 3, 6]);
 
 /** What the Designer sees while it waits: not the screen image (the server gives that to AI). */
 const view = (r: Recording) => (r.inspected?.screen ? { ...r, inspected: { ...r.inspected, screen: undefined, hasScreen: true } } : r);
@@ -132,6 +134,8 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         canIndicate: canIndicate(a.version),
         canInspect: canInspect(a.version),
         canPick: canPick(a.version),
+        canPickAfterSteps: canPickAfterSteps(a.version),
+        version: a.version,
       }));
   });
 

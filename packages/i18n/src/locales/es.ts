@@ -736,6 +736,7 @@ export const es: LocaleMessages = {
     "indicate.helpDesktop": "Abre primero la aplicación. Para iniciar sesión o abrir un menú antes de indicar, pulsa F2 para pausar y luego F2 otra vez.",
     "indicate.nothing": "No se eligió ningún elemento.",
     "indicate.tooOld": "Actualiza el agente de este equipo para indicar elementos (Descargar para Windows en el Portal).",
+    "indicate.updateForPause": "El agente de este equipo ({version}) aún no tiene Pausa ni \"ejecutar los pasos anteriores\". Actualízalo: Descargar para Windows en el Portal.",
     "indicate.done": "Elemento definido: {element}",
     "auth.email": "Correo electrónico",
     "auth.password": "Contraseña",

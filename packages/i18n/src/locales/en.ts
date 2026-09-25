@@ -773,6 +773,7 @@ export const en = {
   "indicate.helpDesktop": "Open the application first. To log in or open a menu before indicating, press F2 to pause, then F2 again.",
   "indicate.nothing": "No element was picked.",
   "indicate.tooOld": "Update the agent on this PC to indicate elements (Download for Windows in the Portal).",
+  "indicate.updateForPause": "This PC's agent ({version}) does not have Pause or \"run the steps before\" yet. Update it: Download for Windows in the Portal.",
   "indicate.done": "Element set: {element}",
   "auth.email": "Email",
   "auth.password": "Password",

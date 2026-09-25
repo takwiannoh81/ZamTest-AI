@@ -736,6 +736,7 @@ export const ja: LocaleMessages = {
     "indicate.helpDesktop": "先にアプリケーションを開いてください。指定の前にログインやメニュー操作をするには、F2 で一時停止し、もう一度 F2 を押します。",
     "indicate.nothing": "要素は選択されませんでした。",
     "indicate.tooOld": "要素を指定するには、この PC のエージェントを更新してください（ポータルの Windows 用ダウンロード）。",
+    "indicate.updateForPause": "この PC のエージェント（{version}）は、一時停止と「前のステップを実行」にまだ対応していません。ポータルの Windows 用ダウンロードから更新してください。",
     "indicate.done": "要素を設定しました: {element}",
     "auth.email": "メールアドレス",
     "auth.password": "パスワード",

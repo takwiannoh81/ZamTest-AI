@@ -736,6 +736,7 @@ export const vi: LocaleMessages = {
     "indicate.helpDesktop": "Hãy mở ứng dụng trước. Để đăng nhập hoặc mở menu trước khi chỉ định, nhấn F2 để tạm dừng, rồi nhấn F2 lần nữa.",
     "indicate.nothing": "Chưa chọn phần tử nào.",
     "indicate.tooOld": "Hãy cập nhật tác nhân trên máy tính này để chỉ định phần tử (Tải xuống cho Windows trong Cổng thông tin).",
+    "indicate.updateForPause": "Tác nhân của máy tính này ({version}) chưa có Tạm dừng hoặc \"chạy các bước phía trước\". Hãy cập nhật: Tải xuống cho Windows trong Cổng thông tin.",
     "indicate.done": "Đã đặt phần tử: {element}",
     "auth.email": "Email",
     "auth.password": "Mật khẩu",

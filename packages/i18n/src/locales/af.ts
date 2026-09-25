@@ -736,6 +736,7 @@ export const af: LocaleMessages = {
     "indicate.helpDesktop": "Maak eers die toepassing oop. Om aan te meld of 'n kieslys oop te maak voor jy aanwys, druk F2 om te pouse en dan weer F2.",
     "indicate.nothing": "Geen element is gekies nie.",
     "indicate.tooOld": "Werk die agent op hierdie rekenaar by om elemente aan te wys (Laai af vir Windows in die Portaal).",
+    "indicate.updateForPause": "Hierdie rekenaar se agent ({version}) het nog nie Pouse of \"voer die vorige stappe uit\" nie. Werk dit by: Laai af vir Windows in die Portaal.",
     "indicate.done": "Element gestel: {element}",
     "auth.email": "E-pos",
     "auth.password": "Wagwoord",
