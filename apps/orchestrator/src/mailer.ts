@@ -66,6 +66,14 @@ export function readSmtpUrl(value: string | undefined): { url?: string; host?: s
   return { url, host: parsed.hostname };
 }
 
+/** The mailbox the server signs in to for sending (e.g. the company's Google account), from SMTP_URL. */
+export function smtpAccount(value: string | undefined): string | undefined {
+  const { url } = readSmtpUrl(value);
+  if (!url) return undefined;
+  const user = decodeURIComponent(new URL(url).username);
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(user) ? user : undefined;
+}
+
 let lastProblem: string | undefined;
 /** Why email is off although SMTP_URL is set (for the startup log). */
 export const mailerProblem = () => lastProblem;

@@ -35,7 +35,7 @@ import {
 import type { BackupService } from "./backup.js";
 import { PAID_STATUSES } from "./billing.js";
 import type { BillingProvider, SubscriptionState } from "./billing.js";
-import { emails } from "./mailer.js";
+import { emails, smtpAccount } from "./mailer.js";
 import { hashRecoveryCode, newRecoveryCodes, newTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
 import { emailDomain, OidcClient, SsoError } from "./sso.js";
 import type { Mail, Mailer } from "./mailer.js";
@@ -2013,7 +2013,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     me,
     isPlatformAdmin: platformAdmin,
     portalUrl: config.portalUrl,
-    supportEmail: config.supportEmail,
+    // The support address; without one, the company mailbox the server sends email from.
+    supportEmail: config.supportEmail ?? smtpAccount(process.env.SMTP_URL),
     notify: (to, mail) => {
       if (mailer) void mailer.send({ to, ...mail }).catch((err: Error) => app.log.error(`Email to ${to} failed: ${err.message}`));
     },
