@@ -13,6 +13,8 @@ export interface Me {
   kind: "user" | "token" | "open";
   /** Minutes without activity before signing out (0: never). */
   idleTimeoutMinutes?: number;
+  /** Show the "What's new" notice (once). */
+  whatsNew?: boolean;
 }
 
 const ORDER: Role[] = ["viewer", "operator", "developer", "admin"];

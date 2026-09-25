@@ -48,6 +48,13 @@ import { registerRecordings } from "./recordings.js";
 import type { Recordings } from "./recordings.js";
 import { liveOf, registerAiFix } from "./ai-fix.js";
 import { registerAiTests } from "./ai-tests.js";
+
+/**
+ * The "What's new" notice in the Portal and Designer: shown once to each person whose
+ * account existed before it came out. A new release gets a new id (and new texts in
+ * @zamtest/help's WhatsNew).
+ */
+export const WHATS_NEW = { id: "2026-09-25", since: "2026-09-25T00:00:00.000Z" };
 import { registerHelp } from "./help.js";
 import { registerOutreach } from "./outreach.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
@@ -720,12 +727,28 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       restriction: p.restriction,
       // The Portal and Designer warn a minute before signing out for inactivity.
       idleTimeoutMinutes: idleMinutesOf(p.workspaceId),
+      // The "What's new" notice, until the person closes it (not for accounts made after it came out).
+      whatsNew: (() => {
+        const user = p.kind === "user" ? store.data.users[p.id] : undefined;
+        return Boolean(user && !p.restriction && user.whatsNewSeen !== WHATS_NEW.id && user.createdAt < WHATS_NEW.since);
+      })(),
       // Seconds since the last activity in any tab (another app may have been used meanwhile).
       idleSeconds: (() => {
         const session = store.data.sessions[hashToken(sessionToken(req))];
         return session ? Math.max(0, Math.floor((Date.now() - Date.parse(session.lastActiveAt ?? session.createdAt)) / 1000)) : 0;
       })(),
     };
+  });
+
+  /** Closed the "What's new" notice: not again, in the Portal or the Designer, on any PC. */
+  app.post("/api/auth/me/whats-new", async (req) => {
+    const p = me(req);
+    const user = p.kind === "user" ? store.data.users[p.id] : undefined;
+    if (user && user.whatsNewSeen !== WHATS_NEW.id) {
+      user.whatsNewSeen = WHATS_NEW.id;
+      store.save();
+    }
+    return { ok: true };
   });
 
   app.post("/api/auth/password", async (req) => {

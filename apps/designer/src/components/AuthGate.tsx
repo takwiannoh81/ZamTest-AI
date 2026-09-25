@@ -1,4 +1,4 @@
-import { IdleGuard } from "@zamtest/help";
+import { IdleGuard, WhatsNew } from "@zamtest/help";
 import { useMe } from "./session";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -55,6 +55,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     <>
       {children}
       {me && me.kind !== "open" && <IdleGuard minutes={me.idleTimeoutMinutes} check={whoAmI} />}
+      {me?.whatsNew && <WhatsNew api={api} docsHref={`${PORTAL_URL}/#/docs`} />}
       {notice && (
         <div className="toast" role="alert" onClick={() => setNotice(undefined)}>
           {notice.text}

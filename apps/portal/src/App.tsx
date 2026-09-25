@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { IdleGuard } from "@zamtest/help";
+import { IdleGuard, WhatsNew } from "@zamtest/help";
 import type { MessageKey } from "@zamtest/i18n";
 import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
 import { useHashRoute } from "./hooks";
@@ -55,7 +55,13 @@ export function App() {
   const active = NAV.filter((n) => (n.path === "/" ? route === "/" : route.startsWith(n.path))).at(-1)?.path;
 
   if (me?.restriction) return <Restricted me={me} />;
-  const guard = me && me.kind !== "open" ? <IdleGuard minutes={me.idleTimeoutMinutes} check={whoAmI} /> : null;
+  const guard =
+    me && me.kind !== "open" ? (
+      <>
+        <IdleGuard minutes={me.idleTimeoutMinutes} check={whoAmI} />
+        {me.whatsNew && <WhatsNew api={api} docsHref="#/docs" />}
+      </>
+    ) : null;
 
   let page;
   if (route === "/connect") page = <Connect query={query} />;

@@ -380,6 +380,8 @@ export interface User {
   emailVerified?: boolean;
   /** false: no product update emails (unsubscribed). Unset means yes. */
   productUpdates?: boolean;
+  /** The "What's new" notice the person closed last (its id). */
+  whatsNewSeen?: string;
   /** The language last used to sign in (for emails in their language). */
   language?: string;
   /** Two-step sign-in with an authenticator app. */
