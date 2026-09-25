@@ -1304,6 +1304,19 @@ Open them from the tray icon (**Open log**) or the Start menu (**ZamTech AI Agen
 ## Getting help
 
 1. Ask the help assistant in Docs.
-2. Contact your administrator. Give the job's link from the Portal, what you expected, and the agent log if a PC is involved.`,
+2. Contact your administrator. Give the job's link from the Portal, what you expected, and the agent log if a PC is involved.
+3. Report it to the ZamTech AI team (see below).
+
+## Report a problem or suggest an idea
+
+Found something that does not work, or have an idea? Tell the ZamTech AI team directly:
+- In the Portal, open **🐞 Report a problem** in the menu.
+- In the Designer, click **🐞** next to **? Help**.
+
+Choose how bad it is (**It blocks my work**, **Something is wrong**, or **An idea**), say what happened and what you were doing, and add up to 3 screenshots (**Add a screenshot**, or paste one with Ctrl+V). Click **Send report**.
+
+Before you send, **Sent with your report** shows what is included to help find the problem: the app and page you are on, your browser, language, time zone and window size, the recent errors on the page, and your name, email and workspace so the team can answer you. Nothing is sent until you click **Send report**.
+
+**Your reports** lists what you sent, with its status (**Received**, **We are on it**, **Fixed**, **Not planned**) and the team's note. When a problem is fixed, you also get an email. You can send up to 10 reports a day.`,
   },
 ];

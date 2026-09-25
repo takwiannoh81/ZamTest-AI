@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Agent, Announcement, ApiToken, Asset, AuditEvent, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, TestCase, TestFolder, TestRun, User, WorkflowDraft, Workspace } from "./types.js";
+import type { Agent, Announcement, ApiToken, Asset, AuditEvent, BugReport, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, TestCase, TestFolder, TestRun, User, WorkflowDraft, Workspace } from "./types.js";
 import { DEFAULT_WORKSPACE } from "./types.js";
 
 export interface Data {
@@ -38,6 +38,8 @@ export interface Data {
   secrets: { unsubscribe?: string };
   /** What people did, per workspace (newest last). */
   audit: Record<string, AuditEvent[]>;
+  /** Problems reported from the Portal and the Designer. */
+  bugReports: Record<string, BugReport>;
   /** One-time data changes already made. */
   migrations?: string[];
 }
@@ -73,6 +75,7 @@ const empty = (): Data => ({
   announcements: {},
   secrets: {},
   audit: {},
+  bugReports: {},
 });
 
 /**

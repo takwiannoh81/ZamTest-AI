@@ -21,6 +21,7 @@ import { Users } from "./pages/Users";
 import { Docs } from "./pages/Docs";
 import { TestReports } from "./pages/TestReports";
 import { AuditLog } from "./pages/AuditLog";
+import { BugReports, ReportPage } from "./pages/BugReports";
 import { AGENT_DOWNLOAD_URL, DESIGNER_URL } from "./links";
 import { atLeast, signOut, useMe } from "./session";
 
@@ -43,7 +44,9 @@ const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolea
   { path: "/security", label: "nav.security", icon: "🛡" },
   { path: "/settings", label: "nav.settings", icon: "☰" },
   { path: "/docs", label: "nav.docs", icon: "📖" },
+  { path: "/report", label: "nav.report", icon: "🐞" },
   { path: "/customers", label: "nav.customers", icon: "🏢", platform: true },
+  { path: "/bug-reports", label: "nav.bugReports", icon: "🧰", platform: true },
 ];
 
 export function App() {
@@ -73,6 +76,8 @@ export function App() {
   else if (route === "/processes") page = <Processes />;
   else if (route === "/test-reports") page = <TestReports query={query} />;
   else if (route === "/audit") page = <AuditLog />;
+  else if (route === "/report") page = <ReportPage />;
+  else if (route === "/bug-reports") page = <BugReports query={query} />;
   else if (route === "/jobs") page = <Jobs />;
   else if (route === "/schedules") page = <Schedules />;
   else if (route === "/agents") page = <Agents />;

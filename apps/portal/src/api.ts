@@ -1,4 +1,4 @@
-import { idleSeconds } from "@zamtest/help";
+import { idleSeconds, noteProblem } from "@zamtest/help";
 import { currentLocale } from "@zamtest/i18n/react";
 export const BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -43,7 +43,12 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
   const restricted = ["email_unverified", "mfa_setup_required"].includes((data as { code?: string }).code ?? "");
   if (res.status === 403 && !restricted) window.dispatchEvent(new Event(FORBIDDEN_EVENT));
   if (res.status === 402) window.dispatchEvent(new CustomEvent(LIMIT_EVENT, { detail: (data as { error?: string }).error ?? "" }));
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
+  if (!res.ok) {
+    const message = (data as { error?: string }).error ?? `HTTP ${res.status}`;
+    // Kept for a bug report (sent only if the person sends one).
+    if (res.status !== 401) noteProblem(`${init.method ?? "GET"} ${path.split("?")[0]} -> ${res.status}: ${message}`);
+    throw new Error(message);
+  }
   return data as T;
 }
 

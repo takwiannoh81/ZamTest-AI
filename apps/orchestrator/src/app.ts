@@ -48,6 +48,7 @@ import { registerRecordings } from "./recordings.js";
 import type { Recordings } from "./recordings.js";
 import { liveOf, registerAiFix } from "./ai-fix.js";
 import { registerAiTests } from "./ai-tests.js";
+import { BugReportFiles, registerBugReports } from "./bugreports.js";
 
 /**
  * The "What's new" notice in the Portal and Designer: shown once to each person whose
@@ -2005,6 +2006,17 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       }
     },
     me,
+  });
+  registerBugReports(app, {
+    store,
+    files: new BugReportFiles(config.dataDir),
+    me,
+    isPlatformAdmin: platformAdmin,
+    portalUrl: config.portalUrl,
+    supportEmail: config.supportEmail,
+    notify: (to, mail) => {
+      if (mailer) void mailer.send({ to, ...mail }).catch((err: Error) => app.log.error(`Email to ${to} failed: ${err.message}`));
+    },
   });
   registerOutreach(app, {
     store,

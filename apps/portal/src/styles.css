@@ -333,3 +333,16 @@ tr.highlight td { background: var(--accent-soft); }
 .report-filters select, .report-filters input[type="date"] { width: auto; }
 .section-head select { width: auto; }
 .tiles + .card.wide { margin-top: 16px; }
+
+/* Bug reports (platform owner) */
+.bug-detail { padding: 8px 4px 12px; display: flex; flex-direction: column; gap: 8px; }
+.bug-detail h4 { margin: 6px 0 0; font-size: 13px; }
+.bug-text { white-space: pre-wrap; margin: 0; }
+.bug-images { display: flex; gap: 8px; flex-wrap: wrap; }
+.bug-images img { max-width: 260px; max-height: 170px; border: 1px solid var(--border); border-radius: 6px; }
+.bug-context { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font-size: 12.5px; margin: 0; }
+.bug-context dt { color: var(--muted); }
+.bug-context dd { margin: 0; word-break: break-word; }
+.bug-answer { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+.bug-answer select { width: auto; }
+.bug-answer textarea { flex: 1; min-width: 220px; }

@@ -485,6 +485,40 @@ export interface QueueItem {
   finishedAt?: string;
 }
 
+/** A problem someone reported from the Portal or the Designer (for the platform owner). */
+export interface BugReport {
+  id: string;
+  workspaceId: string;
+  workspaceName: string;
+  userId?: string;
+  /** "Name <email>" (or the token's name). */
+  reporter: string;
+  /** Where to tell them it is fixed. */
+  email?: string;
+  kind: "blocking" | "annoying" | "suggestion";
+  what: string;
+  doing?: string;
+  /** Sent by the app with the report (shown to the person before sending). */
+  context: {
+    app: "portal" | "designer";
+    page?: string;
+    where?: string;
+    userAgent?: string;
+    language?: string;
+    timeZone?: string;
+    screen?: string;
+    errors: Array<{ time: string; message: string }>;
+    ip?: string;
+  };
+  /** Screenshots, stored as files (see bugreports.ts). */
+  images: Array<{ name: string; type: string; ext: string; bytes: number }>;
+  status: "new" | "investigating" | "fixed" | "wontfix";
+  /** The team's note (shown to the reporter). */
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** A folder of test cases (folders nest). */
 export interface TestFolder {
   id: string;

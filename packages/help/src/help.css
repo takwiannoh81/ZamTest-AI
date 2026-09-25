@@ -75,3 +75,30 @@
 .whats-new-icon { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: var(--accent-soft); font-size: 17px; }
 .whats-new-note { margin: 14px 0 0; font-size: 13px; background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; }
 .modal.whats-new .modal-foot a.btn-ghost { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* Report a problem */
+.report-problem { display: flex; flex-direction: column; gap: 12px; max-width: 720px; }
+.report-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.report-kinds button { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13.5px; cursor: pointer; }
+.report-kinds button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.report-field { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; font-weight: 600; }
+.report-field textarea { font-weight: normal; width: 100%; box-sizing: border-box; }
+.report-pictures { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.report-thumbs { display: flex; gap: 8px; width: 100%; }
+.report-thumbs figure { position: relative; margin: 0; }
+.report-thumbs img { width: 120px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+.report-thumbs .icon-btn { position: absolute; top: 2px; inset-inline-end: 2px; background: var(--surface); border-radius: 50%; }
+.report-details { font-size: 13px; color: var(--muted); }
+.report-details summary { cursor: pointer; }
+.report-details ul { margin: 6px 0; padding-inline-start: 20px; }
+.report-errors { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; font-size: 12px; white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
+.report-sent { background: var(--accent-soft); border-radius: 10px; padding: 12px 14px; }
+.report-sent p { margin: 0 0 8px; }
+.report-mine h3 { font-size: 15px; margin: 8px 0; }
+.report-mine ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.report-mine li { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.report-status { flex: none; font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 2px 8px; background: var(--surface-2); }
+.report-status.status-fixed { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.report-status.status-investigating { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.report-note { margin-top: 4px; font-size: 13px; }
+.report-problem > .btn, .report-sent .btn-ghost { align-self: flex-start; }

@@ -81,6 +81,7 @@ const ACTIONS: Record<string, string> = {
   "POST /api/admin/backup": "backup.create",
   "POST /api/billing/checkout": "billing.checkout",
   "GET /api/audit/export.csv": "audit.export",
+  "POST /api/bug-reports": "bugReport.create",
   // Sign-ins are recorded where they happen (app.ts), with how the person signed in.
   "POST /api/auth/logout": "session.signOut",
   "POST /api/auth/password": "account.changePassword",
