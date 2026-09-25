@@ -7,6 +7,7 @@ import { api, BASE } from "../api";
 import type { Agent, WorkflowDraft, WorkflowSummary } from "../api";
 import { ErrorBanner, Field } from "./ui";
 import { TestDataModal } from "./TestDataModal";
+import { GenerateTestsModal } from "./GenerateTestsModal";
 
 type Status = "pending" | "running" | "passed" | "failed" | "cancelled";
 
@@ -76,6 +77,7 @@ export function TestCases({ workflows, onOpen }: { workflows: WorkflowSummary[];
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<Menu>();
   const [error, setError] = useState<string>();
+  const [generate, setGenerate] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -242,6 +244,9 @@ export function TestCases({ workflows, onOpen }: { workflows: WorkflowSummary[];
         <button className="btn-ghost" onClick={() => void newCase(folderIdOf(selected))}>
           + {t("tests.newCase")}
         </button>
+        <button className="btn-ghost ai" onClick={() => setGenerate(true)}>
+          ✨ {t("genTests.button")}
+        </button>
         <span className="muted tiny">{t("tests.rightClickHint")}</span>
       </div>
       <ErrorBanner error={error} />
@@ -271,6 +276,21 @@ export function TestCases({ workflows, onOpen }: { workflows: WorkflowSummary[];
           )}
         </section>
       </div>
+      {generate && (
+        <GenerateTestsModal
+          workflows={workflows}
+          cases={cases}
+          folders={folders}
+          folderId={folderIdOf(selected)}
+          onClose={() => setGenerate(false)}
+          onCreated={(ids, runNow) =>
+            void act(async () => {
+              if (runNow && ids.length) await api("/api/test-runs", { method: "POST", body: { caseIds: ids } });
+              setSelected({ kind: "root" });
+            })
+          }
+        />
+      )}
       {menu && (
         <ul className="context-menu" style={{ top: menu.y, left: menu.x }} onClick={(e) => e.stopPropagation()} role="menu">
           {menu.target.kind !== "case" && (

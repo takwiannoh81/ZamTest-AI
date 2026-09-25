@@ -22,7 +22,7 @@ export interface Recording {
   workspaceId: string;
   agentId: string;
   agentName: string;
-  kind: "web" | "desktop" | "indicate" | "inspect" | "pick";
+  kind: "web" | "desktop" | "indicate" | "inspect" | "pick" | "explore";
   /** Web: where the browser starts. */
   url?: string;
   /** Desktop: the program to start and record (unset: whatever application is used). */
@@ -49,12 +49,18 @@ export interface Recording {
   /** Pick: an element (default), or something inside the items of a list (items). */
   mode?: "element" | "inside";
   items?: string;
-  /** Pick: the workflow's steps before the step, run first on the PC (open the page, log in). */
+  /** Pick: the workflow's steps before the step, run first on the PC (open the page, log in). Explore: the sign-in steps. */
   prefix?: Workflow;
+  /** Explore: the person signs in first, then clicks Start exploring. */
+  waitForPerson?: boolean;
+  /** Explore: how many pages to visit. */
+  maxPages?: number;
+  /** Explore: the pages visited (each with its screen), for AI to write tests from. */
+  explored?: { pages: ExploredPage[] };
   /** Pick: the banner's texts in the person's language. */
   texts?: Record<string, string>;
-  /** Pick: running the steps before, or waiting for the click. */
-  stage?: "prefix" | "picking";
+  /** Pick: running the steps before, or waiting for the click. Explore: waiting for the person, or visiting pages. */
+  stage?: "prefix" | "picking" | "waiting" | "exploring";
   /** Pick: why the steps before did not all run. */
   note?: string;
   status: "pending" | "recording" | "stopping" | "done" | "failed" | "cancelled";
@@ -65,6 +71,35 @@ export interface Recording {
   variables: VariableDef[];
   error?: string;
 }
+
+/** A page the agent visited while exploring (see the agent's explorer.ts). */
+export interface ExploredPage {
+  url: string;
+  title: string;
+  beforeSignIn?: boolean;
+  headings: string[];
+  text: string;
+  fields: Array<{ selector: string; description: string; type: string; required?: boolean; options?: string[] }>;
+  buttons: Array<{ selector: string; description: string }>;
+  links: Array<{ selector: string; text: string; href: string }>;
+  tables: Array<{ selector: string; headers: string[]; rows: number }>;
+  screen?: string;
+}
+
+const ExploredPageSchema = z.object({
+  url: z.string().max(4000),
+  title: z.string().max(1000),
+  beforeSignIn: z.boolean().optional(),
+  headings: z.array(z.string().max(500)).max(50),
+  text: z.string().max(10_000),
+  fields: z
+    .array(z.object({ selector: z.string().max(2000), description: z.string().max(500), type: z.string().max(50), required: z.boolean().optional(), options: z.array(z.string().max(200)).max(30).optional() }))
+    .max(100),
+  buttons: z.array(z.object({ selector: z.string().max(2000), description: z.string().max(500) })).max(100),
+  links: z.array(z.object({ selector: z.string().max(2000), text: z.string().max(500), href: z.string().max(4000) })).max(120),
+  tables: z.array(z.object({ selector: z.string().max(2000), headers: z.array(z.string().max(200)).max(30), rows: z.number().int() })).max(20),
+  screen: z.string().max(3_000_000).optional(),
+});
 
 const ACTIVE: Recording["status"][] = ["pending", "recording", "stopping"];
 /** A PC that has not taken a pending recording in this long is not coming. */
@@ -87,9 +122,16 @@ export const canPick = (version: string | undefined) => atLeast(version, [0, 3, 
 export const canPickAfterSteps = (version: string | undefined) => atLeast(version, [0, 3, 6]);
 /** "Any item like this one": finds the list an element belongs to, and runs steps on list items. */
 export const canPickLists = (version: string | undefined) => atLeast(version, [0, 3, 7]);
+/** Exploring a website for AI to write its tests. */
+export const canExplore = (version: string | undefined) => atLeast(version, [0, 3, 8]);
 
 /** What the Designer sees while it waits: not the screen image (the server gives that to AI). */
-const view = (r: Recording) => (r.inspected?.screen ? { ...r, inspected: { ...r.inspected, screen: undefined, hasScreen: true } } : r);
+const view = (r: Recording) => ({
+  ...r,
+  inspected: r.inspected?.screen ? { ...r.inspected, screen: undefined, hasScreen: true } : r.inspected,
+  // The pages found, without their screens.
+  explored: r.explored ? { pages: r.explored.pages.map((p) => ({ url: p.url, title: p.title, beforeSignIn: p.beforeSignIn })) } : undefined,
+});
 
 export interface RecordingContext {
   store: Store;
@@ -146,6 +188,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         canPick: canPick(a.version),
         canPickAfterSteps: canPickAfterSteps(a.version),
         canPickLists: canPickLists(a.version),
+        canExplore: canExplore(a.version),
         version: a.version,
       }));
   });
@@ -154,7 +197,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     const body = parse(
       z.object({
         agentId: z.string().min(1),
-        kind: z.enum(["web", "desktop", "indicate", "inspect", "pick"]),
+        kind: z.enum(["web", "desktop", "indicate", "inspect", "pick", "explore"]),
         url: z.string().trim().max(2000).optional(),
         program: z.string().trim().max(500).optional(),
         attach: z.boolean().optional(),
@@ -165,6 +208,8 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         texts: z.record(z.string().max(300)).optional(),
         mode: z.enum(["element", "inside"]).optional(),
         items: z.string().max(4000).optional(),
+        waitForPerson: z.boolean().optional(),
+        maxPages: z.number().int().min(1).max(20).optional(),
       }),
       req.body,
     );
@@ -178,6 +223,11 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     }
     if (body.kind === "pick" && !canPick(agent.version)) {
       throw new HttpError(409, `Update the ZamTech AI agent on ${agent.name} to indicate elements (it has version ${agent.version || "unknown"})`);
+    }
+    if (body.kind === "explore") {
+      if (!canExplore(agent.version)) throw new HttpError(409, `Update the ZamTech AI agent on ${agent.name} to 0.3.8 or newer to explore websites (it has version ${agent.version || "unknown"})`);
+      if (!body.url && !body.prefix) throw new HttpError(400, "Enter the address of the website to test");
+      if (body.url && !/^(https?|file):\/\//i.test(body.url)) body.url = `https://${body.url}`;
     }
     if (body.kind === "pick" && body.target === "web" && body.url && !/^(https?|file):\/\//i.test(body.url)) body.url = `https://${body.url}`;
     if (body.kind === "web") {
@@ -195,10 +245,12 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       agentId: agent.id,
       agentName: agent.name,
       kind: body.kind,
-      url: body.kind === "web" || (body.kind === "pick" && body.target === "web") ? body.url || "about:blank" : undefined,
+      url: body.kind === "web" || body.kind === "explore" || (body.kind === "pick" && body.target === "web") ? body.url || "about:blank" : undefined,
       target: body.kind === "pick" ? body.target ?? "desktop" : undefined,
-      prefix: body.kind === "pick" && body.prefix?.root.slots?.body?.length ? (body.prefix as Workflow) : undefined,
-      texts: body.kind === "pick" ? body.texts : undefined,
+      prefix: (body.kind === "pick" || body.kind === "explore") && body.prefix?.root.slots?.body?.length ? (body.prefix as Workflow) : undefined,
+      texts: body.kind === "pick" || body.kind === "explore" ? body.texts : undefined,
+      waitForPerson: body.kind === "explore" ? body.waitForPerson || undefined : undefined,
+      maxPages: body.kind === "explore" ? (body.maxPages ?? 8) : undefined,
       mode: body.kind === "pick" ? body.mode : undefined,
       items: body.kind === "pick" ? body.items : undefined,
       program: body.kind === "desktop" ? body.program || undefined : undefined,
@@ -245,12 +297,28 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     if (!next) return reply.status(204).send();
     next.status = "recording";
     next.updatedAt = nowIso();
-    return { id: next.id, kind: next.kind, url: next.url, program: next.program, attach: next.attach, hint: next.hint, selector: next.selector, target: next.target, prefix: next.prefix, texts: next.texts, mode: next.mode, items: next.items };
+    return {
+      id: next.id,
+      kind: next.kind,
+      url: next.url,
+      program: next.program,
+      attach: next.attach,
+      hint: next.hint,
+      selector: next.selector,
+      target: next.target,
+      prefix: next.prefix,
+      texts: next.texts,
+      mode: next.mode,
+      items: next.items,
+      waitForPerson: next.waitForPerson,
+      maxPages: next.maxPages,
+    };
   });
 
   /** The steps so far (all of them each time); the answer says whether to stop. */
   // Inspect answers carry a screen image and a long controls list.
-  app.post<{ Params: { id: string } }>("/api/agent/recordings/:id/progress", { bodyLimit: 12 * 1024 * 1024 }, async (req) => {
+  // Explore answers carry a screen per page.
+  app.post<{ Params: { id: string } }>("/api/agent/recordings/:id/progress", { bodyLimit: 40 * 1024 * 1024 }, async (req) => {
     const agent = ctx.agentFor(req);
     const r = recordings.get(req.params.id);
     if (!r || r.agentId !== agent.id) throw new HttpError(404, "Recording not found");
@@ -273,8 +341,9 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
             inside: z.object({ matches: z.number().int(), total: z.number().int() }).optional(),
           })
           .optional(),
-        stage: z.enum(["prefix", "picking"]).optional(),
+        stage: z.enum(["prefix", "picking", "waiting", "exploring"]).optional(),
         note: z.string().max(2000).optional(),
+        explored: z.object({ pages: z.array(ExploredPageSchema).max(25) }).optional(),
       }),
       req.body,
     );
@@ -285,7 +354,8 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       if (body.inspected) r.inspected = body.inspected;
       if (body.element) r.element = body.element;
       if (body.stage) r.stage = body.stage;
-      if (body.note) r.note = body.note;
+      if (body.note !== undefined) r.note = body.note;
+      if (body.explored) r.explored = body.explored as { pages: ExploredPage[] };
       if (body.error) {
         r.status = "failed";
         r.error = body.error;

@@ -9,6 +9,8 @@ import type { DiagnoseInput } from "./diagnose.js";
 import { answerHelp, translateDoc } from "./help.js";
 import type { DocText, HelpChatInput } from "./help.js";
 import type { GenerateWorkflowInput } from "./workflow-gen.js";
+import { generateTests } from "./test-gen.js";
+import type { GenerateTestsInput } from "./test-gen.js";
 
 export * from "./client.js";
 export type { AgentTool, RunAgentInput, RunAgentResult } from "./agent.js";
@@ -16,6 +18,8 @@ export type { DesktopSelectorCandidate, SelectorCandidate, SelectorSuggestion } 
 export type { GenerateWorkflowInput, GenerateWorkflowResult } from "./workflow-gen.js";
 export type { DiagnoseInput, Diagnosis, Fix } from "./diagnose.js";
 export type { DocText, HelpChatInput } from "./help.js";
+export type { GenerateTestsInput, GenerateTestsResult, GeneratedTest, SitePage } from "./test-gen.js";
+export { checkTests } from "./test-gen.js";
 
 /** Facade over every AI capability of the platform. */
 export class ZamAI {
@@ -43,6 +47,11 @@ export class ZamAI {
 
   generateWorkflow(input: GenerateWorkflowInput) {
     return generateWorkflow(this.client, input);
+  }
+
+  /** Writes test cases for a website from the pages the agent explored. */
+  generateTests(input: GenerateTestsInput) {
+    return generateTests(this.client, input);
   }
 
   /** Finds why a run failed, from its evidence, and proposes fixes. */

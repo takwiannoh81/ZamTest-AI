@@ -15,11 +15,13 @@ import type { RawDesktopEvent } from "./desktop-recorder.js";
 import { eventsToWorkflow, startRecording } from "./recorder.js";
 import { pickWebElement } from "./picker.js";
 import type { PickedElement, PickTexts } from "./picker.js";
+import { exploreSite } from "./explorer.js";
+import type { ExploredPage, ExploreTexts } from "./explorer.js";
 import { takeLingeringBrowser } from "@zamtest/actions";
 
 export interface RemoteRecordingRequest {
   id: string;
-  kind: "web" | "desktop" | "indicate" | "inspect" | "pick";
+  kind: "web" | "desktop" | "indicate" | "inspect" | "pick" | "explore";
   url?: string;
   program?: string;
   /** Desktop: the program is already open (it was indicated): record it without starting another one. */
@@ -37,6 +39,10 @@ export interface RemoteRecordingRequest {
   /** Pick: an element (default), or something inside the items of a list (items: the list). */
   mode?: "element" | "inside";
   items?: string;
+  /** Explore: let the person sign in first (they click Start exploring). */
+  waitForPerson?: boolean;
+  /** Explore: how many pages to visit. */
+  maxPages?: number;
 }
 
 /** Inspect: what is on the PC now. */
@@ -66,10 +72,12 @@ export interface RecordingProgress {
   inspected?: Inspected;
   /** Pick: the element indicated (unset: Esc, closed, or no click in time). */
   element?: PickedElement;
-  /** Pick: running the steps before, or waiting for the click. */
-  stage?: "prefix" | "picking";
-  /** Pick: why the steps before did not all run (picking starts anyway). */
+  /** Pick: running the steps before, or waiting for the click. Explore: waiting for the person, or visiting pages. */
+  stage?: "prefix" | "picking" | "waiting" | "exploring";
+  /** Pick: why the steps before did not all run (picking starts anyway). Explore: the page being visited. */
   note?: string;
+  /** Explore: the pages visited. */
+  explored?: { pages: ExploredPage[] };
 }
 
 /** Runs a workflow on this PC (the steps before a step, for picking); its browser stays open. */
@@ -89,6 +97,7 @@ export async function runRemoteRecording(request: RemoteRecordingRequest, report
     else if (request.kind === "indicate") await indicate(request, report);
     else if (request.kind === "inspect") await inspect(request, report);
     else if (request.kind === "pick") await pick(request, report, runPrefix);
+    else if (request.kind === "explore") await explore(request, report, runPrefix);
     else await recordDesktop(request, report);
     log(`Recording ${request.id} finished`);
   } catch (err) {
@@ -208,6 +217,42 @@ async function pick(request: RemoteRecordingRequest, report: ReportProgress, run
     }
   }
   await report({ steps: [], variables: [], done: true, element, note });
+}
+
+async function explore(request: RemoteRecordingRequest, report: ReportProgress, runPrefix?: RunPrefix) {
+  let note: string | undefined;
+  let attachTo: Awaited<ReturnType<typeof takeLingeringBrowser>>;
+  // The sign-in steps first; exploring goes on in their browser.
+  if (request.prefix && runPrefix) {
+    await report({ steps: [], variables: [], stage: "prefix" });
+    const run = await runPrefix(request.prefix);
+    if (run.status !== "succeeded") note = run.error ?? run.status;
+    attachTo = takeLingeringBrowser();
+  }
+  let stopped = false;
+  let stage: RecordingProgress["stage"] = request.waitForPerson ? "waiting" : "exploring";
+  let status = note;
+  const ask = () => void report({ steps: [], variables: [], stage, note: status }).then((r) => (stopped ||= r.stop), () => undefined);
+  ask();
+  const timer = setInterval(ask, 2000);
+  try {
+    const pages = await exploreSite(request.url ?? "about:blank", {
+      attachTo,
+      waitForPerson: request.waitForPerson,
+      texts: request.texts as Partial<ExploreTexts> | undefined,
+      maxPages: request.maxPages,
+      stopped: () => stopped,
+      onProgress: (p) => {
+        stage = p.stage;
+        status = p.stage === "exploring" ? `${p.page}: ${p.title ?? ""}` : note;
+        ask();
+      },
+    });
+    clearInterval(timer);
+    await report({ steps: [], variables: [], done: true, explored: { pages }, note });
+  } finally {
+    clearInterval(timer);
+  }
 }
 
 async function recordDesktop(request: RemoteRecordingRequest, report: ReportProgress) {

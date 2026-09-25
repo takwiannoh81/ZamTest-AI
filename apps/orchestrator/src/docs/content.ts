@@ -349,6 +349,10 @@ AI knows the names of your assets (never their values), so it can use the right 
 
 For a Windows application, open **Use an application on my PC (optional)** in the same window. Click **◎ Indicate**, then click the application on your PC. AI reads its real buttons and fields ("AI will use ... as it is on ... (N controls)") and builds the steps with real selectors. The application must be open on that PC.
 
+## ✨ Generate tests with AI
+
+In the **Test cases** tab, **✨ Generate tests with AI** writes a whole set of test cases for a website: a bot PC looks through the site's pages, and AI writes tests from what is really there. See **Test cases** for the steps.
+
 ## ✨ Fix with AI
 
 There are two kinds:
@@ -584,6 +588,23 @@ Each test case shows a dot with its last result: **Passed**, **Failed**, **Runni
 4. Add checks from the **Verify** group.
 5. To test one of your workflows, add **Call Workflow**, choose it, and give it inputs. Then check its outputs with **Verify Condition**.
 6. Click **Save**, then **▶ Run**.
+
+## Generate tests with AI
+
+AI can write a website's test cases for you. It looks at the real site through one of your bot PCs, so it also works for sites only your network can reach (for example \`http://192.168.1.106\`). It needs the ZamTech AI Agent 0.3.8 or newer on that PC.
+
+1. In the **Test cases** tab, click **✨ Generate tests with AI**.
+2. Enter the **Website address**.
+3. Choose how to handle **Signing in**:
+   - **No sign-in needed**.
+   - **Sign in with steps I already have**: pick a test case or workflow that opens the site and signs in (for example your login test). It runs first on the PC, and every new test starts with it.
+   - **I sign in myself in the browser**: the browser opens on the PC with a bar at the top. Sign in (or open the page to start from), then click **Start exploring**. Choose a credential under **The tests sign in with**, so the new tests can sign in by themselves when they run.
+4. Optionally say **What to test**, for example "the camera list and its filters".
+5. Choose how many **Tests to write**, how many **Pages to explore**, and the PC. Click **Explore and write tests**.
+
+The PC visits the site's pages by following its links and sends each page's fields, buttons, links, text and screen. It never presses buttons or sends forms, and skips sign-out, delete and download links. AI then writes the tests, which takes one or two minutes. Each test checks one thing, with real selectors from the pages and Verify steps.
+
+Untick the tests you do not want, choose the folder, and click **Create**. With **Run them now** ticked, they run straight away. Open a test to see or change its steps, like any other test case. AI's first draft is a starting point: check that each test verifies what matters to you.
 
 ## Verify actions
 
