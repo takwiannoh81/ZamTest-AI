@@ -53,7 +53,7 @@ import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
 import { createJob, finishJob, HttpError, isFinal, jobWaiting, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
 import { checkBots, checkBuilders, checkFeature, currentUsage, FREE_LIMITS, isBuilder, limitsOf, PlanLimitError, PRO, useAi } from "./plans.js";
-import { Scheduler, validateCron } from "./scheduler.js";
+import { Scheduler, timeZoneOf, validateCron } from "./scheduler.js";
 import { newId, nowIso, Store } from "./store.js";
 import type { Agent, Asset, Enrollment, InstallKey, Job, Package, Principal, Queue, QueueItem, Schedule, User, WorkflowDraft, Workspace } from "./types.js";
 import { DEFAULT_WORKSPACE, ROLES } from "./types.js";
@@ -126,8 +126,10 @@ const JobBody = z.object({
 });
 
 const ScheduleBody = z.object({
-  name: z.string().min(1),
-  packageId: z.string().min(1),
+  name: z.string().trim().min(1, "Give the schedule a name"),
+  // What it runs: a process, or test cases (a test run).
+  packageId: z.string().min(1).nullish(),
+  tests: z.object({ caseIds: z.array(z.string()).max(1000).optional(), folderId: z.string().nullish() }).nullish(),
   cron: z.string().min(1),
   timezone: z.string().optional(),
   inputs: z.record(z.unknown()).default({}),
@@ -1015,19 +1017,28 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   /* ----------------------------- schedules -------------------------- */
   const withNextRun = (s: Schedule) => ({ ...s, nextRunAt: scheduler.nextRun(s.id) });
+  /** Checks a schedule and puts it in its stored form (one of process or test cases; a time zone the scheduler knows). */
   const checkSchedule = (body: z.infer<typeof ScheduleBody>, req: FastifyRequest) => {
-    const pkg = own(store.data.packages, body.packageId, "Package", req);
+    if (body.packageId && body.tests) throw new HttpError(400, "A schedule runs either a process or test cases, not both");
+    if (!body.packageId && !body.tests) throw new HttpError(400, "Choose what to run: a published process, or test cases");
     if (body.targetAgentId) own(store.data.agents, body.targetAgentId, "Agent", req);
-    const env = effectiveEnv(store, pkg.workspaceId, body.environment);
-    if (environmentsOn(store, pkg.workspaceId) && !isIn(pkg, env)) throw new HttpError(409, `Version ${pkg.version} of ${pkg.name} is not in ${ENV_NAMES[env]}`);
-    const cronError = validateCron(body.cron, body.timezone);
+    if (body.packageId) {
+      const pkg = own(store.data.packages, body.packageId, "Process", req);
+      const env = effectiveEnv(store, pkg.workspaceId, body.environment);
+      if (environmentsOn(store, pkg.workspaceId) && !isIn(pkg, env)) throw new HttpError(409, `Version ${pkg.version} of ${pkg.name} is not in ${ENV_NAMES[env]}`);
+    } else {
+      for (const id of body.tests!.caseIds ?? []) own(store.data.testCases, id, "Test case", req);
+      if (body.tests!.folderId) own(store.data.testFolders, body.tests!.folderId, "Folder", req);
+    }
+    const timezone = timeZoneOf(body.timezone);
+    const cronError = validateCron(body.cron, timezone);
     if (cronError) throw new HttpError(400, `Invalid cron expression: ${cronError}`);
+    return { ...body, packageId: body.packageId ?? undefined, tests: body.tests ?? undefined, timezone };
   };
 
   app.get("/api/schedules", async (req) => mine(store.data.schedules, req).map(withNextRun));
   app.post("/api/schedules", async (req, reply) => {
-    const body = parse(ScheduleBody, req.body);
-    checkSchedule(body, req);
+    const body = checkSchedule(parse(ScheduleBody, req.body), req);
     if (body.enabled) checkFeature(store, ws(req), "schedules");
     const schedule: Schedule = { id: newId("sch"), workspaceId: ws(req), ...body, createdAt: nowIso() };
     store.data.schedules[schedule.id] = schedule;
@@ -1037,8 +1048,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
   app.put<{ Params: { id: string } }>("/api/schedules/:id", async (req) => {
     const existing = own(store.data.schedules, req.params.id, "Schedule", req);
-    const body = parse(ScheduleBody, { ...existing, ...(req.body as object) });
-    checkSchedule(body, req);
+    const body = checkSchedule(parse(ScheduleBody, { ...existing, ...(req.body as object) }), req);
     if (body.enabled && !existing.enabled) checkFeature(store, ws(req), "schedules");
     const schedule: Schedule = { ...existing, ...body, workspaceId: existing.workspaceId };
     store.data.schedules[schedule.id] = schedule;

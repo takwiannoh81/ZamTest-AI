@@ -57,36 +57,107 @@ const CaseBody = z.object({
   description: z.string().max(2000).nullish(),
 });
 
+/** "Invoices / Europe" for a folder. */
+export function testPath(store: Store, folderId: string | undefined): string {
+  const names: string[] = [];
+  for (let id = folderId, guard = 0; id && guard < 100; guard++) {
+    const folder = store.data.testFolders[id];
+    if (!folder) break;
+    names.unshift(folder.name);
+    id = folder.parentId;
+  }
+  return names.join(" / ");
+}
+
+/** The folder and everything below it. */
+export function folderSubtree(store: Store, workspaceId: string, folderId: string): Set<string> {
+  const ids = new Set([folderId]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const f of Object.values(store.data.testFolders)) {
+      if (f.workspaceId === workspaceId && f.parentId && ids.has(f.parentId) && !ids.has(f.id)) {
+        ids.add(f.id);
+        grew = true;
+      }
+    }
+  }
+  return ids;
+}
+
+/** Which test cases a run (or a schedule) runs: these cases, a folder with its sub-folders, or all. */
+export interface TestSelection {
+  caseIds?: string[];
+  /** A folder (with everything below it); unset or null with no caseIds: all test cases. */
+  folderId?: string | null;
+}
+
+/**
+ * Starts a test run: a job per test case, as "Run all" does. Used by the Designer
+ * and by schedules. Throws when there is nothing to run.
+ */
+export function startTestRun(store: Store, input: TestSelection & { workspaceId: string; startedBy: string; targetAgentId?: string }): TestRun {
+  const all = Object.values(store.data.testCases).filter((c) => c.workspaceId === input.workspaceId);
+  let cases: TestCase[];
+  let name: string;
+  if (input.caseIds?.length) {
+    const wanted = new Set(input.caseIds);
+    cases = all.filter((c) => wanted.has(c.id));
+    name = cases.length === 1 ? cases[0]!.name : `${cases.length} test cases`;
+  } else if (input.folderId) {
+    const ids = folderSubtree(store, input.workspaceId, input.folderId);
+    cases = all.filter((c) => c.folderId && ids.has(c.folderId));
+    name = testPath(store, input.folderId);
+  } else {
+    cases = all;
+    name = "All test cases";
+  }
+  if (!cases.length) throw new HttpError(400, "There are no test cases to run here");
+  cases.sort((a, b) => testPath(store, a.folderId).localeCompare(testPath(store, b.folderId)) || a.name.localeCompare(b.name));
+
+  const run: TestRun = { id: newId("trn"), workspaceId: input.workspaceId, name, startedBy: input.startedBy, startedAt: nowIso(), items: [] };
+  for (const c of cases) {
+    const item: TestRun["items"][number] = { testCaseId: c.id, name: c.name, path: testPath(store, c.folderId) };
+    // Its own steps; older test cases run their workflow.
+    const wf: WorkflowDraft | undefined = c.workflowId ? store.data.workflows[c.workflowId] : undefined;
+    const definition = c.definition ?? (wf && wf.workspaceId === run.workspaceId ? wf.definition : undefined);
+    if (!definition) item.error = "Its workflow was deleted";
+    else {
+      try {
+        const agent = input.targetAgentId ?? c.targetAgentId;
+        const job = createJob(store, {
+          workspaceId: run.workspaceId,
+          definition,
+          inputs: c.inputs,
+          targetAgentId: agent && store.data.agents[agent] ? agent : undefined,
+          source: "test",
+          startedBy: `${input.startedBy} (test: ${c.name})`,
+        });
+        item.jobId = job.id;
+        c.lastJobId = job.id;
+      } catch (err) {
+        // Out of runs for the month, a PC in another environment...: this case fails, the others still run.
+        item.error = err instanceof PlanLimitError || err instanceof HttpError ? err.message : String(err);
+      }
+    }
+    run.items.push(item);
+  }
+  store.data.testRuns[run.id] = run;
+  // Keep the 50 newest runs of each workspace.
+  const runs = Object.values(store.data.testRuns)
+    .filter((r) => r.workspaceId === input.workspaceId)
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  for (const old of runs.slice(50)) delete store.data.testRuns[old.id];
+  store.save();
+  return run;
+}
+
 export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): void {
   const { store } = ctx;
   const ws = (req: FastifyRequest) => ctx.me(req).workspaceId;
   const folderOf = (req: FastifyRequest, id: string | null | undefined): string | undefined => (id ? ctx.own(store.data.testFolders, id, "Folder", req).id : undefined);
 
-  /** "Invoices / Europe" for a folder. */
-  const pathOf = (folderId: string | undefined): string => {
-    const names: string[] = [];
-    for (let id = folderId, guard = 0; id && guard < 100; guard++) {
-      const folder = store.data.testFolders[id];
-      if (!folder) break;
-      names.unshift(folder.name);
-      id = folder.parentId;
-    }
-    return names.join(" / ");
-  };
-  /** The folder and everything below it. */
-  const subtree = (workspaceId: string, folderId: string): Set<string> => {
-    const ids = new Set([folderId]);
-    for (let grew = true; grew; ) {
-      grew = false;
-      for (const f of Object.values(store.data.testFolders)) {
-        if (f.workspaceId === workspaceId && f.parentId && ids.has(f.parentId) && !ids.has(f.id)) {
-          ids.add(f.id);
-          grew = true;
-        }
-      }
-    }
-    return ids;
-  };
+  const pathOf = (folderId: string | undefined): string => testPath(store, folderId);
+  const subtree = (workspaceId: string, folderId: string): Set<string> => folderSubtree(store, workspaceId, folderId);
   /** A test case in the tree: without its steps (open it for those). */
   const caseView = ({ definition, ...c }: TestCase) => {
     const job = c.lastJobId ? store.data.jobs[c.lastJobId] : undefined;
@@ -214,56 +285,11 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
   /** Runs one test case, a folder (with its subfolders), or all of them. */
   app.post("/api/test-runs", async (req, reply) => {
     const body = parse(z.object({ folderId: z.string().nullish(), caseIds: z.array(z.string()).max(1000).optional() }), req.body ?? {});
-    const all = ctx.mine(store.data.testCases, req);
-    let cases: TestCase[];
-    let name: string;
-    if (body.caseIds?.length) {
-      cases = body.caseIds.map((id) => ctx.own(store.data.testCases, id, "Test case", req));
-      name = cases.length === 1 ? cases[0]!.name : `${cases.length} test cases`;
-    } else if (body.folderId) {
-      const folder = ctx.own(store.data.testFolders, body.folderId, "Folder", req);
-      const ids = subtree(folder.workspaceId, folder.id);
-      cases = all.filter((c) => c.folderId && ids.has(c.folderId));
-      name = pathOf(folder.id);
-    } else {
-      cases = all;
-      name = "All test cases";
-    }
-    if (!cases.length) throw new HttpError(400, "There are no test cases to run here");
-    cases.sort((a, b) => pathOf(a.folderId).localeCompare(pathOf(b.folderId)) || a.name.localeCompare(b.name));
-
+    // Only this account's cases and folders.
+    for (const id of body.caseIds ?? []) ctx.own(store.data.testCases, id, "Test case", req);
+    if (body.folderId) ctx.own(store.data.testFolders, body.folderId, "Folder", req);
     const p = ctx.me(req);
-    const run: TestRun = { id: newId("trn"), workspaceId: ws(req), name, startedBy: p.email || p.name, startedAt: nowIso(), items: [] };
-    for (const c of cases) {
-      const item: TestRun["items"][number] = { testCaseId: c.id, name: c.name, path: pathOf(c.folderId) };
-      // Its own steps; older test cases run their workflow.
-      const wf: WorkflowDraft | undefined = c.workflowId ? store.data.workflows[c.workflowId] : undefined;
-      const definition = c.definition ?? (wf && wf.workspaceId === run.workspaceId ? wf.definition : undefined);
-      if (!definition) item.error = "Its workflow was deleted";
-      else {
-        try {
-          const job = createJob(store, {
-            workspaceId: run.workspaceId,
-            definition,
-            inputs: c.inputs,
-            targetAgentId: c.targetAgentId && store.data.agents[c.targetAgentId] ? c.targetAgentId : undefined,
-            source: "test",
-            startedBy: `${p.email || p.name} (test: ${c.name})`,
-          });
-          item.jobId = job.id;
-          c.lastJobId = job.id;
-        } catch (err) {
-          // Out of runs for the month, a PC in another environment...: this case fails, the others still run.
-          item.error = err instanceof PlanLimitError || err instanceof HttpError ? err.message : String(err);
-        }
-      }
-      run.items.push(item);
-    }
-    store.data.testRuns[run.id] = run;
-    // Keep the 50 newest runs of each workspace.
-    const runs = ctx.mine(store.data.testRuns, req).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-    for (const old of runs.slice(50)) delete store.data.testRuns[old.id];
-    store.save();
+    const run = startTestRun(store, { workspaceId: ws(req), caseIds: body.caseIds, folderId: body.folderId, startedBy: p.email || p.name });
     return reply.status(201).send(runView(run));
   });
 

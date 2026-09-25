@@ -240,7 +240,9 @@ export interface JobLog {
 export interface Schedule {
   id: string;
   name: string;
-  packageId: string;
+  /** What it runs: a published process, or test cases. */
+  packageId?: string | null;
+  tests?: { caseIds?: string[]; folderId?: string | null } | null;
   cron: string;
   timezone?: string;
   inputs: Record<string, unknown>;

@@ -1,5 +1,6 @@
 import { Cron } from "croner";
-import { createJob } from "./jobs.js";
+import { createJob, HttpError } from "./jobs.js";
+import { startTestRun } from "./testcases.js";
 import { scheduleAllowed } from "./plans.js";
 import { nowIso } from "./store.js";
 import type { Store } from "./store.js";
@@ -46,6 +47,19 @@ export class Scheduler {
       return;
     }
     try {
+      if (schedule.tests) {
+        // Test cases: a test run, as "Run all" (its results in the Test cases tab).
+        const run = startTestRun(this.store, {
+          workspaceId: schedule.workspaceId,
+          ...schedule.tests,
+          startedBy: `schedule: ${schedule.name}`,
+          targetAgentId: schedule.targetAgentId,
+        });
+        schedule.lastRunAt = nowIso();
+        this.store.save();
+        this.log(`Schedule "${schedule.name}" started test run ${run.id} (${run.items.length} test cases)`);
+        return;
+      }
       const job = createJob(this.store, {
         workspaceId: schedule.workspaceId,
         packageId: schedule.packageId,
@@ -62,6 +76,30 @@ export class Scheduler {
     } catch (err) {
       this.log(`Schedule "${schedule.name}" failed to queue a job: ${err instanceof Error ? err.message : err}`);
     }
+  }
+}
+
+/** Common abbreviations people type, as the zone names the scheduler needs. */
+const ZONES: Record<string, string> = {
+  EST: "America/New_York", EDT: "America/New_York", ET: "America/New_York",
+  CST: "America/Chicago", CDT: "America/Chicago", CT: "America/Chicago",
+  MST: "America/Denver", MDT: "America/Denver", MT: "America/Denver",
+  PST: "America/Los_Angeles", PDT: "America/Los_Angeles", PT: "America/Los_Angeles",
+  AKST: "America/Anchorage", HST: "Pacific/Honolulu",
+  GMT: "UTC", UTC: "UTC", BST: "Europe/London", CET: "Europe/Paris", CEST: "Europe/Paris",
+  IST: "Asia/Kolkata", JST: "Asia/Tokyo", WAT: "Africa/Lagos", CAT: "Africa/Harare", EAT: "Africa/Nairobi", SAST: "Africa/Johannesburg",
+};
+
+/** A time zone the scheduler knows (unset: the server's), or an error that says what to type. */
+export function timeZoneOf(value: string | undefined): string | undefined {
+  const typed = value?.trim();
+  if (!typed) return undefined;
+  const zone = ZONES[typed.toUpperCase()] ?? typed;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone });
+    return zone;
+  } catch {
+    throw new HttpError(400, `Unknown time zone "${typed}": choose one from the list, e.g. America/Chicago`);
   }
 }
 

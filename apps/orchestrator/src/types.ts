@@ -270,7 +270,10 @@ export interface Schedule {
   /** The customer workspace this belongs to. */
   workspaceId: string;
   name: string;
-  packageId: string;
+  /** What it runs: a published process ... */
+  packageId?: string;
+  /** ... or test cases (these, a folder with its sub-folders, or all): a test run, as "Run all". */
+  tests?: { caseIds?: string[]; folderId?: string | null };
   cron: string;
   timezone?: string;
   inputs: Record<string, unknown>;
