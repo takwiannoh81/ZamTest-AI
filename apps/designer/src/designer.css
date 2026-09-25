@@ -98,6 +98,7 @@
 /* run panel */
 .run-panel { height: 260px; border-top: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; }
 .run-head { display: flex; align-items: center; gap: 10px; padding: 6px 12px; }
+.run-waiting { color: var(--warn); min-width: 0; }
 .run-panel .log { flex: 1; border-radius: 0; max-height: none; }
 .run-panel .log-line { cursor: pointer; }
 .healed { padding: 6px 12px; display: flex; flex-direction: column; gap: 4px; background: color-mix(in srgb, #db2777 8%, var(--surface)); }

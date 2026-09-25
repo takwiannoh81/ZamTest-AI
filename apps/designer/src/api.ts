@@ -60,6 +60,8 @@ export interface Job {
   error?: string;
   outputs?: Record<string, unknown>;
   healedSelectors: Array<{ stepId?: string; oldSelector: string; newSelector: string; reason?: string }>;
+  /** While pending: why no PC has taken it yet. */
+  waiting?: { reason: "noAgents" | "offline" | "environment" | "busy" | "starting"; agent?: string; environment?: "dev" | "test" | "prod" };
 }
 
 export interface JobLog {

@@ -69,6 +69,24 @@ export function RunPanel({
     box.current?.scrollTo({ top: box.current.scrollHeight });
   }, [logs]);
 
+  /** What the run waits for, and what to do about it. */
+  const waitingText = ({ waiting }: Job) => {
+    if (!waiting) return t("run.waitStarting");
+    const env = waiting.environment ? t(`env.${waiting.environment}` as MessageKey) : "";
+    switch (waiting.reason) {
+      case "noAgents":
+        return t("run.waitNoAgents");
+      case "offline":
+        return waiting.agent ? t("run.waitPcOffline", { pc: waiting.agent }) : t("run.waitOffline");
+      case "environment":
+        return waiting.agent ? t("run.waitPcEnvironment", { pc: waiting.agent, env }) : t("run.waitEnvironment", { env });
+      case "busy":
+        return t("run.waitBusy");
+      default:
+        return t("run.waitStarting");
+    }
+  };
+
   const cancel = () => void api(`/api/jobs/${run.jobId}/cancel`, { method: "POST" }).catch(() => undefined);
 
   return (
@@ -76,7 +94,11 @@ export function RunPanel({
       <div className="run-head">
         <strong>{t("run.title")}</strong>
         <span className={`badge badge-${job?.status ?? "pending"}`}>{t(job ? (`status.${job.status}` as MessageKey) : "status.queued")}</span>
-        {job?.status === "pending" && <span className="muted tiny">{t("run.waiting", { command: "pnpm dev:agent" })}</span>}
+        {job?.status === "pending" && (
+          <span className={`tiny ${job.waiting && job.waiting.reason !== "starting" && job.waiting.reason !== "busy" ? "run-waiting" : "muted"}`}>
+            {waitingText(job)}
+          </span>
+        )}
         <span className="spacer" />
         {job?.status === "failed" && onFixWithAi && (
           <button

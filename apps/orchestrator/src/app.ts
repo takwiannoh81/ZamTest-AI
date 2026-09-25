@@ -43,7 +43,7 @@ import { GitRepos } from "./git.js";
 import { registerTestCases } from "./testcases.js";
 import { registerRecordings } from "./recordings.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
-import { createJob, finishJob, HttpError, isFinal, sweep } from "./jobs.js";
+import { createJob, finishJob, HttpError, isFinal, jobWaiting, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
 import { checkBots, checkBuilders, checkFeature, currentUsage, FREE_LIMITS, isBuilder, limitsOf, PlanLimitError, PRO, useAi } from "./plans.js";
 import { Scheduler, validateCron } from "./scheduler.js";
@@ -888,7 +888,10 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     return reply.status(201).send(jobSummary(job));
   });
 
-  app.get<{ Params: { id: string } }>("/api/jobs/:id", async (req) => own(store.data.jobs, req.params.id, "Job", req));
+  app.get<{ Params: { id: string } }>("/api/jobs/:id", async (req) => {
+    const job = own(store.data.jobs, req.params.id, "Job", req);
+    return { ...job, waiting: jobWaiting(store, job) };
+  });
 
   app.get<{ Params: { id: string }; Querystring: { after?: string } }>("/api/jobs/:id/logs", async (req) => {
     own(store.data.jobs, req.params.id, "Job", req);

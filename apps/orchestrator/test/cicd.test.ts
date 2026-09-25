@@ -104,6 +104,32 @@ describe("environments and promotion", () => {
     expect((await call(dev, "GET", "/api/promotions")).json()).toHaveLength(4);
   });
 
+  it("says why a job is waiting, so the Designer can tell what to do", async () => {
+    await setup();
+    const admin = await person("admin", "ada");
+    const waiting = async (id: string) => (await call(admin, "GET", `/api/jobs/${id}`)).json().waiting;
+    const draft = { definition: workflow("Draft") };
+
+    const first = (await call(admin, "POST", "/api/jobs", draft)).json();
+    expect(await waiting(first.id)).toEqual({ reason: "noAgents" });
+    const pc = await registerPc("my-pc");
+    expect(await waiting(first.id)).toEqual({ reason: "starting" });
+    expect((await nextJob(pc)).json().id).toBe(first.id);
+    expect(await waiting(first.id)).toBeUndefined();
+
+    // The PC is running that one.
+    const second = (await call(admin, "POST", "/api/jobs", draft)).json();
+    expect(await waiting(second.id)).toEqual({ reason: "busy" });
+    await call(admin, "POST", `/api/jobs/${second.id}/cancel`);
+
+    // With environments on, a draft runs in Development, and the PC is in Production.
+    await call(admin, "PUT", "/api/cicd/settings", { environments: true, requireApproval: false });
+    const third = (await call(admin, "POST", "/api/jobs", draft)).json();
+    expect(await waiting(third.id)).toEqual({ reason: "environment", environment: "dev" });
+    await call(admin, "PUT", `/api/agents/${pc}/environment`, { environment: "dev" });
+    expect(await waiting(third.id)).toEqual({ reason: "busy" });
+  });
+
   it("runs each environment's jobs only on its own PCs, with its own assets", async () => {
     await setup();
     const admin = await person("admin", "ada");

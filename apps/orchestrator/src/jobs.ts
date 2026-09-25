@@ -100,6 +100,35 @@ export function finishJob(store: Store, job: Job, status: Job["status"], error?:
   store.save();
 }
 
+/** Why a pending job has not started, so the Designer and Portal can say what to do. */
+export interface JobWaiting {
+  /**
+   * noAgents: the workspace has no PC; offline: its PCs (or the chosen one) are off;
+   * environment: no PC that is on takes jobs of the job's environment;
+   * busy: the PCs that could run it are running other jobs; starting: a PC takes it within seconds.
+   */
+  reason: "noAgents" | "offline" | "environment" | "busy" | "starting";
+  /** The chosen PC's name, for a job sent to one PC. */
+  agent?: string;
+  environment?: EnvironmentId;
+}
+
+export function jobWaiting(store: Store, job: Job): JobWaiting | undefined {
+  if (job.status !== "pending") return undefined;
+  const env = effectiveEnv(store, job.workspaceId, job.environment);
+  const all = Object.values(store.data.agents).filter((a) => a.workspaceId === job.workspaceId);
+  const target = job.targetAgentId ? all.find((a) => a.id === job.targetAgentId) : undefined;
+  const agents = job.targetAgentId ? (target ? [target] : []) : all;
+  const agent = target?.name;
+  if (!agents.length) return { reason: "noAgents" };
+  const on = agents.filter((a) => a.status !== "offline");
+  if (!on.length) return { reason: "offline", agent };
+  const inEnv = on.filter((a) => effectiveEnv(store, a.workspaceId, a.environment) === env);
+  if (!inEnv.length) return { reason: "environment", environment: env, agent };
+  if (inEnv.every((a) => a.status === "busy")) return { reason: "busy", agent };
+  return { reason: "starting", agent };
+}
+
 /** Marks silent agents offline and fails jobs whose agent disappeared. */
 export function sweep(store: Store, config: OrchestratorConfig, now = Date.now()) {
   for (const agent of Object.values(store.data.agents)) {

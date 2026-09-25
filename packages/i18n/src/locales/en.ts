@@ -583,7 +583,13 @@ export const en = {
 
   /* designer: test run */
   "run.title": "Test run",
-  "run.waiting": "Waiting for a bot agent... start one with {command}.",
+  "run.waitNoAgents": "No PC is connected to this account. Install the ZamTech AI agent from the Portal (Bot Agents), or sign in with the account your PC was approved for.",
+  "run.waitOffline": "Your PCs are offline. Start the ZamTech AI agent on one of them (it is in the system tray).",
+  "run.waitPcOffline": "{pc} is offline. Start the ZamTech AI agent on it (it is in the system tray).",
+  "run.waitEnvironment": "This run needs a PC in {env}, and none is online. In the Portal, open Bot Agents and set a PC's environment to {env}.",
+  "run.waitPcEnvironment": "{pc} does not take {env} jobs. In the Portal, open Bot Agents and set its environment to {env}.",
+  "run.waitBusy": "Waiting for a PC to finish its current job...",
+  "run.waitStarting": "Waiting for a PC to start the run...",
   "run.stop": "Stop",
   "run.healed": "✨ Self-healed",
   "run.applyFix": "Apply fix",
