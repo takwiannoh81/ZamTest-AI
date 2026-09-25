@@ -102,7 +102,7 @@ export class Alerts {
         ...(agent ? [`PC: ${agent.name}`] : []),
         `When: ${job.finishedAt ?? job.createdAt} (UTC)`,
       ],
-      link: { label: "Open the job (logs, screenshots, Fix with AI)", url: `${this.o.portalUrl}/#/jobs/${job.id}` },
+      link: { label: "Open the job (log and screenshots)", url: `${this.o.portalUrl}/#/jobs/${job.id}` },
       screenshot: this.errorScreenshot(job.id),
     });
   }

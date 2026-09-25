@@ -169,3 +169,11 @@ section[id] { scroll-margin-top: 72px; }
 .site-chat-avatar { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
 .site-chat .help-chat { flex: 1; min-height: 0; }
 .site-chat .help-chat-input textarea { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--surface); color: var(--text); }
+
+/* What's new, and three-column card grids */
+.cards.cards-3 { grid-template-columns: repeat(3, 1fr); }
+.card { position: relative; }
+.new-badge { position: absolute; top: 16px; inset-inline-end: 16px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
+.section-new { background: linear-gradient(180deg, var(--accent-soft), transparent 70%); }
+@media (max-width: 1000px) { .cards.cards-3 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .cards.cards-3 { grid-template-columns: 1fr; } }

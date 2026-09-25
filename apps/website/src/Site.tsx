@@ -14,6 +14,20 @@ const FEATURES: Card[] = [
   { icon: "🎛", title: "site.features.portal.title", text: "site.features.portal.text" },
   { icon: "🤖", title: "site.features.agents.title", text: "site.features.agents.text" },
   { icon: "🌐", title: "site.features.browser.title", text: "site.features.browser.text" },
+  { icon: "🧪", title: "site.features.test.title", text: "site.features.test.text" },
+  { icon: "🖥", title: "site.features.desktop.title", text: "site.features.desktop.text" },
+  { icon: "🛡", title: "site.features.security.title", text: "site.features.security.text" },
+  { icon: "⎇", title: "site.features.cicd.title", text: "site.features.cicd.text" },
+];
+
+/** The latest features, first on the page. */
+const NEW: Card[] = [
+  { icon: "✨", title: "site.new.genTests.title", text: "site.new.genTests.text" },
+  { icon: "🔔", title: "site.new.alerts.title", text: "site.new.alerts.text" },
+  { icon: "📊", title: "site.new.reports.title", text: "site.new.reports.text" },
+  { icon: "🧮", title: "site.new.testData.title", text: "site.new.testData.text" },
+  { icon: "🎯", title: "site.new.dynamic.title", text: "site.new.dynamic.text" },
+  { icon: "📜", title: "site.new.audit.title", text: "site.new.audit.text" },
 ];
 
 const AI: Card[] = [
@@ -21,6 +35,8 @@ const AI: Card[] = [
   { icon: "🩹", title: "site.ai.heal.title", text: "site.ai.heal.text" },
   { icon: "🧠", title: "site.ai.agents.title", text: "site.ai.agents.text" },
   { icon: "📄", title: "site.ai.extract.title", text: "site.ai.extract.text" },
+  { icon: "🩺", title: "site.ai.fix.title", text: "site.ai.fix.text" },
+  { icon: "🧪", title: "site.ai.tests.title", text: "site.ai.tests.text" },
 ];
 
 const STEPS: Array<{ title: MessageKey; text: MessageKey }> = [
@@ -29,12 +45,13 @@ const STEPS: Array<{ title: MessageKey; text: MessageKey }> = [
   { title: "site.how.step3.title", text: "site.how.step3.text" },
 ];
 
-function Cards({ cards }: { cards: Card[] }) {
+function Cards({ cards, columns, badge }: { cards: Card[]; columns?: 3; badge?: string }) {
   const { t } = useI18n();
   return (
-    <div className="cards">
+    <div className={columns === 3 ? "cards cards-3" : "cards"}>
       {cards.map((c) => (
         <article className="card" key={c.title}>
+          {badge && <span className="new-badge">{badge}</span>}
           <span className="card-icon" aria-hidden>
             {c.icon}
           </span>
@@ -58,6 +75,7 @@ export function Site() {
             <strong>ZamTech AI</strong>
           </a>
           <nav className="nav">
+            <a href="#new">{t("site.nav.new")}</a>
             <a href="#features">{t("site.nav.features")}</a>
             <a href="#ai">{t("site.nav.ai")}</a>
             <a href="#pricing">{t("site.nav.pricing")}</a>
@@ -102,6 +120,14 @@ export function Site() {
           </div>
         </section>
 
+        <section id="new" className="section section-new">
+          <div className="wrap">
+            <h2>{t("site.new.title")}</h2>
+            <p className="section-sub">{t("site.new.subtitle")}</p>
+            <Cards cards={NEW} columns={3} badge={t("site.new.badge")} />
+          </div>
+        </section>
+
         <section id="features" className="section">
           <div className="wrap">
             <h2>{t("site.features.title")}</h2>
@@ -112,7 +138,7 @@ export function Site() {
         <section id="ai" className="section section-alt">
           <div className="wrap">
             <h2>{t("site.ai.title")}</h2>
-            <Cards cards={AI} />
+            <Cards cards={AI} columns={3} />
           </div>
         </section>
 

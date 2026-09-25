@@ -692,7 +692,7 @@ A schedule that could not start at all (for example, no runs left this month) is
 
 Click **Save**, then **Send a test alert** to check each one; the page says whether each was sent. Once saved, a Slack or Teams address is shown shortened: it works like a password. **Remove** takes it away.
 
-An alert says what failed, the error and the step, who started it, the PC and when, with a button to open the job (with its log, screenshots and **Fix with AI**) or the test report. Emails include the screen at the moment it failed. At most 30 alerts are sent per workspace an hour, so a schedule that fails every minute does not flood anyone.
+An alert says what failed, the error and the step, who started it, the PC and when, with a button to open the job (with its log and screenshots) or the test report. To repair a failed run, open it in the Designer and use **Fix with AI**. Emails include the screen at the moment it failed. At most 30 alerts are sent per workspace an hour, so a schedule that fails every minute does not flood anyone.
 
 ## Test reports
 
