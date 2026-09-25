@@ -490,6 +490,8 @@ export const zhCN: LocaleMessages = {
     "canvas.start": "开始",
     "canvas.end": "结束",
     "canvas.drop": "将操作拖放到此处",
+    "canvas.insert": "在此添加步骤",
+    "canvas.noActions": "没有匹配的操作",
     "canvas.expand": "展开",
     "canvas.collapse": "折叠",
     "canvas.duplicate": "复制",

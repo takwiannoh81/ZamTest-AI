@@ -490,6 +490,8 @@ export const de: LocaleMessages = {
     "canvas.start": "Start",
     "canvas.end": "Ende",
     "canvas.drop": "Aktionen hier ablegen",
+    "canvas.insert": "Hier einen Schritt hinzufügen",
+    "canvas.noActions": "Keine passenden Aktionen",
     "canvas.expand": "Erweitern",
     "canvas.collapse": "Reduzieren",
     "canvas.duplicate": "Duplizieren",

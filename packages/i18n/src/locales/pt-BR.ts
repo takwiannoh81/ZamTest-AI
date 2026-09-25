@@ -490,6 +490,8 @@ export const ptBR: LocaleMessages = {
     "canvas.start": "Início",
     "canvas.end": "Fim",
     "canvas.drop": "Solte ações aqui",
+    "canvas.insert": "Adicionar uma etapa aqui",
+    "canvas.noActions": "Nenhuma ação correspondente",
     "canvas.expand": "Expandir",
     "canvas.collapse": "Recolher",
     "canvas.duplicate": "Duplicar",

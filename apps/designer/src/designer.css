@@ -55,12 +55,27 @@
 .flow { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; align-items: stretch; }
 .flow-start, .flow-end { align-self: center; padding: 4px 16px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface); border: 1px solid var(--border); color: var(--muted); }
 .step-list { display: flex; flex-direction: column; }
-.drop-zone { height: 14px; margin: 2px 0; border-radius: 6px; transition: all 0.1s; position: relative; }
+.drop-zone { height: 26px; margin: 0; border-radius: 6px; transition: all 0.1s; position: relative; }
 .drop-zone::before { content: ""; position: absolute; inset-inline-start: 50%; top: 0; bottom: 0; border-inline-start: 2px solid var(--border); }
 .drop-zone.empty { height: 44px; border: 1.5px dashed var(--border); display: grid; place-items: center; color: var(--muted); font-size: 12px; }
 .drop-zone.empty::before { display: none; }
 .drop-zone.over { height: 36px; background: var(--accent-soft); border: 1.5px dashed var(--accent); }
 .drop-zone.over::before { display: none; }
+/* + between steps: faint until the gap is hovered. */
+.insert-btn { position: absolute; inset-inline-start: 50%; top: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--border); background: var(--surface); color: var(--muted); font-size: 14px; line-height: 1; padding: 0; display: grid; place-items: center; opacity: 0.55; cursor: pointer; transition: all 0.1s; z-index: 1; }
+[dir="rtl"] .insert-btn { transform: translate(50%, -50%); }
+.drop-zone:hover .insert-btn, .drop-zone.picking .insert-btn, .insert-btn:focus-visible { opacity: 1; border-color: var(--accent); color: var(--accent); width: 24px; height: 24px; font-size: 16px; }
+.drop-zone.over .insert-btn { display: none; }
+.drop-zone.empty .insert-btn { position: static; transform: none; opacity: 1; margin-inline-start: 8px; }
+.drop-zone.empty { display: flex; justify-content: center; align-items: center; }
+.action-picker { position: absolute; top: calc(50% + 16px); inset-inline-start: 50%; transform: translateX(-50%); width: 320px; max-width: 90vw; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgb(0 0 0 / 0.35); z-index: 20; padding: 8px; text-align: start; }
+[dir="rtl"] .action-picker { transform: translateX(50%); }
+.action-picker input { width: 100%; margin-bottom: 6px; }
+.picker-list { max-height: 320px; overflow: auto; }
+.picker-cat { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); padding: 8px 6px 4px; }
+.picker-cat .dot { width: 7px; height: 7px; border-radius: 50%; }
+.picker-item { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; border-radius: 6px; padding: 6px 8px; color: var(--text); text-align: start; font-size: 13.5px; cursor: pointer; }
+.picker-item.active { background: var(--accent-soft); color: var(--accent); }
 
 .step { background: var(--surface); border: 1px solid var(--border); border-inline-start: 4px solid; border-radius: var(--radius); box-shadow: var(--shadow); }
 .step.selected { outline: 2px solid var(--accent); outline-offset: 1px; }

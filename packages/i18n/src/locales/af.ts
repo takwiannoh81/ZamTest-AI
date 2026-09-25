@@ -490,6 +490,8 @@ export const af: LocaleMessages = {
     "canvas.start": "Begin",
     "canvas.end": "Einde",
     "canvas.drop": "Los aksies hier",
+    "canvas.insert": "Voeg 'n stap hier by",
+    "canvas.noActions": "Geen ooreenstemmende aksies nie",
     "canvas.expand": "Vou oop",
     "canvas.collapse": "Vou toe",
     "canvas.duplicate": "Dupliseer",

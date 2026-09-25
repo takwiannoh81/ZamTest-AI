@@ -490,6 +490,8 @@ export const sw: LocaleMessages = {
     "canvas.start": "Mwanzo",
     "canvas.end": "Mwisho",
     "canvas.drop": "Dondosha vitendo hapa",
+    "canvas.insert": "Ongeza hatua hapa",
+    "canvas.noActions": "Hakuna vitendo vinavyolingana",
     "canvas.expand": "Panua",
     "canvas.collapse": "Kunja",
     "canvas.duplicate": "Nakili",

@@ -490,6 +490,8 @@ export const vi: LocaleMessages = {
     "canvas.start": "Bắt đầu",
     "canvas.end": "Kết thúc",
     "canvas.drop": "Thả hành động vào đây",
+    "canvas.insert": "Thêm bước tại đây",
+    "canvas.noActions": "Không có hành động phù hợp",
     "canvas.expand": "Mở rộng",
     "canvas.collapse": "Thu gọn",
     "canvas.duplicate": "Nhân bản",

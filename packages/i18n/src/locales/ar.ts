@@ -490,6 +490,8 @@ export const ar: LocaleMessages = {
     "canvas.start": "البداية",
     "canvas.end": "النهاية",
     "canvas.drop": "أفلت الإجراءات هنا",
+    "canvas.insert": "إضافة خطوة هنا",
+    "canvas.noActions": "لا توجد إجراءات مطابقة",
     "canvas.expand": "توسيع",
     "canvas.collapse": "طي",
     "canvas.duplicate": "تكرار",

@@ -1,6 +1,6 @@
 import { useI18n } from "@zamtest/i18n/react";
 import type { MessageKey } from "@zamtest/i18n";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ActionMeta, Step } from "@zamtest/core";
 import type { Location } from "../tree";
 import { summarize } from "../tree";
@@ -47,12 +47,14 @@ function StepList({ steps, loc, ...props }: CanvasProps & { steps: Step[]; loc: 
   );
 }
 
-function DropZone({ loc, empty, onDropAction, onMoveStep }: CanvasProps & { loc: Location; empty?: boolean }) {
+/** Between steps: drop an action or a step here, or click + to pick an action for this place. */
+function DropZone({ loc, empty, metas, onDropAction, onMoveStep }: CanvasProps & { loc: Location; empty?: boolean }) {
   const { t } = useI18n();
   const [over, setOver] = useState(false);
+  const [picking, setPicking] = useState(false);
   return (
     <div
-      className={`drop-zone${over ? " over" : ""}${empty ? " empty" : ""}`}
+      className={`drop-zone${over ? " over" : ""}${empty ? " empty" : ""}${picking ? " picking" : ""}`}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes(DRAG_ACTION) || e.dataTransfer.types.includes(DRAG_STEP)) {
           e.preventDefault();
@@ -70,7 +72,104 @@ function DropZone({ loc, empty, onDropAction, onMoveStep }: CanvasProps & { loc:
         else if (stepId) onMoveStep(stepId, loc);
       }}
     >
-      {empty ? t("canvas.drop") : null}
+      {empty ? <span>{t("canvas.drop")}</span> : null}
+      <button
+        type="button"
+        className="insert-btn"
+        title={t("canvas.insert")}
+        aria-label={t("canvas.insert")}
+        onClick={(e) => {
+          e.stopPropagation();
+          setPicking(!picking);
+        }}
+      >
+        +
+      </button>
+      {picking && (
+        <ActionPicker
+          metas={metas}
+          onPick={(type) => {
+            setPicking(false);
+            onDropAction(type, loc);
+          }}
+          onClose={() => setPicking(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The actions to insert at a place, with search (Enter takes the first, arrows move, Esc closes). */
+function ActionPicker({ metas, onPick, onClose }: { metas: Map<string, ActionMeta>; onPick: (type: string) => void; onClose: () => void }) {
+  const { t, actionName, actionDescription, category: categoryName } = useI18n();
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const box = useRef<HTMLDivElement>(null);
+
+  const items = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return [...metas.values()]
+      .filter((a) => !q || `${actionName(a)} ${actionDescription(a)} ${a.displayName} ${a.type}`.toLowerCase().includes(q));
+  }, [metas, query, actionName, actionDescription]);
+
+  useEffect(() => setActive(0), [query]);
+  useEffect(() => {
+    const outside = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", outside);
+    return () => document.removeEventListener("mousedown", outside);
+  }, [onClose]);
+  useEffect(() => {
+    box.current?.querySelector(".picker-item.active")?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
+  let lastCategory = "";
+  return (
+    <div className="action-picker" ref={box} onClick={(e) => e.stopPropagation()}>
+      <input
+        autoFocus
+        placeholder={t("palette.search")}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+          else if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActive((i) => Math.min(i + 1, items.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActive((i) => Math.max(i - 1, 0));
+          } else if (e.key === "Enter" && items[active]) onPick(items[active].type);
+        }}
+      />
+      <div className="picker-list">
+        {items.map((a, i) => {
+          const heading = a.category !== lastCategory ? categoryName(a.category) : undefined;
+          lastCategory = a.category;
+          return (
+            <div key={a.type}>
+              {heading && (
+                <div className="picker-cat">
+                  <span className="dot" style={{ background: CATEGORY_COLORS[a.category] ?? "var(--muted)" }} />
+                  {heading}
+                </div>
+              )}
+              <button
+                type="button"
+                className={`picker-item${i === active ? " active" : ""}`}
+                title={actionDescription(a)}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => onPick(a.type)}
+              >
+                <span className="palette-icon">{iconFor(a.icon)}</span>
+                {actionName(a)}
+              </button>
+            </div>
+          );
+        })}
+        {!items.length && <p className="muted tiny">{t("canvas.noActions")}</p>}
+      </div>
     </div>
   );
 }

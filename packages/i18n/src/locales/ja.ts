@@ -490,6 +490,8 @@ export const ja: LocaleMessages = {
     "canvas.start": "開始",
     "canvas.end": "終了",
     "canvas.drop": "ここにアクションをドロップ",
+    "canvas.insert": "ここにステップを追加",
+    "canvas.noActions": "一致するアクションはありません",
     "canvas.expand": "展開",
     "canvas.collapse": "折りたたむ",
     "canvas.duplicate": "複製",

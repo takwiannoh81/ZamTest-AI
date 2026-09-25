@@ -490,6 +490,8 @@ export const ru: LocaleMessages = {
     "canvas.start": "Начало",
     "canvas.end": "Конец",
     "canvas.drop": "Перетащите действия сюда",
+    "canvas.insert": "Добавить шаг сюда",
+    "canvas.noActions": "Нет подходящих действий",
     "canvas.expand": "Развернуть",
     "canvas.collapse": "Свернуть",
     "canvas.duplicate": "Дублировать",

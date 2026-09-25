@@ -490,6 +490,8 @@ export const th: LocaleMessages = {
     "canvas.start": "เริ่มต้น",
     "canvas.end": "สิ้นสุด",
     "canvas.drop": "วางแอ็กชันที่นี่",
+    "canvas.insert": "เพิ่มขั้นตอนที่นี่",
+    "canvas.noActions": "ไม่มีการดำเนินการที่ตรงกัน",
     "canvas.expand": "ขยาย",
     "canvas.collapse": "ยุบ",
     "canvas.duplicate": "ทำสำเนา",

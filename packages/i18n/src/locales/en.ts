@@ -517,6 +517,8 @@ export const en = {
   "canvas.start": "Start",
   "canvas.end": "End",
   "canvas.drop": "Drop actions here",
+  "canvas.insert": "Add a step here",
+  "canvas.noActions": "No matching actions",
   "canvas.expand": "Expand",
   "canvas.collapse": "Collapse",
   "canvas.duplicate": "Duplicate",
