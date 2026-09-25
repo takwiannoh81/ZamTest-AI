@@ -132,11 +132,14 @@ const SETTLE_TIMEOUT = 10_000;
 const TYPE_CHECK_MS = 300;
 const TYPE_ATTEMPTS = 3;
 let keepOpen = false;
+/** Running the steps before a step for Indicate: the browser is shown (the person points in it) and always kept. */
+let forPicking = false;
 const lingering = new Set<Browser>();
 
-/** For the next run: leave its visible browsers open at the end (Designer try-outs). */
-export function keepBrowsersOpen(on: boolean): void {
+/** For the next run: leave its visible browsers open at the end (Designer try-outs; forIndicate: shown and kept). */
+export function keepBrowsersOpen(on: boolean, forIndicate = false): void {
   keepOpen = on;
+  forPicking = on && forIndicate;
 }
 
 /** Closes browsers an earlier try-out left open; how many there were. */
@@ -150,6 +153,13 @@ export async function closeLingeringBrowsers(): Promise<number> {
 /** Browsers left open by the run that just ended. */
 export const lingeringBrowsers = () => lingering.size;
 
+/** The browser the last run left open, handed over (it is no longer closed by the next run or the timer). */
+export function takeLingeringBrowser(): Browser | undefined {
+  const last = [...lingering].at(-1);
+  if (last) lingering.delete(last);
+  return last;
+}
+
 export const browserHandlers: Record<string, ActionHandler> = {
   "browser.open": async (props, ctx) => {
     const pw = await loadPlaywright();
@@ -160,7 +170,10 @@ export const browserHandlers: Record<string, ActionHandler> = {
     const executablePath = kind === "chromium" ? process.env.ZAMTEST_BROWSER_EXECUTABLE || undefined : undefined;
     // Machines without a screen (servers, containers) can only run headless browsers.
     const noDisplay = process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
-    const headless = Boolean(props.headless) || process.env.ZAMTEST_HEADLESS === "1" || noDisplay;
+    // Before indicating, the person has to see the page (tests keep it hidden with ZAMTEST_RECORD_HEADLESS).
+    const shown = forPicking && process.env.ZAMTEST_RECORD_HEADLESS !== "1";
+    const headless = (Boolean(props.headless) && !shown) || process.env.ZAMTEST_HEADLESS === "1" || noDisplay;
+    const keepForPicking = forPicking;
     if (headless && !props.headless) ctx.log("info", "No display on this machine; running the browser headless");
     const browser = await pw[kind].launch({ headless, executablePath });
     const page = await browser.newPage();
@@ -168,7 +181,7 @@ export const browserHandlers: Record<string, ActionHandler> = {
     ctx.resources.set(SESSION, session);
     ctx.onDispose(async () => {
       if (ctx.resources.get(SESSION) === session) ctx.resources.delete(SESSION);
-      if (keepOpen && !headless && browser.isConnected()) {
+      if (keepOpen && (!headless || keepForPicking) && browser.isConnected()) {
         lingering.add(browser);
         setTimeout(() => {
           if (lingering.delete(browser)) void browser.close().catch(() => undefined);

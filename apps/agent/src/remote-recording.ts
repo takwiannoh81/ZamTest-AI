@@ -14,7 +14,8 @@ import { desktopEventsToWorkflow, parseRawEvents, processOf } from "./desktop-re
 import type { RawDesktopEvent } from "./desktop-recorder.js";
 import { eventsToWorkflow, startRecording } from "./recorder.js";
 import { pickWebElement } from "./picker.js";
-import type { PickedElement } from "./picker.js";
+import type { PickedElement, PickTexts } from "./picker.js";
+import { takeLingeringBrowser } from "@zamtest/actions";
 
 export interface RemoteRecordingRequest {
   id: string;
@@ -29,6 +30,10 @@ export interface RemoteRecordingRequest {
   selector?: string;
   /** Pick: an element on a web page (at url) or in a Windows application. */
   target?: "web" | "desktop";
+  /** Pick: the workflow's steps before this one, run first (open the page, log in), then picking starts there. */
+  prefix?: unknown;
+  /** Pick: the banner's texts in the person's language (pick, paused, pause, resume, cancel). */
+  texts?: Partial<PickTexts>;
 }
 
 /** Inspect: what is on the PC now. */
@@ -58,7 +63,14 @@ export interface RecordingProgress {
   inspected?: Inspected;
   /** Pick: the element indicated (unset: Esc, closed, or no click in time). */
   element?: PickedElement;
+  /** Pick: running the steps before, or waiting for the click. */
+  stage?: "prefix" | "picking";
+  /** Pick: why the steps before did not all run (picking starts anyway). */
+  note?: string;
 }
+
+/** Runs a workflow on this PC (the steps before a step, for picking); its browser stays open. */
+export type RunPrefix = (definition: unknown) => Promise<{ status: string; error?: string }>;
 
 /** Sends the steps so far; answers whether the Designer asked to stop. */
 export type ReportProgress = (progress: RecordingProgress) => Promise<{ stop: boolean }>;
@@ -68,12 +80,12 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const stepsOf = (workflow: Workflow) => workflow.root.slots?.body ?? [];
 
-export async function runRemoteRecording(request: RemoteRecordingRequest, report: ReportProgress, log: (message: string) => void): Promise<void> {
+export async function runRemoteRecording(request: RemoteRecordingRequest, report: ReportProgress, log: (message: string) => void, runPrefix?: RunPrefix): Promise<void> {
   try {
     if (request.kind === "web") await recordWeb(request, report);
     else if (request.kind === "indicate") await indicate(request, report);
     else if (request.kind === "inspect") await inspect(request, report);
-    else if (request.kind === "pick") await pick(request, report);
+    else if (request.kind === "pick") await pick(request, report, runPrefix);
     else await recordDesktop(request, report);
     log(`Recording ${request.id} finished`);
   } catch (err) {
@@ -144,32 +156,47 @@ async function inspect(request: RemoteRecordingRequest, report: ReportProgress) 
 }
 
 /** How long the person has to indicate an element in an application. */
-const PICK_DESKTOP_TIMEOUT_MS = 2 * 60_000;
+const PICK_DESKTOP_TIMEOUT_MS = 15 * 60_000;
 
-async function pick(request: RemoteRecordingRequest, report: ReportProgress) {
+async function pick(request: RemoteRecordingRequest, report: ReportProgress, runPrefix?: RunPrefix) {
   let element: PickedElement | undefined;
+  let note: string | undefined;
+  let attachTo: Awaited<ReturnType<typeof takeLingeringBrowser>>;
+  // First the steps before this one (open the page, log in), so picking starts where the step will run.
+  if (request.prefix && runPrefix) {
+    await report({ steps: [], variables: [], stage: "prefix" });
+    const run = await runPrefix(request.prefix);
+    if (run.status !== "succeeded") note = run.error ?? run.status;
+    if (request.target === "web") attachTo = takeLingeringBrowser();
+  }
+  const texts = request.texts ?? (request.hint ? { pick: request.hint } : undefined);
   if (request.target === "web") {
     // Asks every 2 s whether the Designer cancelled, so the browser closes then.
     let stopped = false;
-    const timer = setInterval(() => {
-      void report({ steps: [], variables: [] }).then((r) => (stopped ||= r.stop), () => undefined);
-    }, 2000);
+    const ask = () => void report({ steps: [], variables: [], stage: "picking", note }).then((r) => (stopped ||= r.stop), () => undefined);
+    ask();
+    const timer = setInterval(ask, 2000);
     try {
-      element = (await pickWebElement(request.url ?? "about:blank", request.hint ?? "", () => stopped)) ?? undefined;
+      element = (await pickWebElement(request.url ?? "about:blank", texts, () => stopped, { attachTo })) ?? undefined;
     } finally {
       clearInterval(timer);
     }
   } else {
+    await report({ steps: [], variables: [], stage: "picking", note }).catch(() => undefined);
     const driver = desktop.DesktopDriver.start();
     try {
-      const picked = await driver.call<{ chain: string } | null>("indicateElement", { timeoutMs: PICK_DESKTOP_TIMEOUT_MS, hint: request.hint });
+      const picked = await driver.call<{ chain: string } | null>("indicateElement", {
+        timeoutMs: PICK_DESKTOP_TIMEOUT_MS,
+        hint: texts?.pick,
+        pausedHint: texts?.paused,
+      });
       const chain = picked ? (JSON.parse(picked.chain) as desktop.ElementInfo[]) : [];
       if (chain.length) element = { selector: desktop.selectorFromChain(chain), description: desktop.describeChain(chain) };
     } finally {
       await driver.close();
     }
   }
-  await report({ steps: [], variables: [], done: true, element });
+  await report({ steps: [], variables: [], done: true, element, note });
 }
 
 async function recordDesktop(request: RemoteRecordingRequest, report: ReportProgress) {

@@ -1,14 +1,20 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { builtinHandlers } from "@zamtest/actions";
-import { runWorkflow } from "@zamtest/core";
+import { builtinHandlers, keepBrowsersOpen, takeLingeringBrowser } from "@zamtest/actions";
+import { parseWorkflow, runWorkflow } from "@zamtest/core";
 import { eventsToWorkflow, startRecording } from "../src/recorder.js";
-import { pickWebElement } from "../src/picker.js";
+import { PICK_SCRIPT, pickWebElement } from "../src/picker.js";
 
 const executable = process.env.ZAMTEST_BROWSER_EXECUTABLE;
 const canRun = Boolean(executable && existsSync(executable));
 const page = `file://${fileURLToPath(new URL("../../../examples/site/login.html", import.meta.url))}`;
+
+describe("the picker's page script", () => {
+  it("is valid JavaScript (an error there would silently stop Indicate on every page)", () => {
+    expect(() => new Function(PICK_SCRIPT({ pick: "a", paused: "b", pause: "c", resume: "d", cancel: "e" }))).not.toThrow();
+  });
+});
 
 describe("eventsToWorkflow", () => {
   it("merges repeated typing, keeps Enter and never stores passwords", () => {
@@ -78,3 +84,72 @@ describe.skipIf(!canRun)("indicating an element on a web page", () => {
     expect(cancelled).toBeNull();
   });
 });
+
+describe.skipIf(!canRun)("indicating after the steps before", () => {
+  it("picks on the page the steps before left open (signed in)", async () => {
+    process.env.ZAMTEST_RECORD_HEADLESS = "1";
+    try {
+      const before = parseWorkflow({
+        id: "before",
+        name: "before",
+        variables: [],
+        root: {
+          id: "root",
+          type: "core.sequence",
+          props: {},
+          slots: {
+            body: [
+              { id: "open", type: "browser.open", props: { url: page } },
+              { id: "user", type: "browser.type", props: { selector: "css=#user", text: "ada", aiHeal: false } },
+              { id: "go", type: "browser.click", props: { selector: 'css=[data-testid="sign-in"]', aiHeal: false } },
+            ],
+          },
+        },
+      });
+      keepBrowsersOpen(true, true);
+      const run = await runWorkflow(before, { handlers: builtinHandlers });
+      expect(run.status, run.error).toBe("succeeded");
+      const browser = takeLingeringBrowser();
+      expect(browser).toBeDefined();
+      let welcome = "";
+      const picked = await pickWebElement("about:blank", undefined, () => false, {
+        attachTo: browser,
+        timeoutMs: 20_000,
+        onPage: (p) => {
+          void (async () => {
+            welcome = await p.locator("#welcome").innerText();
+            await p.locator("#welcome").click();
+          })();
+        },
+      });
+      expect(welcome).toContain("Welcome, ada");
+      expect(picked).toMatchObject({ selector: "css=#welcome" });
+    } finally {
+      keepBrowsersOpen(false);
+      delete process.env.ZAMTEST_RECORD_HEADLESS;
+    }
+  });
+});
+
+describe.skipIf(!canRun)("pausing to use the page before indicating", () => {
+  it("lets the page get clicks while paused (to log in), then picks after Indicate", async () => {
+    let welcome = "";
+    const picked = await pickWebElement(page, undefined, () => false, {
+      headless: true,
+      timeoutMs: 20_000,
+      onPage: (p) => {
+        void (async () => {
+          await p.getByRole("button", { name: /Pause/ }).click();
+          await p.fill("#user", "ada");
+          await p.getByRole("button", { name: "Sign in" }).click();
+          welcome = await p.locator("#welcome").innerText();
+          await p.getByRole("button", { name: /Indicate/ }).click();
+          await p.locator("#welcome").click();
+        })();
+      },
+    });
+    expect(welcome).toContain("Welcome, ada");
+    expect(picked).toMatchObject({ selector: "css=#welcome" });
+  });
+});
+

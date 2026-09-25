@@ -457,6 +457,16 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
     const url = last ?? first;
     return url && !url.includes("{{") ? url : undefined;
   };
+  /**
+   * The steps that run before a step (open the page, log in), for Indicate to run first: the top-level
+   * steps before the one that holds it, without disabled steps or ones that close the browser or window.
+   */
+  const stepsBefore = (stepId: string): Workflow | undefined => {
+    const body = root.slots?.body ?? [];
+    const at = body.findIndex((s) => Boolean(findStep(s, stepId)));
+    const before = body.slice(0, Math.max(0, at)).filter((s) => !s.disabled && s.type !== "browser.close" && s.type !== "desktop.closeWindow");
+    return before.length ? { ...workflow, root: { ...root, slots: { ...root.slots, body: before } } } : undefined;
+  };
   const indicateStep = (stepId: string, prop?: string) => {
     const step = findStep(root, stepId);
     const selectorProp = prop ?? metas.get(step?.type ?? "")?.props.find((p) => p.type === "selector")?.name;
@@ -645,6 +655,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
         <IndicateModal
           target={findStep(root, indicating.stepId)?.type.startsWith("desktop.") ? "desktop" : "web"}
           url={pageBefore(indicating.stepId)}
+          prefix={stepsBefore(indicating.stepId)}
           onPicked={indicated}
           onClose={() => setIndicating(undefined)}
         />

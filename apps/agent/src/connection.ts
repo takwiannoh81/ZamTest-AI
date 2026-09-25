@@ -28,7 +28,7 @@ interface JobPayload {
   source?: string;
 }
 
-const VERSION = "0.3.5";
+const VERSION = "0.3.6";
 
 /** A timer that does not keep the process alive. */
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref());
@@ -130,9 +130,30 @@ export class AgentConnection {
     this.log(`Recording (${request.kind}) asked for in the Designer`);
     const report = async (progress: RecordingProgress) =>
       (await this.call<{ stop: boolean }>("POST", `/api/agent/recordings/${request.id}/progress`, { agentId: this.agentId, ...progress })) ?? { stop: true };
-    void runRemoteRecording(request, report, this.log).finally(() => {
+    void runRemoteRecording(request, report, this.log, (definition) => this.runPrefix(definition)).finally(() => {
       this.recordingId = undefined;
     });
+  }
+
+  /**
+   * Indicate after the steps before a step: runs them here (with the account's assets, not as a job),
+   * leaving the browser open where they end for the person to pick in.
+   */
+  private async runPrefix(definition: unknown): Promise<{ status: string; error?: string }> {
+    await closeLingeringBrowsers();
+    keepBrowsersOpen(true, true);
+    try {
+      const result = await execute(parseWorkflow(definition), {
+        inputs: {},
+        onEvent: (event) => {
+          if (event.type === "log") this.log(`  [before indicating] ${event.level.toUpperCase()} ${event.message}`);
+        },
+        getAsset: async (name) => (await this.call<{ value: unknown }>("GET", `/api/agent/assets/${encodeURIComponent(name)}`))?.value,
+      });
+      return { status: result.status, error: result.error };
+    } catch (err) {
+      return { status: "failed", error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   stop(): void {

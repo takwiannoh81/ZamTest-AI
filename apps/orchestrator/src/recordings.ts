@@ -10,8 +10,8 @@
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { StepSchema, VariableDefSchema } from "@zamtest/core";
-import type { Step, VariableDef } from "@zamtest/core";
+import { StepSchema, VariableDefSchema, WorkflowSchema } from "@zamtest/core";
+import type { Step, VariableDef, Workflow } from "@zamtest/core";
 import { HttpError, parse } from "./errors.js";
 import { newId, nowIso } from "./store.js";
 import type { Store } from "./store.js";
@@ -41,6 +41,14 @@ export interface Recording {
   target?: "web" | "desktop";
   /** Pick: the element indicated (unset when the person pressed Esc or did not click in time). */
   element?: { selector: string; description: string };
+  /** Pick: the workflow's steps before the step, run first on the PC (open the page, log in). */
+  prefix?: Workflow;
+  /** Pick: the banner's texts in the person's language. */
+  texts?: Record<string, string>;
+  /** Pick: running the steps before, or waiting for the click. */
+  stage?: "prefix" | "picking";
+  /** Pick: why the steps before did not all run. */
+  note?: string;
   status: "pending" | "recording" | "stopping" | "done" | "failed" | "cancelled";
   requestedBy: string;
   requestedAt: string;
@@ -138,6 +146,8 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         hint: z.string().trim().max(300).optional(),
         selector: z.string().trim().max(1000).optional(),
         target: z.enum(["web", "desktop"]).optional(),
+        prefix: WorkflowSchema.optional(),
+        texts: z.record(z.string().max(300)).optional(),
       }),
       req.body,
     );
@@ -170,6 +180,8 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       kind: body.kind,
       url: body.kind === "web" || (body.kind === "pick" && body.target === "web") ? body.url || "about:blank" : undefined,
       target: body.kind === "pick" ? body.target ?? "desktop" : undefined,
+      prefix: body.kind === "pick" && body.prefix?.root.slots?.body?.length ? (body.prefix as Workflow) : undefined,
+      texts: body.kind === "pick" ? body.texts : undefined,
       program: body.kind === "desktop" ? body.program || undefined : undefined,
       attach: body.kind === "desktop" && body.program ? body.attach || undefined : undefined,
       hint: body.kind === "indicate" || body.kind === "pick" ? body.hint || undefined : undefined,
@@ -214,7 +226,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     if (!next) return reply.status(204).send();
     next.status = "recording";
     next.updatedAt = nowIso();
-    return { id: next.id, kind: next.kind, url: next.url, program: next.program, attach: next.attach, hint: next.hint, selector: next.selector, target: next.target };
+    return { id: next.id, kind: next.kind, url: next.url, program: next.program, attach: next.attach, hint: next.hint, selector: next.selector, target: next.target, prefix: next.prefix, texts: next.texts };
   });
 
   /** The steps so far (all of them each time); the answer says whether to stop. */
@@ -235,6 +247,8 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
           .object({ selector: z.string().max(1000), found: z.boolean(), tree: z.string().max(400_000), screen: z.string().max(10_000_000).optional() })
           .optional(),
         element: z.object({ selector: z.string().max(4000), description: z.string().max(1000) }).optional(),
+        stage: z.enum(["prefix", "picking"]).optional(),
+        note: z.string().max(2000).optional(),
       }),
       req.body,
     );
@@ -244,6 +258,8 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       if (body.picked) r.picked = body.picked;
       if (body.inspected) r.inspected = body.inspected;
       if (body.element) r.element = body.element;
+      if (body.stage) r.stage = body.stage;
+      if (body.note) r.note = body.note;
       if (body.error) {
         r.status = "failed";
         r.error = body.error;

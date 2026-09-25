@@ -491,6 +491,8 @@ public static class ZtIndicate {
   static int pickX, pickY;
   /** F2: clicks go to the application for a few seconds (to open a menu before indicating in it). */
   static int pausedUntil;
+  /** Element mode: F2 pauses (the application can be used: log in, open a menu) until F2 again. */
+  static bool paused;
 
   /** Outlines the window under the mouse; click-through, never activated. */
   class Outline : Form {
@@ -509,11 +511,18 @@ public static class ZtIndicate {
 
   /** What to do, at the top of the screen. */
   class Banner : Form {
+    readonly Label label;
     public Banner(string text) {
       FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true; StartPosition = FormStartPosition.Manual;
       BackColor = Color.FromArgb(0x31, 0x2e, 0x81); Opacity = 0.95;
-      var label = new Label { Text = text, AutoSize = true, Font = new Font("Segoe UI", 12f), ForeColor = Color.White, Location = new Point(20, 12) };
+      label = new Label { AutoSize = true, Font = new Font("Segoe UI", 12f), ForeColor = Color.White, Location = new Point(20, 12) };
       Controls.Add(label);
+      SetText(text, false);
+    }
+    /** The instruction (grey while paused), centred at the top of the screen. */
+    public void SetText(string text, bool dim) {
+      label.Text = text;
+      BackColor = dim ? Color.FromArgb(0x47, 0x55, 0x69) : Color.FromArgb(0x31, 0x2e, 0x81);
       var size = label.GetPreferredSize(Size.Empty);
       ClientSize = new Size(size.Width + 40, size.Height + 24);
       var area = Screen.PrimaryScreen.WorkingArea;
@@ -532,14 +541,14 @@ public static class ZtIndicate {
   }
 
   /** The point of the control the person clicks, as { x, y } (null: Esc or the time ran out). */
-  public static Hashtable PickElement(int timeoutMs, string hint) {
+  public static Hashtable PickElement(int timeoutMs, string hint, string pausedHint) {
     elementMode = true;
-    return OnUiThread(timeoutMs, hint);
+    return OnUiThread(timeoutMs, hint, pausedHint);
   }
 
-  static Hashtable OnUiThread(int timeoutMs, string hint) {
+  static Hashtable OnUiThread(int timeoutMs, string hint, string pausedHint = null) {
     Hashtable result = null;
-    var t = new Thread(() => { result = Run(timeoutMs, hint); });
+    var t = new Thread(() => { result = Run(timeoutMs, hint, pausedHint ?? hint); });
     t.SetApartmentState(ApartmentState.STA);
     t.IsBackground = true;
     t.Start();
@@ -547,9 +556,10 @@ public static class ZtIndicate {
     return result;
   }
 
-  static Hashtable Run(int timeoutMs, string hint) {
+  static Hashtable Run(int timeoutMs, string hint, string pausedHint) {
     pressed = picked = IntPtr.Zero;
-    cancelled = pointPicked = false;
+    cancelled = pointPicked = paused = false;
+    bool shownPaused = false;
     pausedUntil = 0;
     own.Clear();
     int lastX = int.MinValue, lastY = int.MinValue, lastLook = 0;
@@ -564,6 +574,12 @@ public static class ZtIndicate {
       if (picked != IntPtr.Zero || pointPicked || cancelled || Environment.TickCount - started > timeoutMs) { Application.ExitThread(); return; }
       POINT p;
       GetCursorPos(out p);
+      if (paused != shownPaused) {
+        shownPaused = paused;
+        banner.SetText(paused ? pausedHint : hint, paused);
+        if (paused) outline.Hide();
+      }
+      if (elementMode && paused) return;
       if (elementMode) {
         // Asking UI Automation is slow: only when the mouse moved, at most every 120 ms.
         if ((p.x == lastX && p.y == lastY) || Environment.TickCount - lastLook < 120) return;
@@ -645,7 +661,7 @@ public static class ZtIndicate {
 
   /** A left click picks what is under it; the application gets neither the press nor the release (unless paused with F2). */
   static IntPtr MouseHook(int code, IntPtr w, IntPtr l) {
-    if (code >= 0 && Environment.TickCount >= pausedUntil) {
+    if (code >= 0 && !paused && Environment.TickCount >= pausedUntil) {
       int msg = w.ToInt32();
       if (msg == 0x201) {
         var d = (MSLL)Marshal.PtrToStructure(l, typeof(MSLL));
@@ -665,8 +681,12 @@ public static class ZtIndicate {
   static IntPtr KeyHook(int code, IntPtr w, IntPtr l) {
     if (code >= 0 && w.ToInt32() == 0x100) {
       var k = (KBLL)Marshal.PtrToStructure(l, typeof(KBLL));
-      if (k.vk == 0x1B) { cancelled = true; return (IntPtr)1; }
-      if (k.vk == 0x71) { pausedUntil = Environment.TickCount + 5000; return (IntPtr)1; }
+      if (k.vk == 0x1B && !paused) { cancelled = true; return (IntPtr)1; }
+      if (k.vk == 0x71) {
+        if (elementMode) paused = !paused;
+        else pausedUntil = Environment.TickCount + 5000;
+        return (IntPtr)1;
+      }
     }
     return CallNextHookEx(keyHook, code, w, l);
   }
@@ -1148,8 +1168,9 @@ function Invoke-Op([string]$op, $a) {
     'indicateElement' {
       # The control the person clicks, as the recorder describes it (window first): the caller makes the selector.
       Initialize-Indicate
-      $hint = if ($a.hint) { [string]$a.hint } else { 'Click the element (Esc to cancel, F2 to use the application for 5 seconds)' }
-      $picked = [ZtIndicate]::PickElement($timeout, $hint)
+      $hint = if ($a.hint) { [string]$a.hint } else { 'Click the element (Esc to cancel, F2 to pause and use the application)' }
+      $pausedHint = if ($a.pausedHint) { [string]$a.pausedHint } else { 'Paused: use the application (log in, open a menu), then press F2 to indicate' }
+      $picked = [ZtIndicate]::PickElement($timeout, $hint, $pausedHint)
       if ($null -eq $picked) { return $null }
       $pt = New-Object System.Windows.Point([double]$picked.x, [double]$picked.y)
       $el = [System.Windows.Automation.AutomationElement]::FromPoint($pt)

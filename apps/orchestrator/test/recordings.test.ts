@@ -85,6 +85,17 @@ describe("recording from the Designer", () => {
     await call("POST", `/api/agent/recordings/${web.id}/progress`, { agentId, steps: [], done: true, element }, agent);
     expect((await call("GET", `/api/recordings/${web.id}`)).json()).toMatchObject({ status: "done", element });
 
+    // Indicate after the steps before it (log in): they go to the PC with the banner's texts; the stage comes back.
+    const prefix = { schemaVersion: 1, id: "wf", name: "Login", variables: [], root: { id: "root", type: "core.sequence", props: {}, slots: { body: [step("o", "browser.open", { url: "https://erp.example" })] } } };
+    const texts = { pick: "Klicken", paused: "Pausiert", pause: "Pause", resume: "Anzeigen", cancel: "Abbrechen" };
+    const after = (await call("POST", "/api/recordings", { agentId, kind: "pick", target: "web", url: "https://erp.example", prefix, texts })).json();
+    expect((await call("POST", "/api/agent/recordings/next", { agentId }, agent)).json()).toMatchObject({ id: after.id, prefix: { name: "Login" }, texts });
+    await call("POST", `/api/agent/recordings/${after.id}/progress`, { agentId, steps: [], stage: "prefix" }, agent);
+    expect((await call("GET", `/api/recordings/${after.id}`)).json()).toMatchObject({ stage: "prefix" });
+    await call("POST", `/api/agent/recordings/${after.id}/progress`, { agentId, steps: [], stage: "picking", note: "Asset not found" }, agent);
+    expect((await call("GET", `/api/recordings/${after.id}`)).json()).toMatchObject({ stage: "picking", note: "Asset not found" });
+    await call("POST", `/api/recordings/${after.id}/cancel`);
+
     const app2 = (await call("POST", "/api/recordings", { agentId, kind: "pick" })).json();
     expect((await call("POST", "/api/agent/recordings/next", { agentId }, agent)).json()).toEqual({ id: app2.id, kind: "pick", target: "desktop" });
   });
