@@ -151,6 +151,9 @@ importers:
 
   apps/website:
     dependencies:
+      '@zamtest/help':
+        specifier: workspace:*
+        version: link:../../packages/help
       '@zamtest/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n

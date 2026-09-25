@@ -26,6 +26,10 @@ export interface OrchestratorConfig {
   screenshotDays: number;
   /** Where people get help beyond the docs (the help assistant points there). */
   supportEmail?: string;
+  /** The company's postal address, required in product update emails (US CAN-SPAM). */
+  companyAddress?: string;
+  /** Public website, for links in emails and the website assistant. */
+  siteUrl?: string;
 }
 
 export function loadConfig(env = process.env): OrchestratorConfig {
@@ -39,6 +43,8 @@ export function loadConfig(env = process.env): OrchestratorConfig {
     designerUrl: (env.ZAMTEST_DESIGNER_URL || "http://localhost:5174").replace(/\/+$/, ""),
     cookieDomain: env.ZAMTEST_COOKIE_DOMAIN || undefined,
     supportEmail: env.ZAMTEST_SUPPORT_EMAIL?.trim() || undefined,
+    companyAddress: env.ZAMTEST_COMPANY_ADDRESS?.trim() || undefined,
+    siteUrl: env.ZAMTEST_SITE_URL?.trim().replace(/\/+$/, "") || undefined,
     // "true", "True", "yes", "1" (with stray quotes or spaces) all mean on.
     allowSignup: /^(true|yes|1|on)$/i.test((env.ZAMTEST_ALLOW_SIGNUP ?? "").replace(/["'\s]/g, "")),
     corsOrigins: env.ZAMTEST_CORS_ORIGINS

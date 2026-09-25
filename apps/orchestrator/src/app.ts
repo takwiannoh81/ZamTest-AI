@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { AiApiError, AiClient, AiNotConfiguredError, AiRefusalError, ZamAI } from "@zamtest/ai";
 import { BUILTIN_ACTIONS, WorkflowSchema } from "@zamtest/core";
-import { languageName } from "@zamtest/i18n";
+import { languageName, LOCALES } from "@zamtest/i18n";
 import type { EngineEvent, Step } from "@zamtest/core";
 import {
   clearedSessionCookie,
@@ -46,6 +46,7 @@ import { registerRecordings } from "./recordings.js";
 import type { Recordings } from "./recordings.js";
 import { liveOf, registerAiFix } from "./ai-fix.js";
 import { registerHelp } from "./help.js";
+import { registerOutreach } from "./outreach.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
 import { createJob, finishJob, HttpError, isFinal, jobWaiting, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
@@ -201,6 +202,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     "/api/auth/sso/callback",
     "/api/billing/webhook",
     "/api/public/pricing",
+    "/api/public/chat",
+    "/api/public/unsubscribe",
   ]);
   // What a signed-in person may still do while their account is restricted (email not confirmed, ...).
   const RESTRICTED_ALLOWED = new Set(["/api/auth/me", "/api/auth/logout", "/api/auth/verify/resend", "/api/auth/mfa", "/api/auth/mfa/setup", "/api/auth/mfa/enable"]);
@@ -244,6 +247,15 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       return reply.status(403).send({ error: "Requests signed in with the cookie need the x-zamtech-client header", code: "csrf" });
     }
     req.principal = principal;
+    // The language the person uses now (the Portal and Designer send it), for emails in that language.
+    const language = String(req.headers["x-zamtech-language"] ?? "");
+    if (principal.kind === "user" && language && LOCALES.some((l) => l.code === language)) {
+      const user = store.data.users[principal.id];
+      if (user && user.language !== language) {
+        user.language = language;
+        store.save();
+      }
+    }
     if (principal.kind === "api") checkFeature(store, principal.workspaceId, "sourceControl");
     if (principal.restriction && !RESTRICTED_ALLOWED.has(url)) {
       const message = principal.restriction === "email_unverified" ? "Confirm your email address first" : "Set up two-step sign-in first";
@@ -348,6 +360,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       passwordHash: await hashPassword(body.password),
       // With email set up, the address is confirmed by a link before the workspace can be used.
       emailVerified: !mailer,
+      language: LOCALES.some((l) => l.code === req.headers["x-zamtech-language"]) ? String(req.headers["x-zamtech-language"]) : undefined,
       createdAt: nowIso(),
       lastLoginAt: nowIso(),
     };
@@ -1892,6 +1905,29 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       }
     },
     me,
+  });
+  registerOutreach(app, {
+    store,
+    mailer: mailer ?? undefined,
+    config,
+    ai: () => {
+      try {
+        return getAi();
+      } catch {
+        return undefined;
+      }
+    },
+    me,
+    isPlatformAdmin: platformAdmin,
+    pricingText: async () => {
+      const included = { free: FREE_LIMITS, pro: PRO };
+      try {
+        return JSON.stringify(billing ? { prices: await billing.prices(), included } : { included, prices: "not published yet" });
+      } catch {
+        return JSON.stringify({ included, prices: "see the Pricing section of the website" });
+      }
+    },
+    log: { warn: (m) => app.log.warn(m), info: (m) => app.log.info(m) },
   });
 
   /* ---------------------- source control and CI/CD ------------------ */

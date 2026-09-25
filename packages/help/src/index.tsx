@@ -122,19 +122,32 @@ interface ChatMessage {
   content: string;
 }
 
-const CHAT_KEY = "zamtest.helpChat";
-const saved = (): ChatMessage[] => {
+const saved = (key: string): ChatMessage[] => {
   try {
-    return JSON.parse(sessionStorage.getItem(CHAT_KEY) ?? "[]") as ChatMessage[];
+    return JSON.parse(sessionStorage.getItem(key) ?? "[]") as ChatMessage[];
   } catch {
     return [];
   }
 };
 
 /** The help assistant: answers from the docs, in the person's language. */
-export function HelpChat({ api, where }: { api: HelpApi; where?: string }) {
+export function HelpChat({
+  api,
+  where,
+  intro,
+  suggestions,
+  storageKey = "zamtest.helpChat",
+}: {
+  api: HelpApi;
+  where?: string;
+  /** Instead of the in-product greeting and suggestions (e.g. on the website). */
+  intro?: string;
+  suggestions?: string[];
+  /** Where the conversation is kept for this browser tab. */
+  storageKey?: string;
+}) {
   const { t, locale } = useI18n();
-  const [messages, setMessages] = useState<ChatMessage[]>(saved);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => saved(storageKey));
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [left, setLeft] = useState<number>();
@@ -143,12 +156,12 @@ export function HelpChat({ api, where }: { api: HelpApi; where?: string }) {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-20)));
+      sessionStorage.setItem(storageKey, JSON.stringify(messages.slice(-20)));
     } catch {
       /* storage unavailable */
     }
     box.current?.scrollTo({ top: box.current.scrollHeight, behavior: "smooth" });
-  }, [messages, busy]);
+  }, [messages, busy, storageKey]);
 
   const ask = async (question: string) => {
     const text = question.trim();
@@ -183,10 +196,10 @@ export function HelpChat({ api, where }: { api: HelpApi; where?: string }) {
       <div className="help-chat-log" ref={box}>
         {!messages.length && (
           <div className="help-chat-intro">
-            <p>{t("help.intro")}</p>
-            {(["help.suggest1", "help.suggest2", "help.suggest3"] as const).map((k) => (
-              <button key={k} className="help-suggestion" onClick={() => void ask(t(k))}>
-                {t(k)}
+            <p>{intro ?? t("help.intro")}</p>
+            {(suggestions ?? [t("help.suggest1"), t("help.suggest2"), t("help.suggest3")]).map((q) => (
+              <button key={q} className="help-suggestion" onClick={() => void ask(q)}>
+                {q}
               </button>
             ))}
           </div>

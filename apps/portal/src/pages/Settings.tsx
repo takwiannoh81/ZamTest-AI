@@ -6,6 +6,7 @@ import type { BackupStatus } from "../api";
 import { usePoll } from "../hooks";
 import { atLeast, useMe } from "../session";
 import { ErrorBanner, Field, PageHeader } from "../ui";
+import { ProductUpdatesCard } from "./Announcements";
 
 export function Settings() {
   const { t } = useI18n();
@@ -24,6 +25,7 @@ export function Settings() {
         <ThemeSelect />
       </section>
       {me?.kind === "user" && <AccountCard name={me.name} email={me.email} role={me.role} />}
+      {me?.kind === "user" && <ProductUpdatesCard />}
       {atLeast(me, "admin") && <BackupCard />}
       <section className="card">
         <h2>{t("settings.ai")}</h2>

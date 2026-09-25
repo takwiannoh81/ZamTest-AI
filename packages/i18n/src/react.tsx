@@ -25,6 +25,9 @@ function initialLocale(): Locale {
   return typeof navigator === "undefined" ? "en" : detectLocale(navigator.languages ?? [navigator.language]);
 }
 
+/** The language the person chose (or their browser's), e.g. to tell the server. */
+export const currentLocale = initialLocale;
+
 /** Loads the chosen language (lazily) and provides a translator to the app. */
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(initialLocale);

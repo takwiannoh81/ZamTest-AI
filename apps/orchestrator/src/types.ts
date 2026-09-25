@@ -299,6 +299,23 @@ export interface Asset {
 export type Role = "admin" | "developer" | "operator" | "viewer";
 export const ROLES: Role[] = ["viewer", "operator", "developer", "admin"];
 
+/** A product update email to customers. */
+export interface Announcement {
+  id: string;
+  subject: string;
+  /** Plain text with simple Markdown (paragraphs, - lists, **bold**, [links](https://...)). */
+  body: string;
+  /** Sent in each person's language (translated with AI). */
+  translate: boolean;
+  createdAt: string;
+  createdBy: string;
+  status: "sending" | "sent";
+  recipients: number;
+  sent: number;
+  failed: number;
+  finishedAt?: string;
+}
+
 export interface User {
   id: string;
   /** The customer workspace this belongs to. */
@@ -311,6 +328,10 @@ export interface User {
   disabled?: boolean;
   /** false until the person clicks the link in the confirmation email (accounts from sign-up). */
   emailVerified?: boolean;
+  /** false: no product update emails (unsubscribed). Unset means yes. */
+  productUpdates?: boolean;
+  /** The language last used to sign in (for emails in their language). */
+  language?: string;
   /** Two-step sign-in with an authenticator app. */
   mfa?: UserMfa;
   /** "sso": the account signs in through the company's identity provider. */

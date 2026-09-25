@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { useI18n } from "@zamtest/i18n/react";
+import { useI18n, currentLocale } from "@zamtest/i18n/react";
 import { BASE, FORBIDDEN_EVENT, LIMIT_EVENT, UNAUTHORIZED_EVENT } from "./api";
 import { returnTarget } from "./links";
 
 type Mode = "password" | "token" | "signup" | "forgot" | "mfa";
 
 const post = (path: string, body: unknown) =>
-  fetch(`${BASE}${path}`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  fetch(`${BASE}${path}`, { method: "POST", credentials: "include", headers: { "content-type": "application/json", "x-zamtech-language": currentLocale() }, body: JSON.stringify(body) });
 
 /**
  * The one place people sign in (the Designer sends them here): with their

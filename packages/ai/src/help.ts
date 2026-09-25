@@ -50,6 +50,8 @@ export interface HelpChatInput {
   where?: string;
   /** Where people get more help (support email), if there is one. */
   support?: string;
+  /** A visitor of the public website (no account yet): what the product does, plans and prices, how to start. */
+  visitor?: { pricing: string; signupUrl: string; siteUrl?: string };
 }
 
 /** Answers a question about using the platform, from the docs. */
@@ -61,11 +63,18 @@ export async function answerHelp(ai: AiClient, input: HelpChatInput): Promise<st
     system: [
       {
         type: "text",
-        text: `You are the help assistant inside ZamTech AI, a low-code RPA and test automation platform (Portal, Designer, and the ZamTech AI Agent on Windows PCs).
-You help people use the platform: explain features, walk them through tasks step by step, and help with problems.
+        text: `${
+          input.visitor
+            ? `You are the assistant on the public website of ZamTech AI, a low-code RPA and test automation platform (Portal, Designer, and the ZamTech AI Agent on Windows PCs).
+You talk with visitors who do not have an account yet: explain what the platform does and how it would help them, answer questions about features, plans and prices, and when they are interested, invite them to start for free: ${input.visitor.signupUrl}
+Be warm and helpful, not pushy. Plans and prices (use only these; say prices can change and the Pricing section of the website is current):
+${input.visitor.pricing}`
+            : `You are the help assistant inside ZamTech AI, a low-code RPA and test automation platform (Portal, Designer, and the ZamTech AI Agent on Windows PCs).
+You help people use the platform: explain features, walk them through tasks step by step, and help with problems.`
+        }
 
 Rules:
-- Answer from the documentation below. If it does not cover the question, say so plainly and suggest ${input.support ? `contacting support (${input.support})` : "asking their administrator"}; never invent features, buttons, limits or prices.
+- Answer from the documentation below. If it does not cover the question, say so plainly and suggest ${input.support ? `contacting us at ${input.support}` : input.visitor ? "starting a free account to try it" : "asking their administrator"}; never invent features, buttons, limits or prices.
 - Be concise and practical: short paragraphs, numbered steps for tasks, names of buttons and menus in **bold**.
 - Answer in ${language}. Translate button and menu names the way the ${language} interface names them.
 - Only help with ZamTech AI and automation or testing questions; politely decline anything else.

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Agent, ApiToken, Asset, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, TestCase, TestFolder, TestRun, User, WorkflowDraft, Workspace } from "./types.js";
+import type { Agent, Announcement, ApiToken, Asset, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, TestCase, TestFolder, TestRun, User, WorkflowDraft, Workspace } from "./types.js";
 import { DEFAULT_WORKSPACE } from "./types.js";
 
 export interface Data {
@@ -32,6 +32,10 @@ export interface Data {
   endedSessions: Record<string, { at: string; reason: "signed_in_elsewhere" }>;
   /** Help assistant questions per person today (a daily limit, apart from the plan's AI requests). */
   helpUsage: Record<string, { day: string; count: number }>;
+  /** Product update emails the platform owner sent to customers. */
+  announcements: Record<string, Announcement>;
+  /** Server-made secrets, e.g. for signing unsubscribe links. */
+  secrets: { unsubscribe?: string };
   /** One-time data changes already made. */
   migrations?: string[];
 }
@@ -64,6 +68,8 @@ const empty = (): Data => ({
   testRuns: {},
   endedSessions: {},
   helpUsage: {},
+  announcements: {},
+  secrets: {},
 });
 
 /**

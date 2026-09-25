@@ -1,3 +1,4 @@
+import { currentLocale } from "@zamtest/i18n/react";
 export const BASE = import.meta.env.VITE_API_URL ?? "";
 
 // The Portal's sign-in sets an HttpOnly cookie shared with the Designer; nothing is kept in the page.
@@ -23,6 +24,8 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
       ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
       // Proves the request comes from this app, not another site using the cookie.
       "x-zamtech-client": "designer",
+      // For emails in the person's language.
+      "x-zamtech-language": currentLocale(),
     },
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });

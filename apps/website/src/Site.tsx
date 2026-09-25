@@ -2,6 +2,7 @@ import { LOCALES } from "@zamtest/i18n";
 import type { MessageKey } from "@zamtest/i18n";
 import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
 import { Pricing } from "./Pricing";
+import { ChatWidget } from "./ChatWidget";
 
 const PORTAL_URL = import.meta.env.VITE_PORTAL_URL ?? "http://localhost:5173";
 const DESIGNER_URL = import.meta.env.VITE_DESIGNER_URL ?? "http://localhost:5174";
@@ -167,6 +168,7 @@ export function Site() {
           </span>
         </div>
       </footer>
+      <ChatWidget />
     </>
   );
 }

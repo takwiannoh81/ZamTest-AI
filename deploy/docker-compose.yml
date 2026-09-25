@@ -62,6 +62,9 @@ services:
       # The help assistant (Docs): a lighter model; and where it sends people for more help.
       ZAMTEST_HELP_MODEL: ${ZAMTEST_HELP_MODEL:-}
       ZAMTEST_SUPPORT_EMAIL: ${ZAMTEST_SUPPORT_EMAIL:-}
+      # Product update emails: the company postal address the law requires in them (US CAN-SPAM).
+      ZAMTEST_COMPANY_ADDRESS: ${ZAMTEST_COMPANY_ADDRESS:-}
+      ZAMTEST_SITE_URL: https://${SITE_DOMAIN}
       # Nightly S3 backups (optional; see docs/DEPLOYMENT.md)
       ZAMTEST_BACKUP_S3_BUCKET: ${ZAMTEST_BACKUP_S3_BUCKET:-}
       ZAMTEST_BACKUP_S3_PREFIX: ${ZAMTEST_BACKUP_S3_PREFIX:-zamtest/}

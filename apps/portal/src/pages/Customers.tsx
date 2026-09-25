@@ -5,6 +5,7 @@ import { api } from "../api";
 import type { Limits, PlanId, WorkspaceSummary } from "../api";
 import { usePoll } from "../hooks";
 import { ErrorBanner, PageHeader } from "../ui";
+import { Announcements } from "./Announcements";
 
 const isUnlimited = (n: number) => n >= 1e12;
 const PLANS: PlanId[] = ["free", "pro", "enterprise"];
@@ -29,6 +30,7 @@ export function Customers() {
   return (
     <>
       <PageHeader title={t("nav.customers")} subtitle={t("customers.subtitle")} />
+      <Announcements />
       <ErrorBanner error={error} />
       {data && (
         <table>
