@@ -106,7 +106,7 @@ const RULES = `How to diagnose:
   gets a "manual" fix in plain words; do not pretend a workflow change will fix it.
 - If you cannot tell, say what is missing and propose how to find out (e.g. a Take Screenshot step), with cause "unknown".
 - If earlier rounds are listed, do not repeat a fix that already failed; try the next most likely cause.
-- When a step failed because one fixed item of a list is gone, renamed or unavailable (a row, a camera, a card), propose
+- When a step failed because one fixed item of a list is gone, renamed or unavailable (a row, an option, a card), propose
   props.list on it (see the format) so it picks a suitable item when it runs, e.g. the first one without the offline mark.`;
 
 /** Finds why a run failed and proposes fixes the Designer can apply. */

@@ -28,7 +28,7 @@ Property value rules:
   Start desktop processes with desktop.launch (waitFor set to the window selector).
   When you cannot see the page, write your best guess and ALWAYS fill the "description" prop so selectors can be healed at run time.
 - Use "core.getAsset" for credentials and configuration; never hard-code secrets.
-- Dynamic targets: a step that should act on one item of a list (rows, cards, list items, cameras, search results)
+- Dynamic targets: a step that should act on one item of a list (rows, cards, list items, dropdown options, search results)
   chosen when it runs, not a fixed one, keeps one example item in "selector" and adds props.list:
   { "items": "<selector matching every item>", "inner": "<optional: part inside the item>",
     "skipIfHas": "<optional: selector inside an item; items containing it are skipped, e.g. an offline icon>",

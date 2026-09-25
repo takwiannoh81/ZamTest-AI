@@ -313,9 +313,9 @@ Your description is saved as the step's target description.
 
 ## Dynamic targets: any item of a list
 
-A step can work on **an item of a list chosen when it runs**, instead of one fixed element: for example, "click the first camera that is not offline". This keeps the step working when the list changes. It works on web pages and in Windows applications.
+A step can work on **an item of a list chosen when it runs**, instead of one fixed element: for example, "choose the first option in a dropdown that is available" or "open the first order that is not closed". This keeps the step working when the list changes. It works on web pages and in Windows applications.
 
-1. Click ◎ on the step and point at one item of the list (one row, one camera).
+1. Click ◎ on the step and point at one item of the list (one row, one option).
 2. The page outlines all similar items for a moment, and the Designer says "It is one of 17 similar items".
 3. Choose **Any item like this one**. (Choose **Only this one** for a fixed element.)
 4. In the step's properties, the **Item from a list** card sets the rules:
@@ -599,7 +599,7 @@ AI can write a website's test cases for you. It looks at the real site through o
    - **No sign-in needed**.
    - **Sign in with steps I already have**: pick a test case or workflow that opens the site and signs in (for example your login test). It runs first on the PC, and every new test starts with it.
    - **I sign in myself in the browser**: the browser opens on the PC with a bar at the top. Sign in (or open the page to start from), then click **Start exploring**. Choose a credential under **The tests sign in with**, so the new tests can sign in by themselves when they run.
-4. Optionally say **What to test**, for example "the camera list and its filters".
+4. Optionally say **What to test**, for example "the orders list and its filters".
 5. Choose how many **Tests to write**, how many **Pages to explore**, and the PC. Click **Explore and write tests**.
 
 The PC visits the site's pages by following its links and sends each page's fields, buttons, links, text and screen. It never presses buttons or sends forms, and skips sign-out, delete and download links. AI then writes the tests, which takes one or two minutes. Each test checks one thing, with real selectors from the pages and Verify steps.

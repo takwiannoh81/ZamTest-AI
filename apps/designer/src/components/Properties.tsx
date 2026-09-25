@@ -267,7 +267,7 @@ export function WorkflowSettings({ workflow, onChange }: { workflow: Workflow; o
 
 /**
  * A dynamic target: the step works on an item of a list chosen at run time (e.g. the first
- * camera that is not offline) instead of one fixed element.
+ * option that is available) instead of one fixed element.
  */
 function ListCard({ step, onChange, onIndicateSkip }: { step: Step; onChange: (step: Step) => void; onIndicateSkip?: () => void }) {
   const { t } = useI18n();

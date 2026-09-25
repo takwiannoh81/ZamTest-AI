@@ -65,7 +65,7 @@ const RULES = `How to write the tests:
   (submit it empty and verify the error message) is fine when the page data shows required fields.
 - Tests are independent: each one opens what it needs and ends with browser.close.
 - Wait for slow pages with browser.waitFor (a selector from the page) before checking, when the page loads data.
-- Name each test in a few words ("Dashboard shows the camera list") and describe in one sentence what it checks.`;
+- Name each test in a few words ("Dashboard shows the orders list") and describe in one sentence what it checks.`;
 
 const SIGN_IN = {
   none: "The site needs no sign-in: each test starts with browser.open at the address of the page it tests.",
