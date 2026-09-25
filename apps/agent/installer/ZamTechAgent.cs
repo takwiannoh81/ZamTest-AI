@@ -696,7 +696,8 @@ class AgentTray : ApplicationContext {
     // An install key approves without the browser, so open the Designer here after a fresh install.
     if (firstRun) {
       firstRun = false;
-      if (s.DesignerUrl.Length > 0 && !approvedInBrowser) OpenUrl(s.DesignerUrl);
+      // signin=1: the person signs in, not whoever was signed in in that browser.
+      if (s.DesignerUrl.Length > 0 && !approvedInBrowser) OpenUrl(s.DesignerUrl + (s.DesignerUrl.Contains("?") ? "&" : "?") + "signin=1");
     }
     announced = false;
     StartAgent();

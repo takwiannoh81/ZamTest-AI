@@ -69,7 +69,8 @@ describe("connecting a PC", () => {
     expect(start.statusCode).toBe(200);
     const { deviceCode, userCode, verificationUrl, approved } = start.json();
     expect(userCode).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
-    expect(verificationUrl).toBe(`http://localhost:5173/#/connect?code=${userCode}`);
+    // The person signs in again there before approving (signin=1).
+    expect(verificationUrl).toBe(`http://localhost:5173/#/connect?code=${userCode}&signin=1`);
     expect(approved).toBe(false);
     expect((await app.inject({ method: "POST", url: "/api/agent/enroll/poll", payload: { deviceCode } })).json()).toEqual({ status: "pending" });
 

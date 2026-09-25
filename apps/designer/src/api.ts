@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_URL ?? "";
+export const BASE = import.meta.env.VITE_API_URL ?? "";
 
 // The Portal's sign-in sets an HttpOnly cookie shared with the Designer; nothing is kept in the page.
 // Earlier versions stored a token in localStorage: remove it.

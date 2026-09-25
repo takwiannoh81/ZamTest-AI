@@ -1365,7 +1365,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     version: z.string().max(50).default(""),
     installKey: z.string().trim().optional(),
   });
-  const approvalUrl = (userCode: string) => `${config.portalUrl}/#/connect?code=${userCode}`;
+  // signin=1: the person signs in again before approving (and the Designer opens after), not whoever was signed in in that browser.
+  const approvalUrl = (userCode: string) => `${config.portalUrl}/#/connect?code=${userCode}&signin=1`;
 
   const usableInstallKey = (key: string): InstallKey | undefined => {
     const hash = hashToken(key);
