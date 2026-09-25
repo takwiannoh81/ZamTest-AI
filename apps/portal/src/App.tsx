@@ -16,6 +16,7 @@ import { Security } from "./pages/Security";
 import { SourceControl } from "./pages/SourceControl";
 import { Settings } from "./pages/Settings";
 import { Users } from "./pages/Users";
+import { Docs } from "./pages/Docs";
 import { AGENT_DOWNLOAD_URL, DESIGNER_URL } from "./links";
 import { atLeast, signOut, useMe } from "./session";
 
@@ -32,6 +33,7 @@ const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolea
   { path: "/billing", label: "nav.billing", icon: "💳", admin: true },
   { path: "/security", label: "nav.security", icon: "🛡" },
   { path: "/settings", label: "nav.settings", icon: "☰" },
+  { path: "/docs", label: "nav.docs", icon: "📖" },
   { path: "/customers", label: "nav.customers", icon: "🏢", platform: true },
 ];
 
@@ -61,6 +63,7 @@ export function App() {
   else if (route === "/security") page = <Security />;
   else if (route === "/source-control") page = <SourceControl />;
   else if (route === "/users") page = <Users />;
+  else if (route === "/docs" || route.startsWith("/docs/")) page = <Docs section={route.slice("/docs/".length) || undefined} />;
   else page = <Dashboard />;
 
   return (

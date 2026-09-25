@@ -46,6 +46,9 @@ importers:
       '@zamtest/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@zamtest/help':
+        specifier: workspace:*
+        version: link:../../packages/help
       '@zamtest/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
@@ -114,6 +117,9 @@ importers:
       '@zamtest/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@zamtest/help':
+        specifier: workspace:*
+        version: link:../../packages/help
       '@zamtest/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
@@ -228,6 +234,19 @@ importers:
       zod:
         specifier: ^3.24.0
         version: 3.25.76
+
+  packages/help:
+    dependencies:
+      '@zamtest/i18n':
+        specifier: workspace:*
+        version: link:../i18n
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.3.0
+      react:
+        specifier: ^19.0.0
+        version: 19.3.0
 
   packages/i18n:
     dependencies:

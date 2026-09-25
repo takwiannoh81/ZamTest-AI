@@ -1,0 +1,25 @@
+{
+  "name": "@zamtest/help",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Docs and the help assistant, shared by the Portal and the Designer",
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx",
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@zamtest/i18n": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0"
+  }
+}

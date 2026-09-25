@@ -207,6 +207,7 @@ export function hasRole(principal: Principal, needed: Role): boolean {
 export function requiredRole(method: string, path: string): Role {
   if (path.startsWith("/api/users") || path.startsWith("/api/admin/") || path.startsWith("/api/billing/") || path.startsWith("/api/platform/") || path.startsWith("/api/api-tokens")) return "admin";
   if (method === "GET" || method === "HEAD") return "viewer";
+  if (method === "POST" && path === "/api/help/chat") return "viewer"; // help is for everyone
   if (method === "DELETE" && path.startsWith("/api/agents/")) return "admin";
   if (method === "POST" && path === "/api/jobs") return "operator"; // ad-hoc definitions need developer (checked in the route)
   if (method === "POST" && /^\/api\/jobs\/[^/]+\/(cancel|rerun)$/.test(path)) return "operator"; // rerunning a test run needs developer (checked in the route)

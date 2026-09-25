@@ -1,0 +1,63 @@
+/* Docs and the help assistant. Colours come from the app's own tokens (--surface, --accent, ...). */
+.help-center-page { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.help-center-page .help-center-chat { position: sticky; top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; height: calc(100vh - 140px); min-height: 420px; }
+.help-center-chat h3 { margin: 0 0 8px; font-size: 15px; }
+@media (max-width: 1100px) {
+  .help-center-page { grid-template-columns: 1fr; }
+  .help-center-page .help-center-chat { position: static; height: 520px; }
+}
+
+.help-docs { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start; }
+.help-center-page .help-docs { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.help-docs-nav { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 160px); overflow: auto; }
+.help-docs-nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.help-docs-nav button { width: 100%; text-align: start; background: none; border: none; border-radius: 8px; padding: 7px 10px; color: var(--text); font: inherit; font-size: 13.5px; cursor: pointer; }
+.help-docs-nav button:hover { background: var(--surface-2); }
+.help-docs-nav button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.help-search { width: 100%; box-sizing: border-box; }
+.help-note { color: var(--muted); font-size: 12.5px; margin: 4px 0; }
+.help-error { color: var(--danger); font-size: 13px; margin: 6px 0; }
+
+.help-article { min-width: 0; line-height: 1.6; font-size: 14.5px; padding: 0 8px 24px; }
+.help-article h2 { margin: 4px 0 2px; font-size: 22px; }
+.help-summary { color: var(--muted); margin: 0 0 12px; }
+.md h3 { font-size: 17px; margin: 22px 0 6px; }
+.md h4 { font-size: 15px; margin: 16px 0 4px; }
+.md p { margin: 8px 0; }
+.md ul, .md ol { margin: 6px 0 10px; padding-inline-start: 22px; }
+.md li { margin: 3px 0; }
+.md code { background: var(--surface-2); border-radius: 5px; padding: 1px 5px; font-size: 0.9em; word-break: break-word; }
+.md pre { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; overflow: auto; }
+.md pre code { background: none; padding: 0; }
+.md a { color: var(--accent); }
+
+.help-chat { display: flex; flex-direction: column; min-height: 0; flex: 1; gap: 8px; }
+.help-chat-log { flex: 1; min-height: 160px; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 2px; }
+.help-chat-intro { color: var(--muted); font-size: 13.5px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.help-suggestion { background: var(--accent-soft); color: var(--accent); border: none; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; text-align: start; }
+.help-msg { border-radius: 12px; padding: 8px 12px; font-size: 14px; line-height: 1.5; max-width: 92%; word-wrap: break-word; }
+.help-msg-user { align-self: flex-end; background: var(--accent); color: #fff; white-space: pre-wrap; }
+.help-msg-assistant { align-self: flex-start; background: var(--surface-2); }
+.help-msg-assistant .md p:first-child { margin-top: 0; }
+.help-msg-assistant .md p:last-child { margin-bottom: 0; }
+.help-typing { display: flex; gap: 4px; padding: 12px; }
+.help-typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: help-blink 1.2s infinite ease-in-out; }
+.help-typing span:nth-child(2) { animation-delay: 0.2s; }
+.help-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes help-blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+.help-chat-input { display: flex; gap: 8px; align-items: flex-end; }
+.help-chat-input textarea { flex: 1; min-width: 0; resize: none; font: inherit; font-size: 14px; }
+.help-send { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+.help-send:disabled { opacity: 0.5; cursor: default; }
+.help-chat-foot { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; min-height: 16px; }
+.help-link { background: none; border: none; color: var(--accent); font: inherit; cursor: pointer; padding: 0; }
+
+/* A narrow panel (the Designer): tabs, and the docs list above the article. */
+.help-center-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 10px; }
+.help-tabs { display: inline-flex; align-self: flex-start; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.help-tabs button { background: none; border: none; padding: 6px 14px; color: var(--muted); font: inherit; cursor: pointer; }
+.help-tabs button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.help-center-panel .help-docs { grid-template-columns: 1fr; flex: 1; min-height: 0; overflow: auto; }
+.help-center-panel .help-docs-nav { position: static; max-height: 180px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.help-center-panel .help-article { padding: 0 4px 16px; }
+.help-center-panel .help-chat { flex: 1; min-height: 0; }

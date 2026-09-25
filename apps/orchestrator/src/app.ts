@@ -45,6 +45,7 @@ import { registerTestCases } from "./testcases.js";
 import { registerRecordings } from "./recordings.js";
 import type { Recordings } from "./recordings.js";
 import { liveOf, registerAiFix } from "./ai-fix.js";
+import { registerHelp } from "./help.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
 import { createJob, finishJob, HttpError, isFinal, jobWaiting, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
@@ -1879,6 +1880,19 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   /* ------------------------ recording from the Designer -------------- */
   recordings = registerRecordings(app, { store, me, own, who, agentFor });
   registerAiFix(app, { store, screenshots, getAi, useAi: (workspaceId) => useAi(store, workspaceId), me, own, recordings });
+  registerHelp(app, {
+    store,
+    dataDir: config.dataDir,
+    supportEmail: config.supportEmail,
+    ai: () => {
+      try {
+        return getAi();
+      } catch {
+        return undefined;
+      }
+    },
+    me,
+  });
 
   /* ---------------------- source control and CI/CD ------------------ */
   registerCicd(app, {

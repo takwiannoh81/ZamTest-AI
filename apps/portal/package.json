@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@zamtest/core": "workspace:*",
+    "@zamtest/help": "workspace:*",
     "@zamtest/i18n": "workspace:*",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",

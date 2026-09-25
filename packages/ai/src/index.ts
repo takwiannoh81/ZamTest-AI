@@ -6,6 +6,8 @@ import { healDesktopSelector, healSelector, suggestSelectors } from "./selectors
 import { generateWorkflow } from "./workflow-gen.js";
 import { diagnoseRun } from "./diagnose.js";
 import type { DiagnoseInput } from "./diagnose.js";
+import { answerHelp, translateDoc } from "./help.js";
+import type { DocText, HelpChatInput } from "./help.js";
 import type { GenerateWorkflowInput } from "./workflow-gen.js";
 
 export * from "./client.js";
@@ -13,6 +15,7 @@ export type { AgentTool, RunAgentInput, RunAgentResult } from "./agent.js";
 export type { DesktopSelectorCandidate, SelectorCandidate, SelectorSuggestion } from "./selectors.js";
 export type { GenerateWorkflowInput, GenerateWorkflowResult } from "./workflow-gen.js";
 export type { DiagnoseInput, Diagnosis, Fix } from "./diagnose.js";
+export type { DocText, HelpChatInput } from "./help.js";
 
 /** Facade over every AI capability of the platform. */
 export class ZamAI {
@@ -45,6 +48,16 @@ export class ZamAI {
   /** Finds why a run failed, from its evidence, and proposes fixes. */
   diagnoseRun(input: DiagnoseInput) {
     return diagnoseRun(this.client, input);
+  }
+
+  /** A docs section in another language. */
+  translateDoc(input: DocText & { language: string }) {
+    return translateDoc(this.client, input);
+  }
+
+  /** The help assistant's answer, from the docs. */
+  answerHelp(input: HelpChatInput) {
+    return answerHelp(this.client, input);
   }
 
   runAgent(input: RunAgentInput) {

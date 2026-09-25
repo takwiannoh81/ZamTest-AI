@@ -59,6 +59,9 @@ services:
       STRIPE_PORTAL_CONFIGURATION: ${STRIPE_PORTAL_CONFIGURATION:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ZAMTEST_AI_MODEL: ${ZAMTEST_AI_MODEL:-}
+      # The help assistant (Docs): a lighter model; and where it sends people for more help.
+      ZAMTEST_HELP_MODEL: ${ZAMTEST_HELP_MODEL:-}
+      ZAMTEST_SUPPORT_EMAIL: ${ZAMTEST_SUPPORT_EMAIL:-}
       # Nightly S3 backups (optional; see docs/DEPLOYMENT.md)
       ZAMTEST_BACKUP_S3_BUCKET: ${ZAMTEST_BACKUP_S3_BUCKET:-}
       ZAMTEST_BACKUP_S3_PREFIX: ${ZAMTEST_BACKUP_S3_PREFIX:-zamtest/}

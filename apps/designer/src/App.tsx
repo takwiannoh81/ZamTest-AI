@@ -7,6 +7,7 @@ import { AiGenerateModal, JsonModal, SelectorAssistModal } from "./components/Ai
 import { GitHistoryModal } from "./components/GitHistory";
 import { RecordModal } from "./components/RecordModal";
 import { FixModal, windowOf } from "./components/FixModal";
+import { HelpButton } from "./components/Help";
 import { IndicateModal } from "./components/IndicateModal";
 import { TestCases } from "./components/TestCases";
 import { Canvas } from "./components/Canvas";
@@ -183,6 +184,7 @@ function StartScreen({ onOpen, onOpenTest }: { onOpen: (id: string) => void; onO
         </a>
         <LanguageSelect className="lang-select" />
         <ThemeSelect className="lang-select" />
+        <HelpButton where="the Designer's start screen" />
         <UserMenu />
       </div>
       {notice && <p className="notice">{notice}</p>}
@@ -551,6 +553,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
         </button>
         <LanguageSelect className="lang-select" />
         <ThemeSelect className="lang-select" />
+        <HelpButton where={`the Designer, editing the ${isTest ? "test case" : "workflow"} "${workflow.name}"`} />
       </header>
       {showIssues && issues.length > 0 && (
         <div className="issues">

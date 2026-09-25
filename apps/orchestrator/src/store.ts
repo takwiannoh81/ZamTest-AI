@@ -30,6 +30,8 @@ export interface Data {
   testRuns: Record<string, TestRun>;
   /** Sessions ended because their user signed in somewhere else (one sign-in per user), so that device can be told why. */
   endedSessions: Record<string, { at: string; reason: "signed_in_elsewhere" }>;
+  /** Help assistant questions per person today (a daily limit, apart from the plan's AI requests). */
+  helpUsage: Record<string, { day: string; count: number }>;
   /** One-time data changes already made. */
   migrations?: string[];
 }
@@ -61,6 +63,7 @@ const empty = (): Data => ({
   testCases: {},
   testRuns: {},
   endedSessions: {},
+  helpUsage: {},
 });
 
 /**
