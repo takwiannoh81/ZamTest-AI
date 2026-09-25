@@ -112,7 +112,6 @@ export function Site() {
         <section id="ai" className="section section-alt">
           <div className="wrap">
             <h2>{t("site.ai.title")}</h2>
-            <p className="section-sub">{t("site.ai.subtitle")}</p>
             <Cards cards={AI} />
           </div>
         </section>

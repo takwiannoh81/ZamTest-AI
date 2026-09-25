@@ -858,7 +858,6 @@ export const vi: LocaleMessages = {
     "site.features.browser.title": "Tự động hóa trình duyệt & API",
     "site.features.browser.text": "Tự động hóa ứng dụng web, REST API và tệp với các hành động có sẵn, cơ chế thử lại và giới hạn thời gian chờ.",
     "site.ai.title": "AI ở mọi bước",
-    "site.ai.subtitle": "Được hỗ trợ bởi Claude.",
     "site.ai.build.title": "Xây dựng bằng AI",
     "site.ai.build.text": "Mô tả quy trình bằng ngôn ngữ thông thường và nhận về một luồng công việc hoàn chỉnh, đã được kiểm tra, sẵn sàng để chỉnh sửa.",
     "site.ai.heal.title": "Bộ chọn tự phục hồi",

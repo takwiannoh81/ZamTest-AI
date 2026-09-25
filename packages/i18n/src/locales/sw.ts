@@ -858,7 +858,6 @@ export const sw: LocaleMessages = {
     "site.features.browser.title": "Otomatiki ya kivinjari na API",
     "site.features.browser.text": "Weka otomatiki programu za wavuti, REST API na faili kwa vitendo vilivyo tayari, kujaribu tena na muda wa kuisha.",
     "site.ai.title": "AI katika kila hatua",
-    "site.ai.subtitle": "Inaendeshwa na Claude.",
     "site.ai.build.title": "Unda kwa AI",
     "site.ai.build.text": "Eleza mchakato kwa lugha ya kawaida na upate mtiririko kamili wa kazi uliothibitishwa ambao unaweza kuuhariri.",
     "site.ai.heal.title": "Viteuzi vinavyojirekebisha",

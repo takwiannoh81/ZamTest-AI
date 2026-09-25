@@ -858,7 +858,6 @@ export const es: LocaleMessages = {
     "site.features.browser.title": "Automatización web y de API",
     "site.features.browser.text": "Automatice aplicaciones web, API REST y archivos con acciones listas para usar, reintentos y tiempos de espera.",
     "site.ai.title": "IA en cada paso",
-    "site.ai.subtitle": "Con la tecnología de Claude.",
     "site.ai.build.title": "Cree con IA",
     "site.ai.build.text": "Describa un proceso en lenguaje natural y obtenga un flujo de trabajo completo y validado que puede editar.",
     "site.ai.heal.title": "Selectores autorreparables",

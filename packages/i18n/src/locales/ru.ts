@@ -858,7 +858,6 @@ export const ru: LocaleMessages = {
     "site.features.browser.title": "Автоматизация браузера и API",
     "site.features.browser.text": "Автоматизируйте веб-приложения, REST API и работу с файлами с помощью готовых действий, повторных попыток и тайм-аутов.",
     "site.ai.title": "ИИ на каждом шаге",
-    "site.ai.subtitle": "На базе Claude.",
     "site.ai.build.title": "Создавайте с ИИ",
     "site.ai.build.text": "Опишите процесс простыми словами — и получите готовый, проверенный рабочий процесс, который можно доработать.",
     "site.ai.heal.title": "Самовосстанавливающиеся селекторы",

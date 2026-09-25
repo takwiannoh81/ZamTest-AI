@@ -905,7 +905,6 @@ export const en = {
   "site.features.browser.title": "Browser & API automation",
   "site.features.browser.text": "Automate web applications, REST APIs and files with ready-made actions, retries and timeouts.",
   "site.ai.title": "AI at every step",
-  "site.ai.subtitle": "Powered by Claude.",
   "site.ai.build.title": "Build with AI",
   "site.ai.build.text": "Describe a process in plain language and get a complete, validated workflow you can edit.",
   "site.ai.heal.title": "Self-healing selectors",

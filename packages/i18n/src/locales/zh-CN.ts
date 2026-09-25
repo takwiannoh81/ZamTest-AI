@@ -858,7 +858,6 @@ export const zhCN: LocaleMessages = {
     "site.features.browser.title": "浏览器与 API 自动化",
     "site.features.browser.text": "借助现成的操作以及重试和超时机制，自动化 Web 应用、REST API 和文件处理。",
     "site.ai.title": "AI 贯穿每一步",
-    "site.ai.subtitle": "由 Claude 提供支持。",
     "site.ai.build.title": "使用 AI 构建",
     "site.ai.build.text": "用日常语言描述流程，即可获得经过验证、可直接编辑的完整工作流。",
     "site.ai.heal.title": "自愈选择器",

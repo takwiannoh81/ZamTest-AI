@@ -858,7 +858,6 @@ export const ar: LocaleMessages = {
     "site.features.browser.title": "أتمتة المتصفح وواجهات API",
     "site.features.browser.text": "أتمِت تطبيقات الويب وواجهات REST API والملفات بإجراءات جاهزة مع إعادة المحاولة ومهلات الانتظار.",
     "site.ai.title": "ذكاء اصطناعي في كل خطوة",
-    "site.ai.subtitle": "مدعوم بـ Claude.",
     "site.ai.build.title": "الإنشاء بالذكاء الاصطناعي",
     "site.ai.build.text": "صِف العملية بلغة بسيطة واحصل على سير عمل كامل ومُتحقَّق منه وجاهز للتعديل.",
     "site.ai.heal.title": "محددات ذاتية الإصلاح",

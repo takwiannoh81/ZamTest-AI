@@ -858,7 +858,6 @@ export const nl: LocaleMessages = {
     "site.features.browser.title": "Browser- & API-automatisering",
     "site.features.browser.text": "Automatiseer webapplicaties, REST API's en bestanden met kant-en-klare acties, nieuwe pogingen en time-outs.",
     "site.ai.title": "AI bij elke stap",
-    "site.ai.subtitle": "Aangedreven door Claude.",
     "site.ai.build.title": "Bouwen met AI",
     "site.ai.build.text": "Beschrijf een proces in gewone taal en krijg een complete, gevalideerde workflow die je kunt bewerken.",
     "site.ai.heal.title": "Zelfherstellende selectors",

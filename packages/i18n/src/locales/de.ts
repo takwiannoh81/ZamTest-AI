@@ -858,7 +858,6 @@ export const de: LocaleMessages = {
     "site.features.browser.title": "Browser- & API-Automatisierung",
     "site.features.browser.text": "Automatisieren Sie Webanwendungen, REST-APIs und Dateien mit fertigen Aktionen, Wiederholungsversuchen und Timeouts.",
     "site.ai.title": "KI in jedem Schritt",
-    "site.ai.subtitle": "Powered by Claude.",
     "site.ai.build.title": "Mit KI erstellen",
     "site.ai.build.text": "Beschreiben Sie einen Prozess in natürlicher Sprache und erhalten Sie einen vollständigen, validierten Workflow, den Sie bearbeiten können.",
     "site.ai.heal.title": "Selbstheilende Selektoren",

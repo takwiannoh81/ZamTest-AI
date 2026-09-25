@@ -858,7 +858,6 @@ export const ja: LocaleMessages = {
     "site.features.browser.title": "ブラウザーと API の自動化",
     "site.features.browser.text": "すぐに使えるアクションと、リトライ・タイムアウト機能で、Web アプリケーション、REST API、ファイル操作を自動化できます。",
     "site.ai.title": "すべてのステップに AI を",
-    "site.ai.subtitle": "Claude を搭載。",
     "site.ai.build.title": "AI で作成",
     "site.ai.build.text": "プロセスを普段の言葉で説明するだけで、検証済みの完全なワークフローが生成され、そのまま編集できます。",
     "site.ai.heal.title": "自己修復セレクター",

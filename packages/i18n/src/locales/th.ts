@@ -858,7 +858,6 @@ export const th: LocaleMessages = {
     "site.features.browser.title": "ระบบอัตโนมัติสำหรับเบราว์เซอร์และ API",
     "site.features.browser.text": "ทำให้เว็บแอปพลิเคชัน REST API และไฟล์ทำงานอัตโนมัติด้วยแอ็กชันสำเร็จรูป พร้อมการลองใหม่และการหมดเวลา",
     "site.ai.title": "AI ในทุกขั้นตอน",
-    "site.ai.subtitle": "ขับเคลื่อนโดย Claude",
     "site.ai.build.title": "สร้างด้วย AI",
     "site.ai.build.text": "อธิบายโปรเซสด้วยภาษาที่คุณใช้ทุกวัน แล้วรับเวิร์กโฟลว์ที่สมบูรณ์ ผ่านการตรวจสอบแล้ว และแก้ไขต่อได้",
     "site.ai.heal.title": "ซีเล็กเตอร์ที่ซ่อมแซมตัวเองได้",
