@@ -29,6 +29,8 @@ export function AiGenerateModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [result, setResult] = useState<{ workflow: Workflow; notes: string }>();
+  /** An application on the person's PC that AI builds the steps from (an inspect's id). */
+  const [inspectId, setInspectId] = useState<string>();
 
   const generate = async () => {
     setBusy(true);
@@ -36,7 +38,7 @@ export function AiGenerateModal({
     try {
       const res = await api<{ workflow: Workflow; notes: string }>("/api/ai/generate-workflow", {
         method: "POST",
-        body: { prompt, existing: mode === "edit" ? current : undefined, language: locale },
+        body: { prompt, existing: mode === "edit" ? current : undefined, language: locale, inspectId },
       });
       setResult(res);
     } catch (e) {
@@ -104,6 +106,7 @@ export function AiGenerateModal({
           <Field label={mode === "edit" ? t("ai.whatChange") : t("ai.describe")}>
             <textarea rows={6} value={prompt} autoFocus onChange={(e) => setPrompt(e.target.value)} />
           </Field>
+          {!initialPrompt && <AppLook onReady={setInspectId} />}
           {!prompt && (
             <div className="examples">
               <span className="muted tiny">{t("ai.try")}</span>
@@ -117,6 +120,110 @@ export function AiGenerateModal({
         </>
       )}
     </Modal>
+  );
+}
+
+interface LookPc {
+  id: string;
+  name: string;
+  canIndicate?: boolean;
+  canInspect?: boolean;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Waits for a request to a PC (indicate, inspect) to end; its final state. */
+async function settle<T extends { status: string }>(id: string, limitMs: number, alive: () => boolean): Promise<T | undefined> {
+  for (let waited = 0; waited < limitMs && alive(); waited += 700) {
+    await sleep(700);
+    const r = await api<T>(`/api/recordings/${id}`).catch(() => undefined);
+    if (r && ["done", "failed", "cancelled"].includes(r.status)) return r;
+  }
+  return undefined;
+}
+
+/**
+ * "Use an application on my PC": the person indicates the application, the PC's
+ * agent sends its window's controls (and the screen), and AI builds real selectors.
+ */
+function AppLook({ onReady }: { onReady: (inspectId: string | undefined) => void }) {
+  const { t } = useI18n();
+  const [pcs, setPcs] = useState<LookPc[]>([]);
+  const [pcId, setPcId] = useState("");
+  const [state, setState] = useState<{ step: "idle" | "indicating" | "looking" | "ready" | "notFound"; app?: string; count?: number }>({ step: "idle" });
+  const [error, setError] = useState<string>();
+  const alive = useRef(true);
+
+  useEffect(() => {
+    alive.current = true;
+    api<LookPc[]>("/api/recordings/agents")
+      .then((list) => {
+        setPcs(list);
+        setPcId((list.find((p) => p.canInspect) ?? list[0])?.id ?? "");
+      })
+      .catch(() => undefined);
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  const pc = pcs.find((p) => p.id === pcId);
+  const look = async () => {
+    setError(undefined);
+    onReady(undefined);
+    try {
+      setState({ step: "indicating" });
+      const pick = await api<{ id: string }>("/api/recordings", { method: "POST", body: { agentId: pcId, kind: "indicate", hint: t("record.indicateScreen") } });
+      const picked = await settle<{ status: string; error?: string; picked?: { process: string; title: string } }>(pick.id, 75_000, () => alive.current);
+      if (!picked?.picked) {
+        setState({ step: "idle" });
+        if (picked?.error) setError(picked.error);
+        return;
+      }
+      const app = picked.picked.title || picked.picked.process;
+      setState({ step: "looking", app });
+      const look = await api<{ id: string }>("/api/recordings", {
+        method: "POST",
+        body: { agentId: pcId, kind: "inspect", selector: `window[process="${picked.picked.process}"]` },
+      });
+      const seen = await settle<{ status: string; inspected?: { found: boolean; tree: string } }>(look.id, 45_000, () => alive.current);
+      if (!seen?.inspected?.found) {
+        setState({ step: "notFound", app });
+        return;
+      }
+      setState({ step: "ready", app, count: seen.inspected.tree.split("\n").length });
+      onReady(look.id);
+    } catch (e) {
+      setState({ step: "idle" });
+      setError((e as Error).message);
+    }
+  };
+
+  if (!pcs.length) return null;
+  const working = state.step === "indicating" || state.step === "looking";
+  return (
+    <details className="app-look" open={state.step !== "idle"}>
+      <summary>{t("ailook.title")}</summary>
+      <p className="muted tiny">{t("ailook.hint")}</p>
+      <ErrorBanner error={error} />
+      <div className="indicate-row">
+        <select value={pcId} disabled={working} onChange={(e) => setPcId(e.target.value)}>
+          {pcs.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <button type="button" className="btn-ghost indicate-btn" disabled={!pc?.canInspect || working} onClick={() => void look()}>
+          ◎ {t("record.indicate")}
+        </button>
+      </div>
+      {pc && !pc.canInspect && <p className="muted tiny">{t("ailook.tooOld")}</p>}
+      {state.step === "indicating" && <p className="indicate-status">{t("record.indicating", { pc: pc?.name ?? "" })}</p>}
+      {state.step === "looking" && <p className="indicate-status">{t("ailook.looking", { app: state.app ?? "" })}</p>}
+      {state.step === "ready" && <p className="ok-text tiny">✓ {t("ailook.ready", { app: state.app ?? "", pc: pc?.name ?? "", count: state.count ?? 0 })}</p>}
+      {state.step === "notFound" && <p className="error-text tiny">{t("ailook.notFound", { app: state.app ?? "", pc: pc?.name ?? "" })}</p>}
+    </details>
   );
 }
 

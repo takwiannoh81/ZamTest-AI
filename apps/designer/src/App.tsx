@@ -6,6 +6,7 @@ import type { Job, WorkflowDraft, WorkflowSummary } from "./api";
 import { AiGenerateModal, JsonModal, SelectorAssistModal } from "./components/AiModals";
 import { GitHistoryModal } from "./components/GitHistory";
 import { RecordModal } from "./components/RecordModal";
+import { FixModal } from "./components/FixModal";
 import { TestCases } from "./components/TestCases";
 import { Canvas } from "./components/Canvas";
 import { Palette } from "./components/Palette";
@@ -229,6 +230,8 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
   const [modal, setModal] = useState<null | "ai" | "json" | "history" | "record" | { selectorProp: string }>(null);
   // Fix with AI: the request prepared for the AI dialog (issues, or a failed run's error).
   const [fixPrompt, setFixPrompt] = useState<string>();
+  /** Fix with AI of a failed run. */
+  const [fixing, setFixing] = useState<{ jobId: string; stepId?: string }>();
   // Source control: whether the workspace has a Git repository, and uses Development/Test/Production.
   const [gitConnected, setGitConnected] = useState(false);
   const [envsOn, setEnvsOn] = useState(false);
@@ -268,12 +271,14 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
     setDirty(true);
   };
 
-  const save = useCallback(async () => {
-    if (!workflow) return false;
+  /** Saves the workflow (or the given version of it, e.g. just fixed by AI). */
+  const save = useCallback(async (override?: Workflow) => {
+    const w = override ?? workflow;
+    if (!w) return false;
     try {
       await api(endpoint, {
         method: "PUT",
-        body: isTest ? { name: workflow.name, definition: workflow } : { name: workflow.name, description: workflow.description ?? "", definition: workflow },
+        body: isTest ? { name: w.name, definition: w } : { name: w.name, description: w.description ?? "", definition: w },
       });
       setDirty(false);
       setStatus(t("toolbar.saved", { time: i18n.time(Date.now()) }));
@@ -381,8 +386,9 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
     }
   };
 
-  const testRun = async () => {
-    await save();
+  /** Saves and runs the workflow (or the given version of it); the run's job id. */
+  const testRun = async (override?: Workflow): Promise<string | undefined> => {
+    await save(override);
     try {
       if (isTest) {
         // A test case runs as a test run, so its result shows in the Test cases tab too.
@@ -390,12 +396,14 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
         const item = testRunResult.items[0];
         if (!item?.jobId) throw new Error(item?.message ?? "Not started");
         setRun({ jobId: item.jobId });
-        return;
+        return item.jobId;
       }
-      const job = await api<Job>("/api/jobs", { method: "POST", body: { definition: workflow, source: "designer" } });
+      const job = await api<Job>("/api/jobs", { method: "POST", body: { definition: override ?? workflow, source: "designer" } });
       setRun({ jobId: job.id });
+      return job.id;
     } catch (e) {
       setStatus(t("toolbar.runFailed", { error: (e as Error).message }));
+      return undefined;
     }
   };
 
@@ -431,8 +439,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
 
   const fixIssuesWithAi = () =>
     setFixPrompt(`${t("fix.issuesPrompt")}\n${issues.map((i) => `- ${i.message} (step ${i.stepId})`).join("\n")}`);
-  const fixRunWithAi = (error: string, stepId?: string) =>
-    setFixPrompt(`${t("fix.runPrompt")}\n${stepId ? `Step ${stepId}: ` : ""}${error}`);
+  const fixRunWithAi = (_error: string, stepId?: string) => run && setFixing({ jobId: run.jobId, stepId });
 
   const selectorModal = modal && typeof modal === "object" ? modal : undefined;
 
@@ -583,6 +590,20 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
             setModal(null);
             setStatus(t("toolbar.aiApplied"));
           }}
+        />
+      )}
+      {fixing && (
+        <FixModal
+          jobId={fixing.jobId}
+          stepId={fixing.stepId}
+          workflow={workflow}
+          describe={describeStep}
+          onApply={(w) => {
+            update(w);
+            setStatus(t("fix.applied"));
+          }}
+          onRunAgain={testRun}
+          onClose={() => setFixing(undefined)}
         />
       )}
       {fixPrompt && (

@@ -113,7 +113,8 @@ describe("languages", () => {
     };
     const { client, requests } = fakeClient([{ content: [text("```json\n" + JSON.stringify(good) + "\n```")] }]);
     await new ZamAI({ client }).generateWorkflow({ prompt: "sag hallo", language: "German" });
-    const first = (requests[0]!.messages as Array<{ content: string }>)[0]!.content;
+    const blocks = (requests[0]!.messages as Array<{ content: Array<{ text?: string }> }>)[0]!.content;
+    const first = blocks.map((b) => b.text ?? "").join("\n");
     expect(first).toContain("in German");
     expect(first).toContain("ASCII identifiers");
   });

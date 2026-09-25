@@ -103,7 +103,7 @@ export function RunPanel({
         {job?.status === "failed" && onFixWithAi && (
           <button
             className="btn small ai-btn"
-            onClick={() => onFixWithAi(job.error ?? "", [...logs].reverse().find((l) => l.level === "error" && l.stepId)?.stepId)}
+            onClick={() => onFixWithAi(job.error ?? "", logs.find((l) => l.level === "error" && l.stepId)?.stepId)}
           >
             {t("fix.withAi")}
           </button>

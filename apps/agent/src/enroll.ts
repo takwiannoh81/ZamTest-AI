@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { hostname, platform, release } from "node:os";
 import { sleep } from "@zamtest/core";
 
-const VERSION = "0.3.1";
+const VERSION = "0.3.2";
 
 export interface EnrollResult {
   agentId: string;

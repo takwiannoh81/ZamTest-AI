@@ -3,7 +3,8 @@
  * program (desktop) on this PC, records clicks and typing, and reports the steps
  * so far about once a second until the Designer says to stop (or the browser
  * window is closed). "Indicate" lets the person click the application to record
- * instead of typing its path.
+ * instead of typing its path; "inspect" sends an application window's controls
+ * and the screen, for AI to fix or build steps from what is really there.
  */
 import { desktop } from "@zamtest/actions";
 import { errorMessage } from "@zamtest/core";
@@ -14,13 +15,25 @@ import { eventsToWorkflow, startRecording } from "./recorder.js";
 
 export interface RemoteRecordingRequest {
   id: string;
-  kind: "web" | "desktop" | "indicate";
+  kind: "web" | "desktop" | "indicate" | "inspect";
   url?: string;
   program?: string;
   /** Desktop: the program is already open (it was indicated): record it without starting another one. */
   attach?: boolean;
   /** Indicate: the instruction shown on the screen, in the person's language. */
   hint?: string;
+  /** Inspect: the window, as a desktop selector (e.g. window[process="erp"]). */
+  selector?: string;
+}
+
+/** Inspect: what is on the PC now. */
+export interface Inspected {
+  selector: string;
+  /** The window was found (its controls are in tree); if not, tree lists the open windows. */
+  found: boolean;
+  tree: string;
+  /** The screen, as a JPEG in base64. */
+  screen?: string;
 }
 
 /** The application the person clicked. */
@@ -37,6 +50,7 @@ export interface RecordingProgress {
   error?: string;
   /** Indicate: the application clicked (unset: Esc, or no click in time). */
   picked?: IndicatedApp;
+  inspected?: Inspected;
 }
 
 /** Sends the steps so far; answers whether the Designer asked to stop. */
@@ -51,6 +65,7 @@ export async function runRemoteRecording(request: RemoteRecordingRequest, report
   try {
     if (request.kind === "web") await recordWeb(request, report);
     else if (request.kind === "indicate") await indicate(request, report);
+    else if (request.kind === "inspect") await inspect(request, report);
     else await recordDesktop(request, report);
     log(`Recording ${request.id} finished`);
   } catch (err) {
@@ -87,6 +102,34 @@ async function indicate(request: RemoteRecordingRequest, report: ReportProgress)
   try {
     const picked = await driver.call<IndicatedApp | null>("indicateWindow", { timeoutMs: INDICATE_TIMEOUT_MS, hint: request.hint });
     await report({ steps: [], variables: [], done: true, picked: picked ?? undefined });
+  } finally {
+    await driver.close();
+  }
+}
+
+/** Enough of a window's controls for AI, without sending thousands of lines. */
+const INSPECT_MAX_NODES = 1200;
+
+async function inspect(request: RemoteRecordingRequest, report: ReportProgress) {
+  const driver = desktop.DesktopDriver.start();
+  try {
+    const selector = request.selector ?? "";
+    let found = false;
+    let tree = "";
+    if (selector) {
+      try {
+        tree = (await driver.call<{ tree: string }>("tree", { selector, depth: 30, maxNodes: INSPECT_MAX_NODES, timeoutMs: 5000 })).tree;
+        found = true;
+      } catch {
+        // Not open (or not found): the open windows instead.
+      }
+    }
+    if (!found) tree = (await driver.call<{ tree: string }>("tree", { maxNodes: 300 })).tree;
+    const screen = await driver
+      .call<{ data: string }>("snapshot", { maxWidth: 1400, quality: 60 })
+      .then((r) => r.data)
+      .catch(() => undefined);
+    await report({ steps: [], variables: [], done: true, inspected: { selector, found, tree, screen } });
   } finally {
     await driver.close();
   }

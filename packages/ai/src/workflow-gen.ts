@@ -3,7 +3,7 @@ import type { ActionMeta, Workflow } from "@zamtest/core";
 import type { AiClient, BetaMessageParam } from "./client.js";
 import { extractJson, textOf } from "./client.js";
 
-const FORMAT = `A workflow is JSON:
+export const FORMAT = `A workflow is JSON:
 {
   "schemaVersion": 1,
   "id": "<kebab-case id>",
@@ -29,7 +29,7 @@ Property value rules:
   When you cannot see the page, write your best guess and ALWAYS fill the "description" prop so selectors can be healed at run time.
 - Use "core.getAsset" for credentials and configuration; never hard-code secrets.`;
 
-function catalogPrompt(catalog: ActionMeta[]): string {
+export function catalogPrompt(catalog: ActionMeta[]): string {
   return catalog
     .map((a) => {
       const props = a.props
@@ -48,6 +48,10 @@ export interface GenerateWorkflowInput {
   catalog?: ActionMeta[];
   /** English name of the user's language, e.g. "Japanese". Defaults to English. */
   language?: string;
+  /** The account's assets (names and types, never values), so steps use ones that exist. */
+  assets?: Array<{ name: string; type: string }>;
+  /** A Windows application's window as it is on the person's PC: its controls (and the screen), for real selectors. */
+  live?: { selector: string; tree: string; screen?: Buffer };
 }
 
 export interface GenerateWorkflowResult {
@@ -83,7 +87,22 @@ Reply with a short explanation of the design (max 5 bullet points), then the com
         `target descriptions, variable descriptions) in ${input.language}. Keep action types, prop names, variable names, ` +
         `selectors and expressions exactly as the format requires (variable names must be ASCII identifiers).`
       : "";
-  const messages: BetaMessageParam[] = [{ role: "user", content: request + languageNote }];
+  const context: string[] = [];
+  if (input.assets?.length) {
+    context.push(`Assets that exist in this account (use these exact names with core.getAsset; values are hidden):\n${input.assets.map((a) => `- ${a.name} (${a.type})`).join("\n")}`);
+  }
+  if (input.live) {
+    context.push(
+      `The application's window ${input.live.selector} as it is open on the person's PC now. Its controls (control type, name, id, class;` +
+        ` indentation = nesting) are the truth: build desktop selectors from them, starting with ${input.live.selector}:\n${input.live.tree}`,
+    );
+  }
+  const content: Exclude<BetaMessageParam["content"], string> = [{ type: "text", text: [request + languageNote, ...context].join("\n\n") }];
+  if (input.live?.screen) {
+    content.push({ type: "text", text: "The window on screen:" });
+    content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: input.live.screen.toString("base64") } });
+  }
+  const messages: BetaMessageParam[] = [{ role: "user", content }];
   let lastErrors: string[] = [];
 
   for (let attempt = 0; attempt < 2; attempt++) {

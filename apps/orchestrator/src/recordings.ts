@@ -3,8 +3,9 @@
  * PC's agent (which checks every few seconds) opens the browser or program and
  * records there, sending the steps as they happen; the Designer shows them live
  * and asks it to stop. "Indicate" goes the same way: the person clicks the
- * application on the PC and its path comes back. Recordings are short-lived and
- * kept in memory only.
+ * application on the PC and its path comes back, and "inspect" (for AI) brings
+ * back an application window's controls and the screen. Recordings are
+ * short-lived and kept in memory only.
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -20,7 +21,7 @@ export interface Recording {
   workspaceId: string;
   agentId: string;
   agentName: string;
-  kind: "web" | "desktop" | "indicate";
+  kind: "web" | "desktop" | "indicate" | "inspect";
   /** Web: where the browser starts. */
   url?: string;
   /** Desktop: the program to start and record (unset: whatever application is used). */
@@ -31,6 +32,10 @@ export interface Recording {
   hint?: string;
   /** Indicate: the application clicked (unset when the person pressed Esc or did not click in time). */
   picked?: { path: string; process: string; title: string };
+  /** Inspect: the window (a desktop selector). */
+  selector?: string;
+  /** Inspect: its controls (or the open windows when it is not open), and the screen (JPEG, base64). */
+  inspected?: { selector: string; found: boolean; tree: string; screen?: string };
   status: "pending" | "recording" | "stopping" | "done" | "failed" | "cancelled";
   requestedBy: string;
   requestedAt: string;
@@ -46,15 +51,19 @@ const PICKUP_TIMEOUT_MS = 60_000;
 /** Recordings are forgotten this long after they end. */
 const KEEP_MS = 30 * 60_000;
 
-/** Agents before this version do not know "indicate" (they would record the whole desktop instead). */
-const INDICATE_SINCE = [0, 3, 1];
-export function canIndicate(version: string | undefined): boolean {
+function atLeast(version: string | undefined, since: number[]): boolean {
   const parts = (version ?? "").split(".").map((n) => Number.parseInt(n, 10) || 0);
-  for (let i = 0; i < INDICATE_SINCE.length; i++) {
-    if ((parts[i] ?? 0) !== INDICATE_SINCE[i]) return (parts[i] ?? 0) > INDICATE_SINCE[i]!;
+  for (let i = 0; i < since.length; i++) {
+    if ((parts[i] ?? 0) !== since[i]) return (parts[i] ?? 0) > since[i]!;
   }
   return true;
 }
+/** Agents before these versions do not know "indicate" / "inspect" (they would record the whole desktop instead). */
+export const canIndicate = (version: string | undefined) => atLeast(version, [0, 3, 1]);
+export const canInspect = (version: string | undefined) => atLeast(version, [0, 3, 2]);
+
+/** What the Designer sees while it waits: not the screen image (the server gives that to AI). */
+const view = (r: Recording) => (r.inspected?.screen ? { ...r, inspected: { ...r.inspected, screen: undefined, hasScreen: true } } : r);
 
 export interface RecordingContext {
   store: Store;
@@ -64,7 +73,12 @@ export interface RecordingContext {
   agentFor(req: FastifyRequest): Agent;
 }
 
-export function registerRecordings(app: FastifyInstance, ctx: RecordingContext): void {
+/** Read access for the AI routes: an inspect's result, for the workspace that asked for it. */
+export interface Recordings {
+  get(id: string, workspaceId: string): Recording | undefined;
+}
+
+export function registerRecordings(app: FastifyInstance, ctx: RecordingContext): Recordings {
   const { store } = ctx;
   const recordings = new Map<string, Recording>();
   /** Agents that can record (they ask for recordings; older agents never do), and when they last asked. */
@@ -102,6 +116,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         // Asked for recordings lately, or is recording now (and so not asking).
         canRecord: Date.now() - (recorders.get(a.id) ?? 0) < 30_000 || [...recordings.values()].some((r) => r.agentId === a.id && ACTIVE.includes(r.status)),
         canIndicate: canIndicate(a.version),
+        canInspect: canInspect(a.version),
       }));
   });
 
@@ -109,11 +124,12 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     const body = parse(
       z.object({
         agentId: z.string().min(1),
-        kind: z.enum(["web", "desktop", "indicate"]),
+        kind: z.enum(["web", "desktop", "indicate", "inspect"]),
         url: z.string().trim().max(2000).optional(),
         program: z.string().trim().max(500).optional(),
         attach: z.boolean().optional(),
         hint: z.string().trim().max(300).optional(),
+        selector: z.string().trim().max(1000).optional(),
       }),
       req.body,
     );
@@ -121,6 +137,9 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     if (agent.status === "offline") throw new HttpError(409, `${agent.name} is offline`);
     if (body.kind === "indicate" && !canIndicate(agent.version)) {
       throw new HttpError(409, `Update the ZamTech AI agent on ${agent.name} to use Indicate (it has version ${agent.version || "unknown"})`);
+    }
+    if (body.kind === "inspect" && !canInspect(agent.version)) {
+      throw new HttpError(409, `Update the ZamTech AI agent on ${agent.name} so AI can look at its applications (it has version ${agent.version || "unknown"})`);
     }
     if (body.kind === "web") {
       if (!body.url) throw new HttpError(400, "Enter the address of the website to record");
@@ -141,6 +160,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       program: body.kind === "desktop" ? body.program || undefined : undefined,
       attach: body.kind === "desktop" && body.program ? body.attach || undefined : undefined,
       hint: body.kind === "indicate" ? body.hint || undefined : undefined,
+      selector: body.kind === "inspect" ? body.selector || undefined : undefined,
       status: "pending",
       requestedBy: ctx.who(p),
       requestedAt: nowIso(),
@@ -149,17 +169,17 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       variables: [],
     };
     recordings.set(recording.id, recording);
-    return reply.status(201).send(recording);
+    return reply.status(201).send(view(recording));
   });
 
-  app.get<{ Params: { id: string } }>("/api/recordings/:id", async (req) => mine(req, req.params.id));
+  app.get<{ Params: { id: string } }>("/api/recordings/:id", async (req) => view(mine(req, req.params.id)));
 
   app.post<{ Params: { id: string } }>("/api/recordings/:id/stop", async (req) => {
     const r = mine(req, req.params.id);
     if (r.status === "pending") r.status = "cancelled";
     else if (r.status === "recording") r.status = "stopping";
     r.updatedAt = nowIso();
-    return r;
+    return view(r);
   });
 
   app.post<{ Params: { id: string } }>("/api/recordings/:id/cancel", async (req) => {
@@ -168,7 +188,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       r.status = "cancelled";
       r.updatedAt = nowIso();
     }
-    return r;
+    return view(r);
   });
 
   /* ---------- the PC's agent ---------- */
@@ -181,11 +201,12 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     if (!next) return reply.status(204).send();
     next.status = "recording";
     next.updatedAt = nowIso();
-    return { id: next.id, kind: next.kind, url: next.url, program: next.program, attach: next.attach, hint: next.hint };
+    return { id: next.id, kind: next.kind, url: next.url, program: next.program, attach: next.attach, hint: next.hint, selector: next.selector };
   });
 
   /** The steps so far (all of them each time); the answer says whether to stop. */
-  app.post<{ Params: { id: string } }>("/api/agent/recordings/:id/progress", async (req) => {
+  // Inspect answers carry a screen image and a long controls list.
+  app.post<{ Params: { id: string } }>("/api/agent/recordings/:id/progress", { bodyLimit: 12 * 1024 * 1024 }, async (req) => {
     const agent = ctx.agentFor(req);
     const r = recordings.get(req.params.id);
     if (!r || r.agentId !== agent.id) throw new HttpError(404, "Recording not found");
@@ -197,6 +218,9 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         done: z.boolean().default(false),
         error: z.string().max(2000).optional(),
         picked: z.object({ path: z.string().max(2000), process: z.string().max(260), title: z.string().max(1000) }).optional(),
+        inspected: z
+          .object({ selector: z.string().max(1000), found: z.boolean(), tree: z.string().max(400_000), screen: z.string().max(10_000_000).optional() })
+          .optional(),
       }),
       req.body,
     );
@@ -204,6 +228,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       r.steps = body.steps as Step[];
       r.variables = body.variables as VariableDef[];
       if (body.picked) r.picked = body.picked;
+      if (body.inspected) r.inspected = body.inspected;
       if (body.error) {
         r.status = "failed";
         r.error = body.error;
@@ -212,4 +237,11 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     }
     return { stop: r.status === "stopping" || r.status === "cancelled" };
   });
+
+  return {
+    get: (id, workspaceId) => {
+      const r = recordings.get(id);
+      return r && r.workspaceId === workspaceId ? r : undefined;
+    },
+  };
 }

@@ -42,6 +42,8 @@ import { apiTokenPrincipal, effectiveEnv, ENV_NAMES, environmentsOn, isIn, publi
 import { GitRepos } from "./git.js";
 import { registerTestCases } from "./testcases.js";
 import { registerRecordings } from "./recordings.js";
+import type { Recordings } from "./recordings.js";
+import { liveOf, registerAiFix } from "./ai-fix.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
 import { createJob, finishJob, HttpError, isFinal, jobWaiting, sweep } from "./jobs.js";
 import { addItem, completeItem, FINAL_ITEM_STATUSES, findQueue, queueCounts, takeNext } from "./queues.js";
@@ -130,7 +132,8 @@ const ScheduleBody = z.object({
 });
 
 const AssetBody = z.object({
-  name: z.string().regex(/^[A-Za-z0-9_.-]+$/, "Use letters, digits, '.', '_' or '-'"),
+  // "/" groups names like folders (VideoInsight/Login).
+  name: z.string().regex(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/, "Use letters, digits, '.', '_', '-' or '/' (not at the start or end)"),
   type: z.enum(["text", "number", "boolean", "credential"]),
   value: z.unknown(),
   description: z.string().optional(),
@@ -149,6 +152,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     if (!ai) throw new AiNotConfiguredError();
     return ai;
   };
+  /** Inspects of PCs' applications (set up with the recording routes below). */
+  let recordings: Recordings | undefined;
 
   await app.register(cors, { origin: config.corsOrigins, credentials: true });
 
@@ -1128,14 +1133,23 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     getAi();
     useAi(store, ws(req));
     const body = parse(
-      z.object({ prompt: z.string().min(3), existing: WorkflowSchema.optional(), language: z.string().optional() }),
+      z.object({
+        prompt: z.string().min(3),
+        existing: WorkflowSchema.optional(),
+        language: z.string().optional(),
+        /** An "inspect" of an application on the person's PC, to build its steps from its real controls. */
+        inspectId: z.string().optional(),
+      }),
       req.body,
     );
+    const live = recordings && body.inspectId ? liveOf(recordings, body.inspectId, ws(req)) : undefined;
     return getAi().generateWorkflow({
       prompt: body.prompt,
       existing: body.existing,
       catalog: BUILTIN_ACTIONS,
       language: body.language ? languageName(body.language) : undefined,
+      assets: mine(store.data.assets, req).map((a) => ({ name: a.name, type: a.type })),
+      live: live?.found ? live : undefined,
     });
   });
 
@@ -1822,7 +1836,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   registerTestCases(app, { store, me, own, mine });
 
   /* ------------------------ recording from the Designer -------------- */
-  registerRecordings(app, { store, me, own, who, agentFor });
+  recordings = registerRecordings(app, { store, me, own, who, agentFor });
+  registerAiFix(app, { store, screenshots, getAi, useAi: (workspaceId) => useAi(store, workspaceId), me, own, recordings });
 
   /* ---------------------- source control and CI/CD ------------------ */
   registerCicd(app, {

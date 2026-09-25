@@ -4,12 +4,15 @@ import { runAgent } from "./agent.js";
 import type { RunAgentInput } from "./agent.js";
 import { healDesktopSelector, healSelector, suggestSelectors } from "./selectors.js";
 import { generateWorkflow } from "./workflow-gen.js";
+import { diagnoseRun } from "./diagnose.js";
+import type { DiagnoseInput } from "./diagnose.js";
 import type { GenerateWorkflowInput } from "./workflow-gen.js";
 
 export * from "./client.js";
 export type { AgentTool, RunAgentInput, RunAgentResult } from "./agent.js";
 export type { DesktopSelectorCandidate, SelectorCandidate, SelectorSuggestion } from "./selectors.js";
 export type { GenerateWorkflowInput, GenerateWorkflowResult } from "./workflow-gen.js";
+export type { DiagnoseInput, Diagnosis, Fix } from "./diagnose.js";
 
 /** Facade over every AI capability of the platform. */
 export class ZamAI {
@@ -37,6 +40,11 @@ export class ZamAI {
 
   generateWorkflow(input: GenerateWorkflowInput) {
     return generateWorkflow(this.client, input);
+  }
+
+  /** Finds why a run failed, from its evidence, and proposes fixes. */
+  diagnoseRun(input: DiagnoseInput) {
+    return diagnoseRun(this.client, input);
   }
 
   runAgent(input: RunAgentInput) {
