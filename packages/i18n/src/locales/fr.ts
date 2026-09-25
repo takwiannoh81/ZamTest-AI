@@ -618,6 +618,7 @@ export const fr: LocaleMessages = {
     "auth.submit": "Se connecter",
     "auth.invalid": "Ce jeton n'a pas été accepté.",
     "auth.signOut": "Se déconnecter",
+    "auth.signedInElsewhere": "Vous avez été déconnecté car votre compte s'est connecté sur un autre navigateur ou PC. Une seule connexion par compte est autorisée.",
     "record.button": "Enregistrer",
     "record.hint": "Enregistrez les clics et la saisie dans un navigateur ou un programme Windows sur votre PC ; les étapes sont insérées à l'emplacement sélectionné",
     "record.title": "Enregistrer des étapes",

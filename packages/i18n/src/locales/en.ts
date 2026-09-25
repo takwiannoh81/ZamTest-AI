@@ -655,6 +655,7 @@ export const en = {
   "auth.submit": "Sign in",
   "auth.invalid": "That token was not accepted.",
   "auth.signOut": "Sign out",
+  "auth.signedInElsewhere": "You were signed out because your account signed in on another browser or PC. Only one sign-in per account is allowed.",
   "record.button": "Record",
   "record.hint": "Record clicks and typing in a browser or Windows program on your PC; the steps go in at the selected place",
   "record.title": "Record steps",

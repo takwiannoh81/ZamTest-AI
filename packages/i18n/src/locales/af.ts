@@ -618,6 +618,7 @@ export const af: LocaleMessages = {
     "auth.submit": "Meld aan",
     "auth.invalid": "Daardie token is nie aanvaar nie.",
     "auth.signOut": "Meld af",
+    "auth.signedInElsewhere": "Jy is afgemeld omdat jou rekening op 'n ander blaaier of rekenaar aangemeld het. Slegs een aanmelding per rekening word toegelaat.",
     "record.button": "Neem op",
     "record.hint": "Neem klikke en tik in 'n blaaier of Windows-program op u rekenaar op; die stappe word by die gekose plek ingevoeg",
     "record.title": "Neem stappe op",

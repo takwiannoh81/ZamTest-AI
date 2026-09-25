@@ -28,6 +28,8 @@ export interface Data {
   testFolders: Record<string, TestFolder>;
   testCases: Record<string, TestCase>;
   testRuns: Record<string, TestRun>;
+  /** Sessions ended because their user signed in somewhere else (one sign-in per user), so that device can be told why. */
+  endedSessions: Record<string, { at: string; reason: "signed_in_elsewhere" }>;
   /** One-time data changes already made. */
   migrations?: string[];
 }
@@ -58,6 +60,7 @@ const empty = (): Data => ({
   testFolders: {},
   testCases: {},
   testRuns: {},
+  endedSessions: {},
 });
 
 /**

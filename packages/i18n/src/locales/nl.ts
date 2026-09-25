@@ -618,6 +618,7 @@ export const nl: LocaleMessages = {
     "auth.submit": "Inloggen",
     "auth.invalid": "Dat token is niet geaccepteerd.",
     "auth.signOut": "Uitloggen",
+    "auth.signedInElsewhere": "Je bent afgemeld omdat je account zich op een andere browser of pc heeft aangemeld. Per account is maar één aanmelding toegestaan.",
     "record.button": "Opnemen",
     "record.hint": "Neem klikken en typen op in een browser of Windows-programma op uw pc; de stappen worden op de geselecteerde plek ingevoegd",
     "record.title": "Stappen opnemen",

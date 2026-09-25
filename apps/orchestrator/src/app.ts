@@ -9,6 +9,7 @@ import type { EngineEvent, Step } from "@zamtest/core";
 import {
   clearedSessionCookie,
   createSession,
+  endedReason,
   deleteSession,
   deleteUserSessions,
   hashPassword,
@@ -230,7 +231,12 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     const cookieToken = req.headers.authorization ? undefined : readCookie(req.headers.cookie, SESSION_COOKIE);
     // A CI pipeline's API token, or a person (or the master token).
     const principal = apiTokenPrincipal(store, bearer(req)) ??resolvePrincipal(store, config.adminToken, req.headers.authorization, cookieToken);
-    if (!principal) return reply.status(401).send({ error: "Sign in required", code: "unauthorized" });
+    if (!principal) {
+      if (endedReason(store, bearer(req) || cookieToken) === "signed_in_elsewhere") {
+        return reply.status(401).send({ error: "You were signed out because your account signed in on another browser or PC", code: "signed_in_elsewhere" });
+      }
+      return reply.status(401).send({ error: "Sign in required", code: "unauthorized" });
+    }
     // Browsers send cookies on their own, so changes made with the sign-in cookie must carry a
     // header that other sites cannot add without CORS permission (cross-site request forgery).
     if (cookieToken && !["GET", "HEAD", "OPTIONS"].includes(req.method) && req.headers["x-zamtech-client"] === undefined) {

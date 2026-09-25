@@ -618,6 +618,7 @@ export const zhCN: LocaleMessages = {
     "auth.submit": "登录",
     "auth.invalid": "该令牌无效。",
     "auth.signOut": "退出登录",
+    "auth.signedInElsewhere": "由于你的账户在其他浏览器或电脑上登录，你已被退出。每个账户只允许一处登录。",
     "record.button": "录制",
     "record.hint": "录制您电脑上浏览器或 Windows 程序中的点击和输入；步骤将插入到所选位置",
     "record.title": "录制步骤",

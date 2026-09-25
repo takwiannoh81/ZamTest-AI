@@ -7,8 +7,8 @@ import { FORBIDDEN_EVENT, LIMIT_EVENT, UNAUTHORIZED_EVENT } from "../api";
 export const PORTAL_URL = (import.meta.env.VITE_PORTAL_URL ?? "http://localhost:5173").replace(/\/+$/, "");
 
 /** The Portal's sign-in, coming back to this page afterwards. */
-export function portalSignInUrl(): string {
-  return `${PORTAL_URL}/?return=${encodeURIComponent(window.location.href)}`;
+export function portalSignInUrl(signedInElsewhere = false): string {
+  return `${PORTAL_URL}/?return=${encodeURIComponent(window.location.href)}${signedInElsewhere ? "&reason=elsewhere" : ""}`;
 }
 
 /**
@@ -20,7 +20,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<{ text: string; upgrade: boolean }>();
 
   useEffect(() => {
-    const onUnauthorized = () => window.location.assign(portalSignInUrl());
+    const onUnauthorized = (e: Event) => window.location.assign(portalSignInUrl((e as CustomEvent<string | undefined>).detail === "signed_in_elsewhere"));
     let timer: ReturnType<typeof setTimeout> | undefined;
     const show = (text: string, upgrade: boolean) => {
       setNotice({ text, upgrade });

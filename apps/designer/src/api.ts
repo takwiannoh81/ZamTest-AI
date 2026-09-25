@@ -26,7 +26,11 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
     },
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
-  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  if (res.status === 401) {
+    // "signed_in_elsewhere": this account signed in on another browser or PC (one sign-in per user).
+    const why = ((await res.clone().json().catch(() => ({}))) as { code?: string }).code;
+    window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT, { detail: why }));
+  }
   if (res.status === 403) window.dispatchEvent(new Event(FORBIDDEN_EVENT));
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));

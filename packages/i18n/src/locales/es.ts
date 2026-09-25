@@ -618,6 +618,7 @@ export const es: LocaleMessages = {
     "auth.submit": "Iniciar sesión",
     "auth.invalid": "Ese token no fue aceptado.",
     "auth.signOut": "Cerrar sesión",
+    "auth.signedInElsewhere": "Se cerró tu sesión porque tu cuenta inició sesión en otro navegador o equipo. Solo se permite un inicio de sesión por cuenta.",
     "record.button": "Grabar",
     "record.hint": "Grabe clics y escritura en un navegador o programa de Windows en su PC; los pasos se insertan en el lugar seleccionado",
     "record.title": "Grabar pasos",

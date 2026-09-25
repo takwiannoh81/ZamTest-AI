@@ -618,6 +618,7 @@ export const de: LocaleMessages = {
     "auth.submit": "Anmelden",
     "auth.invalid": "Dieses Token wurde nicht akzeptiert.",
     "auth.signOut": "Abmelden",
+    "auth.signedInElsewhere": "Sie wurden abgemeldet, weil sich Ihr Konto in einem anderen Browser oder auf einem anderen PC angemeldet hat. Pro Konto ist nur eine Anmeldung erlaubt.",
     "record.button": "Aufzeichnen",
     "record.hint": "Klicks und Eingaben in einem Browser oder Windows-Programm auf Ihrem PC aufzeichnen; die Schritte werden an der ausgewählten Stelle eingefügt",
     "record.title": "Schritte aufzeichnen",

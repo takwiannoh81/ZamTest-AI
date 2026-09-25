@@ -618,6 +618,7 @@ export const sw: LocaleMessages = {
     "auth.submit": "Ingia",
     "auth.invalid": "Tokeni hiyo haikukubaliwa.",
     "auth.signOut": "Toka",
+    "auth.signedInElsewhere": "Umetolewa kwa sababu akaunti yako imeingia kwenye kivinjari au kompyuta nyingine. Kuingia mara moja tu kwa kila akaunti kunaruhusiwa.",
     "record.button": "Rekodi",
     "record.hint": "Rekodi mibofyo na uandishi katika kivinjari au programu ya Windows kwenye kompyuta yako; hatua huwekwa mahali ulipochagua",
     "record.title": "Rekodi hatua",

@@ -51,7 +51,18 @@ export function newUserCode(): string {
   return `${code.slice(0, 4)}-${code.slice(4)}`;
 }
 
+/**
+ * Signs a user in. One sign-in per user: the user's other sessions (another
+ * browser or PC) end, and are remembered for a day so that device can say why.
+ */
 export function createSession(store: Store, user: User | typeof MASTER_SESSION): string {
+  if (user !== MASTER_SESSION) {
+    for (const s of Object.values(store.data.sessions)) {
+      if (s.userId !== user.id) continue;
+      delete store.data.sessions[s.id];
+      store.data.endedSessions[s.id] = { at: nowIso(), reason: "signed_in_elsewhere" };
+    }
+  }
   const token = newSecret();
   const session: Session = {
     id: tokenId(token),
@@ -77,7 +88,15 @@ export function deleteUserSessions(store: Store, userId: string, exceptToken?: s
   store.save();
 }
 
+/** Why a session token no longer works, if it was ended by a sign-in elsewhere. */
+export function endedReason(store: Store, token: string | undefined): "signed_in_elsewhere" | undefined {
+  return token ? store.data.endedSessions[tokenId(token)]?.reason : undefined;
+}
+
 export function pruneSessions(store: Store, now = Date.now()): void {
+  for (const [id, ended] of Object.entries(store.data.endedSessions)) {
+    if (now - Date.parse(ended.at) > 24 * 60 * 60 * 1000) delete store.data.endedSessions[id];
+  }
   for (const s of Object.values(store.data.sessions)) {
     if (Date.parse(s.expiresAt) < now) delete store.data.sessions[s.id];
   }

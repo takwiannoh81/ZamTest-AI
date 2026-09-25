@@ -618,6 +618,7 @@ export const ja: LocaleMessages = {
     "auth.submit": "サインイン",
     "auth.invalid": "このトークンは受け付けられませんでした。",
     "auth.signOut": "サインアウト",
+    "auth.signedInElsewhere": "別のブラウザーまたは PC でこのアカウントにサインインしたため、サインアウトされました。1 つのアカウントでサインインできるのは 1 か所だけです。",
     "record.button": "記録",
     "record.hint": "PC 上のブラウザーまたは Windows プログラムでのクリックと入力を記録します。ステップは選択した位置に挿入されます",
     "record.title": "ステップを記録",

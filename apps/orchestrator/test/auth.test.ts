@@ -38,6 +38,24 @@ async function createUser(role: string, email = `${role}@example.com`) {
 }
 
 describe("accounts and roles", () => {
+  it("allows one sign-in per user: signing in elsewhere signs the other browser out and says why", async () => {
+    await setup();
+    const first = await createUser("developer", "dev@example.com");
+    const other = await createUser("viewer", "view@example.com");
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "dev@example.com", password: "correct horse battery" } });
+    const second = { authorization: `Bearer ${login.json().token}` };
+
+    const old = await app.inject({ method: "GET", url: "/api/auth/me", headers: first });
+    expect(old.statusCode).toBe(401);
+    expect(old.json().code).toBe("signed_in_elsewhere");
+    expect((await app.inject({ method: "GET", url: "/api/auth/me", headers: second })).statusCode).toBe(200);
+    // Other people's sign-ins are not affected.
+    expect((await app.inject({ method: "GET", url: "/api/auth/me", headers: other })).statusCode).toBe(200);
+    // A token that never existed is just "sign in required".
+    const unknown = await app.inject({ method: "GET", url: "/api/auth/me", headers: { authorization: "Bearer nope" } });
+    expect(unknown.json().code).toBe("unauthorized");
+  });
+
   it("signs users in and out and never returns password hashes", async () => {
     await setup();
     const viewer = await createUser("viewer");

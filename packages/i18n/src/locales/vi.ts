@@ -618,6 +618,7 @@ export const vi: LocaleMessages = {
     "auth.submit": "Đăng nhập",
     "auth.invalid": "Mã truy cập này không được chấp nhận.",
     "auth.signOut": "Đăng xuất",
+    "auth.signedInElsewhere": "Bạn đã bị đăng xuất vì tài khoản của bạn đã đăng nhập trên trình duyệt hoặc máy tính khác. Mỗi tài khoản chỉ được đăng nhập ở một nơi.",
     "record.button": "Ghi",
     "record.hint": "Ghi lại thao tác nhấp và gõ trong trình duyệt hoặc chương trình Windows trên máy tính của bạn; các bước được chèn vào vị trí đã chọn",
     "record.title": "Ghi các bước",

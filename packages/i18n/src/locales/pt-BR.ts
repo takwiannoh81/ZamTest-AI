@@ -618,6 +618,7 @@ export const ptBR: LocaleMessages = {
     "auth.submit": "Entrar",
     "auth.invalid": "Esse token não foi aceito.",
     "auth.signOut": "Sair",
+    "auth.signedInElsewhere": "Você foi desconectado porque sua conta entrou em outro navegador ou PC. Só é permitido um login por conta.",
     "record.button": "Gravar",
     "record.hint": "Grave cliques e digitação em um navegador ou programa do Windows no seu PC; os passos são inseridos no local selecionado",
     "record.title": "Gravar passos",
