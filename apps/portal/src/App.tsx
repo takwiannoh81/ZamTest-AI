@@ -1,3 +1,5 @@
+import { api } from "./api";
+import { IdleGuard } from "@zamtest/help";
 import type { MessageKey } from "@zamtest/i18n";
 import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
 import { useHashRoute } from "./hooks";
@@ -19,6 +21,9 @@ import { Users } from "./pages/Users";
 import { Docs } from "./pages/Docs";
 import { AGENT_DOWNLOAD_URL, DESIGNER_URL } from "./links";
 import { atLeast, signOut, useMe } from "./session";
+
+/** How long the session has been idle, across tabs (for the inactivity warning). */
+const whoAmI = () => api<{ idleSeconds?: number }>("/api/auth/me");
 
 const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolean; developer?: boolean; platform?: boolean }> = [
   { path: "/", label: "nav.dashboard", icon: "◎" },
@@ -46,6 +51,7 @@ export function App() {
   const active = NAV.filter((n) => (n.path === "/" ? route === "/" : route.startsWith(n.path))).at(-1)?.path;
 
   if (me?.restriction) return <Restricted me={me} />;
+  const guard = me && me.kind !== "open" ? <IdleGuard minutes={me.idleTimeoutMinutes} check={whoAmI} /> : null;
 
   let page;
   if (route === "/connect") page = <Connect query={query} />;
@@ -106,6 +112,7 @@ export function App() {
         </div>
       </aside>
       <main className="content">{page}</main>
+      {guard}
     </div>
   );
 }

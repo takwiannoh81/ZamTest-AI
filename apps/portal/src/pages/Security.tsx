@@ -31,6 +31,7 @@ export function Security() {
       <PageHeader title={t("nav.security")} subtitle={t("security.subtitle")} />
       {me?.kind === "user" && <MfaCard />}
       {isAdmin && <RequireMfaCard />}
+      {isAdmin && <IdleTimeoutCard />}
       {isAdmin && <SsoCard />}
       {isAdmin && (
         <div className="card">
@@ -310,6 +311,41 @@ function SsoCard() {
         </button>
         {saved && <span className="muted">{t("security.saved")}</span>}
       </div>
+    </div>
+  );
+}
+
+/** Admins: how long people may be inactive (no mouse or keyboard) before they are signed out. */
+const IDLE_CHOICES = [15, 30, 60, 120, 240, 480, 0];
+
+function IdleTimeoutCard() {
+  const { t } = useI18n();
+  const { data, reload } = usePoll<{ idleTimeoutMinutes?: number }>("/api/workspace/security", 0);
+  const [error, setError] = useState<string>();
+  if (!data) return null;
+  const current = data.idleTimeoutMinutes ?? 60;
+  const change = async (idleTimeoutMinutes: number) => {
+    setError(undefined);
+    try {
+      await api("/api/workspace/security", { method: "PUT", body: { idleTimeoutMinutes } });
+      reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const label = (m: number) => (m === 0 ? t("idle.never") : m < 60 ? t("idle.minutes", { count: m }) : m === 60 ? t("idle.oneHour") : t("idle.hours", { count: m / 60 }));
+  return (
+    <div className="card">
+      <h2>{t("idle.title")}</h2>
+      <p className="muted">{t("idle.help")}</p>
+      <ErrorBanner error={error} />
+      <select value={current} onChange={(e) => void change(Number(e.target.value))}>
+        {(IDLE_CHOICES.includes(current) ? IDLE_CHOICES : [current, ...IDLE_CHOICES]).map((m) => (
+          <option key={m} value={m}>
+            {label(m)}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

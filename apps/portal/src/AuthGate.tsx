@@ -54,6 +54,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       .catch(() => undefined);
     // Sent here by the Designer after this account signed in somewhere else.
     if (search.get("reason") === "elsewhere") setInfo(t("auth.signedInElsewhere"));
+    if (search.get("reason") === "idle") setInfo(t("auth.signedOutIdle"));
     const ssoError = search.get("sso_error");
     if (ssoError) {
       setError(t("auth.ssoError", { message: ssoError }));
@@ -73,7 +74,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onUnauthorized = (e: Event) => {
-      if ((e as CustomEvent<string | undefined>).detail === "signed_in_elsewhere") setInfo(t("auth.signedInElsewhere"));
+      const why = (e as CustomEvent<string | undefined>).detail;
+      if (why === "signed_in_elsewhere") setInfo(t("auth.signedInElsewhere"));
+      if (why === "signed_out_idle") setInfo(t("auth.signedOutIdle"));
       setNeeded(true);
     };
     let timer: ReturnType<typeof setTimeout> | undefined;

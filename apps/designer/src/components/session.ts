@@ -11,6 +11,8 @@ export interface Me {
   role: Role;
   /** "open" = local development without sign-in. */
   kind: "user" | "token" | "open";
+  /** Minutes without activity before signing out (0: never). */
+  idleTimeoutMinutes?: number;
 }
 
 const ORDER: Role[] = ["viewer", "operator", "developer", "admin"];

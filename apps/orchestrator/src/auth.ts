@@ -69,6 +69,7 @@ export function createSession(store: Store, user: User | typeof MASTER_SESSION):
     userId: user === MASTER_SESSION ? MASTER_SESSION : user.id,
     createdAt: nowIso(),
     expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+    lastActiveAt: nowIso(),
   };
   store.data.sessions[session.id] = session;
   store.save();
@@ -88,8 +89,38 @@ export function deleteUserSessions(store: Store, userId: string, exceptToken?: s
   store.save();
 }
 
-/** Why a session token no longer works, if it was ended by a sign-in elsewhere. */
-export function endedReason(store: Store, token: string | undefined): "signed_in_elsewhere" | undefined {
+/** Signed out after this many minutes without activity, unless the workspace chose otherwise. */
+export const DEFAULT_IDLE_MINUTES = 60;
+
+/**
+ * Signing out after inactivity. The browser says how long the person has not
+ * touched the mouse or keyboard (x-zamtech-idle, in seconds), so the Portal's
+ * own refreshing does not count as activity; the latest activity of any tab
+ * counts. False when the session has now ended for inactivity.
+ */
+export function stillActive(store: Store, token: string, idleSeconds: number | undefined, limitMinutes: number, now = Date.now()): boolean {
+  const id = tokenId(token);
+  const session = store.data.sessions[id];
+  if (!session) return true;
+  const last = Date.parse(session.lastActiveAt ?? session.createdAt);
+  if (limitMinutes > 0 && now - last > limitMinutes * 60_000) {
+    delete store.data.sessions[id];
+    store.data.endedSessions[id] = { at: nowIso(), reason: "idle" };
+    store.save();
+    return false;
+  }
+  // Requests without the header (API clients) count as activity.
+  const activeAt = now - Math.max(0, idleSeconds ?? 0) * 1000;
+  if (activeAt > last) {
+    session.lastActiveAt = new Date(activeAt).toISOString();
+    // Written to disk now and then, not on every request.
+    if (activeAt - last > 60_000) store.save();
+  }
+  return true;
+}
+
+/** Why a session token no longer works: a sign-in elsewhere, or inactivity. */
+export function endedReason(store: Store, token: string | undefined): "signed_in_elsewhere" | "idle" | undefined {
   return token ? store.data.endedSessions[tokenId(token)]?.reason : undefined;
 }
 

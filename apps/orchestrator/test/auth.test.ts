@@ -38,6 +38,41 @@ async function createUser(role: string, email = `${role}@example.com`) {
 }
 
 describe("accounts and roles", () => {
+  it("signs people out after a time without activity; the Portal's own refreshing does not count", async () => {
+    const store = new Store(null);
+    await setup(undefined, store);
+    const person = await createUser("viewer", "idle@example.com");
+    const me = (idleSeconds?: number) =>
+      app.inject({ method: "GET", url: "/api/auth/me", headers: { ...person, ...(idleSeconds === undefined ? {} : { "x-zamtech-idle": String(idleSeconds) }) } });
+    expect((await me(0)).json().idleTimeoutMinutes).toBe(60);
+
+    // An admin sets 15 minutes for the workspace.
+    const admin = await createUser("admin", "boss@example.com");
+    expect((await app.inject({ method: "PUT", url: "/api/workspace/security", headers: admin, payload: { idleTimeoutMinutes: 15 } })).json()).toMatchObject({ idleTimeoutMinutes: 15 });
+    const session = () => Object.values(store.data.sessions).find((x) => store.data.users[x.userId]?.email === "idle@example.com")!;
+    const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+
+    // Last activity 10 minutes ago; a tab refreshing by itself (nobody touched it for 12 minutes) does not make it newer.
+    session().lastActiveAt = minutesAgo(10);
+    expect((await me(12 * 60)).statusCode).toBe(200);
+    expect(Date.parse(session().lastActiveAt!)).toBeLessThan(Date.now() - 9 * 60_000);
+    // Someone moves the mouse: active now.
+    expect((await me(0)).statusCode).toBe(200);
+    expect(Date.parse(session().lastActiveAt!)).toBeGreaterThan(Date.now() - 5_000);
+
+    // 16 minutes without activity: signed out, and told why.
+    session().lastActiveAt = minutesAgo(16);
+    const out = await me(16 * 60);
+    expect(out.statusCode).toBe(401);
+    expect(out.json().code).toBe("signed_out_idle");
+
+    // "Never" (0) keeps people signed in.
+    await app.inject({ method: "PUT", url: "/api/workspace/security", headers: admin, payload: { idleTimeoutMinutes: 0 } });
+    const again = await createUser("operator", "late@example.com");
+    Object.values(store.data.sessions).find((x) => store.data.users[x.userId]?.email === "late@example.com")!.lastActiveAt = minutesAgo(600);
+    expect((await app.inject({ method: "GET", url: "/api/auth/me", headers: again })).statusCode).toBe(200);
+  });
+
   it("allows one sign-in per user: signing in elsewhere signs the other browser out and says why", async () => {
     await setup();
     const first = await createUser("developer", "dev@example.com");

@@ -1,3 +1,4 @@
+import { idleSeconds } from "@zamtest/help";
 import { currentLocale } from "@zamtest/i18n/react";
 export const BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -26,6 +27,8 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
       "x-zamtech-client": "designer",
       // For emails in the person's language.
       "x-zamtech-language": currentLocale(),
+      // Seconds since the person last used the mouse or keyboard (signing out after inactivity).
+      "x-zamtech-idle": String(idleSeconds()),
     },
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });

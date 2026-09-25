@@ -9,7 +9,9 @@ import type { EngineEvent, Step } from "@zamtest/core";
 import {
   clearedSessionCookie,
   createSession,
+  DEFAULT_IDLE_MINUTES,
   endedReason,
+  stillActive,
   deleteSession,
   deleteUserSessions,
   hashPassword,
@@ -234,11 +236,22 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     if (PUBLIC_ROUTES.has(url) || url.startsWith("/api/git/webhook/")) return;
     const cookieToken = req.headers.authorization ? undefined : readCookie(req.headers.cookie, SESSION_COOKIE);
     // A CI pipeline's API token, or a person (or the master token).
+    // Signed out after inactivity: the workspace's time (the master access token's sessions: the default).
+    const signedIn = bearer(req) || cookieToken || "";
+    const session = signedIn ? store.data.sessions[hashToken(signedIn)] : undefined;
+    if (session) {
+      const owner = store.data.users[session.userId];
+      const limit = owner ? idleMinutesOf(owner.workspaceId) : DEFAULT_IDLE_MINUTES;
+      const idle = Number(req.headers["x-zamtech-idle"]);
+      stillActive(store, signedIn, Number.isFinite(idle) ? idle : undefined, limit);
+    }
     const principal = apiTokenPrincipal(store, bearer(req)) ??resolvePrincipal(store, config.adminToken, req.headers.authorization, cookieToken);
     if (!principal) {
-      if (endedReason(store, bearer(req) || cookieToken) === "signed_in_elsewhere") {
+      const ended = endedReason(store, bearer(req) || cookieToken);
+      if (ended === "signed_in_elsewhere") {
         return reply.status(401).send({ error: "You were signed out because your account signed in on another browser or PC", code: "signed_in_elsewhere" });
       }
+      if (ended === "idle") return reply.status(401).send({ error: "You were signed out after a time without activity", code: "signed_out_idle" });
       return reply.status(401).send({ error: "Sign in required", code: "unauthorized" });
     }
     // Browsers send cookies on their own, so changes made with the sign-in cookie must carry a
@@ -269,6 +282,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   const me = (req: FastifyRequest): Principal => req.principal!;
+  /** Minutes without activity before people of a workspace are signed out (0: never). */
+  const idleMinutesOf = (workspaceId: string) => store.data.workspaces[workspaceId]?.security?.idleTimeoutMinutes ?? DEFAULT_IDLE_MINUTES;
   const bearer = (req: FastifyRequest) => /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? "")?.[1]?.trim() ?? "";
   /** The caller's session token, from the Authorization header or the sign-in cookie. */
   const sessionToken = (req: FastifyRequest) => bearer(req) || readCookie(req.headers.cookie, SESSION_COOKIE) || "";
@@ -675,6 +690,13 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       workspace: { id: p.workspaceId, name: workspace?.name ?? "" },
       platformAdmin: platformAdmin(p),
       restriction: p.restriction,
+      // The Portal and Designer warn a minute before signing out for inactivity.
+      idleTimeoutMinutes: idleMinutesOf(p.workspaceId),
+      // Seconds since the last activity in any tab (another app may have been used meanwhile).
+      idleSeconds: (() => {
+        const session = store.data.sessions[hashToken(sessionToken(req))];
+        return session ? Math.max(0, Math.floor((Date.now() - Date.parse(session.lastActiveAt ?? session.createdAt)) / 1000)) : 0;
+      })(),
     };
   });
 
@@ -1713,7 +1735,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.put("/api/workspace/security", async (req) => {
     if (me(req).role !== "admin") throw new HttpError(403, "This needs the admin role");
     const workspace = get(store.data.workspaces, ws(req), "Workspace");
-    const body = parse(z.object({ requireMfa: z.boolean().optional() }), req.body);
+    const body = parse(z.object({ requireMfa: z.boolean().optional(), idleTimeoutMinutes: z.number().int().min(0).max(24 * 60).optional() }), req.body);
     // Otherwise the admin would lock themselves out of this very page.
     const admin = me(req).kind === "user" ? store.data.users[me(req).id] : undefined;
     if (body.requireMfa && admin && !admin.mfa?.enabled && admin.authSource !== "sso") {

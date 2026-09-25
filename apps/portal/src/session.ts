@@ -15,6 +15,8 @@ export interface Me {
   platformAdmin: boolean;
   /** Signed in, but must confirm the email or set up two-step sign-in first. */
   restriction?: "email_unverified" | "mfa_setup_required";
+  /** Minutes without activity before signing out (0: never). */
+  idleTimeoutMinutes?: number;
 }
 
 const ORDER: Role[] = ["viewer", "operator", "developer", "admin"];

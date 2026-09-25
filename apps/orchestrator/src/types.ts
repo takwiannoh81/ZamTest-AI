@@ -124,6 +124,8 @@ export interface SsoState {
 export interface WorkspaceSecurity {
   /** Everyone signing in with a password must use two-step sign-in. */
   requireMfa?: boolean;
+  /** Minutes without activity (mouse, keyboard) before people are signed out; 0 = never. Unset: DEFAULT_IDLE_MINUTES. */
+  idleTimeoutMinutes?: number;
 }
 
 /** The workspace's Stripe customer and subscription, as last reported by Stripe. */
@@ -382,6 +384,8 @@ export interface Session {
   userId: string;
   createdAt: string;
   expiresAt: string;
+  /** When the person last used the Portal or Designer (mouse, keyboard); for signing out after inactivity. */
+  lastActiveAt?: string;
 }
 
 /** Who is making a request: a signed-in user, or the master access token. */

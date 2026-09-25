@@ -29,7 +29,7 @@ export interface Data {
   testCases: Record<string, TestCase>;
   testRuns: Record<string, TestRun>;
   /** Sessions ended because their user signed in somewhere else (one sign-in per user), so that device can be told why. */
-  endedSessions: Record<string, { at: string; reason: "signed_in_elsewhere" }>;
+  endedSessions: Record<string, { at: string; reason: "signed_in_elsewhere" | "idle" }>;
   /** Help assistant questions per person today (a daily limit, apart from the plan's AI requests). */
   helpUsage: Record<string, { day: string; count: number }>;
   /** Product update emails the platform owner sent to customers. */

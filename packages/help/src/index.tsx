@@ -6,6 +6,7 @@ import { Markdown } from "./markdown";
 import "./help.css";
 
 export { Markdown } from "./markdown";
+export { IdleGuard, idleSeconds } from "./idle";
 
 /** The app's own API call (it adds the app's sign-in and client headers). */
 export type HelpApi = <T>(path: string, init?: { method?: string; body?: unknown }) => Promise<T>;
