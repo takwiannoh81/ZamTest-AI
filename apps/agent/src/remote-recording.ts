@@ -4,7 +4,8 @@
  * so far about once a second until the Designer says to stop (or the browser
  * window is closed). "Indicate" lets the person click the application to record
  * instead of typing its path; "inspect" sends an application window's controls
- * and the screen, for AI to fix or build steps from what is really there.
+ * and the screen, for AI to fix or build steps from what is really there; "pick"
+ * lets the person indicate one element (on a web page or in an application) for a step.
  */
 import { desktop } from "@zamtest/actions";
 import { errorMessage } from "@zamtest/core";
@@ -12,10 +13,12 @@ import type { Step, VariableDef, Workflow } from "@zamtest/core";
 import { desktopEventsToWorkflow, parseRawEvents, processOf } from "./desktop-recorder.js";
 import type { RawDesktopEvent } from "./desktop-recorder.js";
 import { eventsToWorkflow, startRecording } from "./recorder.js";
+import { pickWebElement } from "./picker.js";
+import type { PickedElement } from "./picker.js";
 
 export interface RemoteRecordingRequest {
   id: string;
-  kind: "web" | "desktop" | "indicate" | "inspect";
+  kind: "web" | "desktop" | "indicate" | "inspect" | "pick";
   url?: string;
   program?: string;
   /** Desktop: the program is already open (it was indicated): record it without starting another one. */
@@ -24,6 +27,8 @@ export interface RemoteRecordingRequest {
   hint?: string;
   /** Inspect: the window, as a desktop selector (e.g. window[process="erp"]). */
   selector?: string;
+  /** Pick: an element on a web page (at url) or in a Windows application. */
+  target?: "web" | "desktop";
 }
 
 /** Inspect: what is on the PC now. */
@@ -51,6 +56,8 @@ export interface RecordingProgress {
   /** Indicate: the application clicked (unset: Esc, or no click in time). */
   picked?: IndicatedApp;
   inspected?: Inspected;
+  /** Pick: the element indicated (unset: Esc, closed, or no click in time). */
+  element?: PickedElement;
 }
 
 /** Sends the steps so far; answers whether the Designer asked to stop. */
@@ -66,6 +73,7 @@ export async function runRemoteRecording(request: RemoteRecordingRequest, report
     if (request.kind === "web") await recordWeb(request, report);
     else if (request.kind === "indicate") await indicate(request, report);
     else if (request.kind === "inspect") await inspect(request, report);
+    else if (request.kind === "pick") await pick(request, report);
     else await recordDesktop(request, report);
     log(`Recording ${request.id} finished`);
   } catch (err) {
@@ -133,6 +141,35 @@ async function inspect(request: RemoteRecordingRequest, report: ReportProgress) 
   } finally {
     await driver.close();
   }
+}
+
+/** How long the person has to indicate an element in an application. */
+const PICK_DESKTOP_TIMEOUT_MS = 2 * 60_000;
+
+async function pick(request: RemoteRecordingRequest, report: ReportProgress) {
+  let element: PickedElement | undefined;
+  if (request.target === "web") {
+    // Asks every 2 s whether the Designer cancelled, so the browser closes then.
+    let stopped = false;
+    const timer = setInterval(() => {
+      void report({ steps: [], variables: [] }).then((r) => (stopped ||= r.stop), () => undefined);
+    }, 2000);
+    try {
+      element = (await pickWebElement(request.url ?? "about:blank", request.hint ?? "", () => stopped)) ?? undefined;
+    } finally {
+      clearInterval(timer);
+    }
+  } else {
+    const driver = desktop.DesktopDriver.start();
+    try {
+      const picked = await driver.call<{ chain: string } | null>("indicateElement", { timeoutMs: PICK_DESKTOP_TIMEOUT_MS, hint: request.hint });
+      const chain = picked ? (JSON.parse(picked.chain) as desktop.ElementInfo[]) : [];
+      if (chain.length) element = { selector: desktop.selectorFromChain(chain), description: desktop.describeChain(chain) };
+    } finally {
+      await driver.close();
+    }
+  }
+  await report({ steps: [], variables: [], done: true, element });
 }
 
 async function recordDesktop(request: RemoteRecordingRequest, report: ReportProgress) {

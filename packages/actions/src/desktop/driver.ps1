@@ -451,6 +451,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Windows.Automation;
 using System.Windows.Forms;
 
 public static class ZtIndicate {
@@ -485,6 +486,11 @@ public static class ZtIndicate {
   static HookProc mouseProc, keyProc;
   static IntPtr mouseHook, keyHook, pressed, picked;
   static bool cancelled;
+  /** Element mode: the control under the mouse is outlined and its point is picked. */
+  static bool elementMode, pointPicked;
+  static int pickX, pickY;
+  /** F2: clicks go to the application for a few seconds (to open a menu before indicating in it). */
+  static int pausedUntil;
 
   /** Outlines the window under the mouse; click-through, never activated. */
   class Outline : Form {
@@ -521,6 +527,17 @@ public static class ZtIndicate {
 
   /** The application window the person clicks (null: Esc or the time ran out). */
   public static Hashtable Pick(int timeoutMs, string hint) {
+    elementMode = false;
+    return OnUiThread(timeoutMs, hint);
+  }
+
+  /** The point of the control the person clicks, as { x, y } (null: Esc or the time ran out). */
+  public static Hashtable PickElement(int timeoutMs, string hint) {
+    elementMode = true;
+    return OnUiThread(timeoutMs, hint);
+  }
+
+  static Hashtable OnUiThread(int timeoutMs, string hint) {
     Hashtable result = null;
     var t = new Thread(() => { result = Run(timeoutMs, hint); });
     t.SetApartmentState(ApartmentState.STA);
@@ -532,8 +549,10 @@ public static class ZtIndicate {
 
   static Hashtable Run(int timeoutMs, string hint) {
     pressed = picked = IntPtr.Zero;
-    cancelled = false;
+    cancelled = pointPicked = false;
+    pausedUntil = 0;
     own.Clear();
+    int lastX = int.MinValue, lastY = int.MinValue, lastLook = 0;
     var outline = new Outline();
     var banner = new Banner(hint);
     own.Add(outline.Handle);
@@ -542,9 +561,20 @@ public static class ZtIndicate {
     int started = Environment.TickCount;
     var timer = new System.Windows.Forms.Timer { Interval = 50 };
     timer.Tick += (s, e) => {
-      if (picked != IntPtr.Zero || cancelled || Environment.TickCount - started > timeoutMs) { Application.ExitThread(); return; }
+      if (picked != IntPtr.Zero || pointPicked || cancelled || Environment.TickCount - started > timeoutMs) { Application.ExitThread(); return; }
       POINT p;
       GetCursorPos(out p);
+      if (elementMode) {
+        // Asking UI Automation is slow: only when the mouse moved, at most every 120 ms.
+        if ((p.x == lastX && p.y == lastY) || Environment.TickCount - lastLook < 120) return;
+        lastX = p.x; lastY = p.y; lastLook = Environment.TickCount;
+        var box = ElementBox(p.x, p.y);
+        if (box.HasValue) {
+          if (outline.Bounds != box.Value) { outline.Bounds = box.Value; outline.Invalidate(); }
+          if (!outline.Visible) outline.Show();
+        } else if (outline.Visible) outline.Hide();
+        return;
+      }
       IntPtr h = WindowAt(p.x, p.y);
       RECT r;
       if (h != IntPtr.Zero && Bounds(h, out r)) {
@@ -567,20 +597,65 @@ public static class ZtIndicate {
       outline.Close();
       banner.Close();
     }
+    if (elementMode) {
+      if (!pointPicked) return null;
+      var point = new Hashtable();
+      point["x"] = pickX;
+      point["y"] = pickY;
+      return point;
+    }
     return picked == IntPtr.Zero ? null : Describe(picked);
   }
 
-  /** A left click picks the window under it; the application gets neither the press nor the release. */
+  /** The screen box of the smallest control under a point (not these overlays). */
+  static Rectangle? ElementBox(int x, int y) {
+    try {
+      var pt = new System.Windows.Point(x, y);
+      var el = AutomationElement.FromPoint(pt);
+      if (el == null || el.Current.ProcessId == ownPid) return null;
+      el = Smallest(el, pt);
+      var r = el.Current.BoundingRectangle;
+      if (r.IsEmpty) return null;
+      return new Rectangle((int)r.X - 3, (int)r.Y - 3, (int)r.Width + 6, (int)r.Height + 6);
+    } catch { return null; }
+  }
+
+  /** Walks down to the smallest control under the point (as the recorder does). */
+  public static AutomationElement Smallest(AutomationElement el, System.Windows.Point pt) {
+    var walker = TreeWalker.ControlViewWalker;
+    int visited = 0;
+    for (int depth = 0; depth < 25; depth++) {
+      AutomationElement best = null;
+      double bestArea = double.MaxValue;
+      for (var c = walker.GetFirstChild(el); c != null && visited < 400; c = walker.GetNextSibling(c)) {
+        visited++;
+        try {
+          if (c.Current.IsOffscreen) continue;
+          var r = c.Current.BoundingRectangle;
+          if (r.IsEmpty || !r.Contains(pt)) continue;
+          double area = r.Width * r.Height;
+          if (area < bestArea) { best = c; bestArea = area; }
+        } catch { }
+      }
+      if (best == null) break;
+      el = best;
+    }
+    return el;
+  }
+
+  /** A left click picks what is under it; the application gets neither the press nor the release (unless paused with F2). */
   static IntPtr MouseHook(int code, IntPtr w, IntPtr l) {
-    if (code >= 0) {
+    if (code >= 0 && Environment.TickCount >= pausedUntil) {
       int msg = w.ToInt32();
       if (msg == 0x201) {
         var d = (MSLL)Marshal.PtrToStructure(l, typeof(MSLL));
-        pressed = WindowAt(d.pt.x, d.pt.y);
+        if (elementMode) { pickX = d.pt.x; pickY = d.pt.y; pressed = (IntPtr)1; }
+        else pressed = WindowAt(d.pt.x, d.pt.y);
         return (IntPtr)1;
       }
       if (msg == 0x202) {
-        if (pressed != IntPtr.Zero) picked = pressed;
+        if (elementMode) { if (pressed != IntPtr.Zero) pointPicked = true; }
+        else if (pressed != IntPtr.Zero) picked = pressed;
         return (IntPtr)1;
       }
     }
@@ -591,6 +666,7 @@ public static class ZtIndicate {
     if (code >= 0 && w.ToInt32() == 0x100) {
       var k = (KBLL)Marshal.PtrToStructure(l, typeof(KBLL));
       if (k.vk == 0x1B) { cancelled = true; return (IntPtr)1; }
+      if (k.vk == 0x71) { pausedUntil = Environment.TickCount + 5000; return (IntPtr)1; }
     }
     return CallNextHookEx(keyHook, code, w, l);
   }
@@ -662,6 +738,19 @@ public static class ZtIndicate {
   }
 }
 '@
+
+function Initialize-Indicate {
+  if ($script:IndicateReady) { return }
+  $refs = @(
+    [System.Windows.Forms.Form].Assembly.Location,
+    [System.Drawing.Color].Assembly.Location,
+    [System.Windows.Automation.AutomationElement].Assembly.Location,
+    [System.Windows.Automation.ControlType].Assembly.Location,
+    [System.Windows.Point].Assembly.Location
+  )
+  Add-Type -TypeDefinition $IndicateSource -ReferencedAssemblies $refs -Language CSharp
+  $script:IndicateReady = $true
+}
 
 function Initialize-Uia {
   if ($script:UiaReady) { return }
@@ -1052,13 +1141,21 @@ function Invoke-Op([string]$op, $a) {
       return @{ data = $data }
     }
     'indicateWindow' {
-      if (-not $script:IndicateReady) {
-        $refs = @([System.Windows.Forms.Form].Assembly.Location, [System.Drawing.Color].Assembly.Location)
-        Add-Type -TypeDefinition $IndicateSource -ReferencedAssemblies $refs -Language CSharp
-        $script:IndicateReady = $true
-      }
+      Initialize-Indicate
       $hint = if ($a.hint) { [string]$a.hint } else { 'Click the application you want to record (Esc to cancel)' }
       return [ZtIndicate]::Pick($timeout, $hint)
+    }
+    'indicateElement' {
+      # The control the person clicks, as the recorder describes it (window first): the caller makes the selector.
+      Initialize-Indicate
+      $hint = if ($a.hint) { [string]$a.hint } else { 'Click the element (Esc to cancel, F2 to use the application for 5 seconds)' }
+      $picked = [ZtIndicate]::PickElement($timeout, $hint)
+      if ($null -eq $picked) { return $null }
+      $pt = New-Object System.Windows.Point([double]$picked.x, [double]$picked.y)
+      $el = [System.Windows.Automation.AutomationElement]::FromPoint($pt)
+      if ($null -eq $el) { return $null }
+      $el = [ZtIndicate]::Smallest($el, $pt)
+      return @{ chain = [ZtRecorder]::Chain($el) }
     }
     'recordStart' { [ZtRecorder]::Start(); return @{ ok = $true } }
     'recordPoll' { return , ([ZtRecorder]::Drain()) }

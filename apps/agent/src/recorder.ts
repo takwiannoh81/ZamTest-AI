@@ -24,10 +24,7 @@ export interface Recording {
  * test ids, stable ids, accessible role + name, labels, placeholders,
  * name attributes, text, and finally a short CSS path.
  */
-const PAGE_SCRIPT = String.raw`(() => {
-  if (window.__zamtechRecorder) return;
-  window.__zamtechRecorder = true;
-  const send = (e) => window.__zamtechRecord && window.__zamtechRecord(e);
+export const SELECTOR_HELPERS = String.raw`
   const css = (v) => (window.CSS && CSS.escape ? CSS.escape(v) : v.replace(/[^a-zA-Z0-9_-]/g, "\\$&"));
   const quote = (v) => JSON.stringify(v);
   const unique = (sel) => { try { return document.querySelectorAll(sel).length === 1; } catch { return false; } };
@@ -90,6 +87,13 @@ const PAGE_SCRIPT = String.raw`(() => {
   };
   const target = (el) => el.closest("button, a, [role=button], [role=link], [role=menuitem], [role=tab], input, select, textarea, label, summary") || el;
   const isField = (el) => (el.tagName === "INPUT" && !["button", "submit", "reset", "checkbox", "radio", "file", "image"].includes(el.type)) || el.tagName === "TEXTAREA";
+`;
+
+const PAGE_SCRIPT = String.raw`(() => {
+  if (window.__zamtechRecorder) return;
+  window.__zamtechRecorder = true;
+  const send = (e) => window.__zamtechRecord && window.__zamtechRecord(e);
+  ${SELECTOR_HELPERS}
   document.addEventListener("click", (ev) => {
     const el = target(ev.target);
     if (isField(el) || el.tagName === "SELECT") return;

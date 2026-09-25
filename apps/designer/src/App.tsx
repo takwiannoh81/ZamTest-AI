@@ -6,7 +6,8 @@ import type { Job, WorkflowDraft, WorkflowSummary } from "./api";
 import { AiGenerateModal, JsonModal, SelectorAssistModal } from "./components/AiModals";
 import { GitHistoryModal } from "./components/GitHistory";
 import { RecordModal } from "./components/RecordModal";
-import { FixModal } from "./components/FixModal";
+import { FixModal, windowOf } from "./components/FixModal";
+import { IndicateModal } from "./components/IndicateModal";
 import { TestCases } from "./components/TestCases";
 import { Canvas } from "./components/Canvas";
 import { Palette } from "./components/Palette";
@@ -232,6 +233,8 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
   const [fixPrompt, setFixPrompt] = useState<string>();
   /** Fix with AI of a failed run. */
   const [fixing, setFixing] = useState<{ jobId: string; stepId?: string }>();
+  /** Indicate on screen: the step and its selector property. */
+  const [indicating, setIndicating] = useState<{ stepId: string; prop: string }>();
   // Source control: whether the workspace has a Git repository, and uses Development/Test/Production.
   const [gitConnected, setGitConnected] = useState(false);
   const [envsOn, setEnvsOn] = useState(false);
@@ -437,6 +440,47 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
     }, 60);
   };
 
+  /** The page a web step works on: the last address opened before it (else the first in the workflow). */
+  const pageBefore = (stepId: string): string | undefined => {
+    let last: string | undefined;
+    let first: string | undefined;
+    let reached = false;
+    const walk = (s: Step) => {
+      if (s.id === stepId) reached = true;
+      if (!reached && (s.type === "browser.open" || s.type === "browser.navigate") && typeof s.props.url === "string") last = s.props.url;
+      if (!first && s.type === "browser.open" && typeof s.props.url === "string") first = s.props.url;
+      for (const list of Object.values(s.slots ?? {})) list.forEach(walk);
+    };
+    walk(root);
+    const url = last ?? first;
+    return url && !url.includes("{{") ? url : undefined;
+  };
+  const indicateStep = (stepId: string, prop?: string) => {
+    const step = findStep(root, stepId);
+    const selectorProp = prop ?? metas.get(step?.type ?? "")?.props.find((p) => p.type === "selector")?.name;
+    if (step && selectorProp) setIndicating({ stepId, prop: selectorProp });
+  };
+  const indicated = (selector: string, description: string) => {
+    if (!indicating) return;
+    const { stepId, prop } = indicating;
+    setRoot(
+      mapStep(root, stepId, (s) => {
+        const hasDescription = metas.get(s.type)?.props.some((p) => p.name === "description");
+        return {
+          ...s,
+          props: {
+            ...s.props,
+            // A window to wait for is the window part only.
+            [prop]: prop === "waitFor" ? windowOf(selector) : selector,
+            ...(hasDescription && !s.props.description ? { description } : {}),
+          },
+        };
+      }),
+    );
+    setIndicating(undefined);
+    setStatus(t("indicate.done", { element: description }));
+  };
+
   const fixIssuesWithAi = () =>
     setFixPrompt(`${t("fix.issuesPrompt")}\n${issues.map((i) => `- ${i.message} (step ${i.stepId})`).join("\n")}`);
   const fixRunWithAi = (_error: string, stepId?: string) => run && setFixing({ jobId: run.jobId, stepId });
@@ -538,6 +582,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
               setRoot(removeStep(root, stepId));
               if (selectedId === stepId) setSelectedId(undefined);
             }}
+            onIndicate={(stepId) => indicateStep(stepId)}
             onDuplicate={(stepId) => {
               const step = findStep(root, stepId);
               const loc = locate(root, stepId);
@@ -573,6 +618,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
               aiEnabled={aiEnabled}
               onChange={(s) => setRoot(mapStep(root, s.id, () => s))}
               onSelectorAssist={(selectorProp) => setModal({ selectorProp })}
+              onIndicate={(prop) => indicateStep(selected.id, prop)}
             />
           ) : (
             <WorkflowSettings workflow={workflow} onChange={update} />
@@ -590,6 +636,14 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
             setModal(null);
             setStatus(t("toolbar.aiApplied"));
           }}
+        />
+      )}
+      {indicating && (
+        <IndicateModal
+          target={findStep(root, indicating.stepId)?.type.startsWith("desktop.") ? "desktop" : "web"}
+          url={pageBefore(indicating.stepId)}
+          onPicked={indicated}
+          onClose={() => setIndicating(undefined)}
         />
       )}
       {fixing && (

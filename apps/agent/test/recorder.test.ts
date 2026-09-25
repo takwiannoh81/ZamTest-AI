@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { builtinHandlers } from "@zamtest/actions";
 import { runWorkflow } from "@zamtest/core";
 import { eventsToWorkflow, startRecording } from "../src/recorder.js";
+import { pickWebElement } from "../src/picker.js";
 
 const executable = process.env.ZAMTEST_BROWSER_EXECUTABLE;
 const canRun = Boolean(executable && existsSync(executable));
@@ -58,4 +59,22 @@ describe.skipIf(!canRun)("recorder in a real browser", () => {
     expect(result.error).toBeUndefined();
     expect(result.outputs.welcome).toBe("Welcome, grace (globex)!");
   }, 60_000);
+});
+
+describe.skipIf(!canRun)("indicating an element on a web page", () => {
+  it("picks the clicked element's selector without the page getting the click; Esc cancels", async () => {
+    let navigated = false;
+    const picked = await pickWebElement(page, "Click the element", () => false, {
+      headless: true,
+      timeoutMs: 20_000,
+      onPage: (p) => {
+        p.on("framenavigated", () => (navigated = true));
+        void p.getByRole("button", { name: "Sign in" }).click();
+      },
+    });
+    expect(picked).toEqual({ selector: 'css=[data-testid="sign-in"]', description: "The Sign in button" });
+    expect(navigated).toBe(false);
+    const cancelled = await pickWebElement(page, "x", () => false, { headless: true, timeoutMs: 20_000, onPage: (p) => void p.keyboard.press("Escape") });
+    expect(cancelled).toBeNull();
+  });
 });

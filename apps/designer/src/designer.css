@@ -227,3 +227,5 @@
 .app-look { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 4px; }
 .app-look summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 .error-text { color: var(--danger); }
+.indicate-icon { color: var(--accent); font-weight: 700; }
+.prop-row .indicate-btn { font-size: 16px; padding: 4px 10px; color: var(--accent); }

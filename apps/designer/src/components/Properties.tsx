@@ -12,6 +12,8 @@ interface Props {
   aiEnabled: boolean;
   onChange: (step: Step) => void;
   onSelectorAssist: (propName: string) => void;
+  /** Indicate on screen: point at the element on a PC. */
+  onIndicate?: (propName: string) => void;
 }
 
 /** The workspace's workflows, for "Call Workflow". */
@@ -115,7 +117,7 @@ function JsonInput({ value, onChange }: { value: unknown; onChange: (v: unknown)
   );
 }
 
-export function Properties({ step, meta, variables, aiEnabled, onChange, onSelectorAssist }: Props) {
+export function Properties({ step, meta, variables, aiEnabled, onChange, onSelectorAssist, onIndicate }: Props) {
   const { t, actionName, actionDescription, propLabel, propDescription } = useI18n();
   const setProp = (name: string, v: unknown) => {
     const props = { ...step.props };
@@ -137,6 +139,11 @@ export function Properties({ step, meta, variables, aiEnabled, onChange, onSelec
         <Field key={def.name} label={`${propLabel(step.type, def)}${def.required ? " *" : ""}`} hint={propDescription(step.type, def)}>
           <div className="prop-row" data-prop={def.name}>
             <PropInput def={def} value={step.props[def.name]} variables={variables} onChange={(v) => setProp(def.name, v)} />
+            {def.type === "selector" && onIndicate && (
+              <button className="btn-ghost indicate-btn" title={t("indicate.hint")} aria-label={t("record.indicate")} onClick={() => onIndicate(def.name)}>
+                ◎
+              </button>
+            )}
             {def.type === "selector" && step.type.startsWith("browser.") && (
               <button className="btn-ghost ai-btn" disabled={!aiEnabled} title={aiEnabled ? t("props.aiSuggest") : t("props.aiUnavailable")} onClick={() => onSelectorAssist(def.name)}>
                 {t("props.aiButton")}

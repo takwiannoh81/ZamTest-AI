@@ -4,7 +4,8 @@
  * records there, sending the steps as they happen; the Designer shows them live
  * and asks it to stop. "Indicate" goes the same way: the person clicks the
  * application on the PC and its path comes back, and "inspect" (for AI) brings
- * back an application window's controls and the screen. Recordings are
+ * back an application window's controls and the screen, and "pick" lets the
+ * person indicate one element for a step (web page or application). Recordings are
  * short-lived and kept in memory only.
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -21,7 +22,7 @@ export interface Recording {
   workspaceId: string;
   agentId: string;
   agentName: string;
-  kind: "web" | "desktop" | "indicate" | "inspect";
+  kind: "web" | "desktop" | "indicate" | "inspect" | "pick";
   /** Web: where the browser starts. */
   url?: string;
   /** Desktop: the program to start and record (unset: whatever application is used). */
@@ -36,6 +37,10 @@ export interface Recording {
   selector?: string;
   /** Inspect: its controls (or the open windows when it is not open), and the screen (JPEG, base64). */
   inspected?: { selector: string; found: boolean; tree: string; screen?: string };
+  /** Pick: on a web page (at url) or in a Windows application. */
+  target?: "web" | "desktop";
+  /** Pick: the element indicated (unset when the person pressed Esc or did not click in time). */
+  element?: { selector: string; description: string };
   status: "pending" | "recording" | "stopping" | "done" | "failed" | "cancelled";
   requestedBy: string;
   requestedAt: string;
@@ -61,6 +66,7 @@ function atLeast(version: string | undefined, since: number[]): boolean {
 /** Agents before these versions do not know "indicate" / "inspect" (they would record the whole desktop instead). */
 export const canIndicate = (version: string | undefined) => atLeast(version, [0, 3, 1]);
 export const canInspect = (version: string | undefined) => atLeast(version, [0, 3, 2]);
+export const canPick = (version: string | undefined) => atLeast(version, [0, 3, 3]);
 
 /** What the Designer sees while it waits: not the screen image (the server gives that to AI). */
 const view = (r: Recording) => (r.inspected?.screen ? { ...r, inspected: { ...r.inspected, screen: undefined, hasScreen: true } } : r);
@@ -117,6 +123,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         canRecord: Date.now() - (recorders.get(a.id) ?? 0) < 30_000 || [...recordings.values()].some((r) => r.agentId === a.id && ACTIVE.includes(r.status)),
         canIndicate: canIndicate(a.version),
         canInspect: canInspect(a.version),
+        canPick: canPick(a.version),
       }));
   });
 
@@ -124,12 +131,13 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     const body = parse(
       z.object({
         agentId: z.string().min(1),
-        kind: z.enum(["web", "desktop", "indicate", "inspect"]),
+        kind: z.enum(["web", "desktop", "indicate", "inspect", "pick"]),
         url: z.string().trim().max(2000).optional(),
         program: z.string().trim().max(500).optional(),
         attach: z.boolean().optional(),
         hint: z.string().trim().max(300).optional(),
         selector: z.string().trim().max(1000).optional(),
+        target: z.enum(["web", "desktop"]).optional(),
       }),
       req.body,
     );
@@ -141,6 +149,10 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     if (body.kind === "inspect" && !canInspect(agent.version)) {
       throw new HttpError(409, `Update the ZamTech AI agent on ${agent.name} so AI can look at its applications (it has version ${agent.version || "unknown"})`);
     }
+    if (body.kind === "pick" && !canPick(agent.version)) {
+      throw new HttpError(409, `Update the ZamTech AI agent on ${agent.name} to indicate elements (it has version ${agent.version || "unknown"})`);
+    }
+    if (body.kind === "pick" && body.target === "web" && body.url && !/^(https?|file):\/\//i.test(body.url)) body.url = `https://${body.url}`;
     if (body.kind === "web") {
       if (!body.url) throw new HttpError(400, "Enter the address of the website to record");
       if (!/^https?:\/\//i.test(body.url)) body.url = `https://${body.url}`;
@@ -156,10 +168,11 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       agentId: agent.id,
       agentName: agent.name,
       kind: body.kind,
-      url: body.kind === "web" ? body.url : undefined,
+      url: body.kind === "web" || (body.kind === "pick" && body.target === "web") ? body.url || "about:blank" : undefined,
+      target: body.kind === "pick" ? body.target ?? "desktop" : undefined,
       program: body.kind === "desktop" ? body.program || undefined : undefined,
       attach: body.kind === "desktop" && body.program ? body.attach || undefined : undefined,
-      hint: body.kind === "indicate" ? body.hint || undefined : undefined,
+      hint: body.kind === "indicate" || body.kind === "pick" ? body.hint || undefined : undefined,
       selector: body.kind === "inspect" ? body.selector || undefined : undefined,
       status: "pending",
       requestedBy: ctx.who(p),
@@ -201,7 +214,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     if (!next) return reply.status(204).send();
     next.status = "recording";
     next.updatedAt = nowIso();
-    return { id: next.id, kind: next.kind, url: next.url, program: next.program, attach: next.attach, hint: next.hint, selector: next.selector };
+    return { id: next.id, kind: next.kind, url: next.url, program: next.program, attach: next.attach, hint: next.hint, selector: next.selector, target: next.target };
   });
 
   /** The steps so far (all of them each time); the answer says whether to stop. */
@@ -221,6 +234,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         inspected: z
           .object({ selector: z.string().max(1000), found: z.boolean(), tree: z.string().max(400_000), screen: z.string().max(10_000_000).optional() })
           .optional(),
+        element: z.object({ selector: z.string().max(4000), description: z.string().max(1000) }).optional(),
       }),
       req.body,
     );
@@ -229,6 +243,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       r.variables = body.variables as VariableDef[];
       if (body.picked) r.picked = body.picked;
       if (body.inspected) r.inspected = body.inspected;
+      if (body.element) r.element = body.element;
       if (body.error) {
         r.status = "failed";
         r.error = body.error;

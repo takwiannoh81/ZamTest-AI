@@ -17,6 +17,8 @@ interface CanvasProps {
   onMoveStep: (id: string, loc: Location) => void;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
+  /** Indicate on screen the element of a step that has a selector. */
+  onIndicate?: (id: string) => void;
 }
 
 export function Canvas(props: CanvasProps) {
@@ -214,6 +216,11 @@ function StepCard({ step, ...props }: CanvasProps & { step: Step }) {
           {slots.length > 0 && (
             <button className="icon-btn" title={collapsed ? t("canvas.expand") : t("canvas.collapse")} onClick={(e) => { e.stopPropagation(); setCollapsed(!collapsed); }}>
               <span className={collapsed ? "flip-rtl" : undefined}>{collapsed ? "▸" : "▾"}</span>
+            </button>
+          )}
+          {props.onIndicate && meta?.props.some((p) => p.type === "selector") && (
+            <button className="icon-btn indicate-icon" title={t("indicate.hint")} onClick={(e) => { e.stopPropagation(); props.onSelect(step.id); props.onIndicate!(step.id); }}>
+              ◎
             </button>
           )}
           <button className="icon-btn" title={t("canvas.duplicate")} onClick={(e) => { e.stopPropagation(); props.onDuplicate(step.id); }}>

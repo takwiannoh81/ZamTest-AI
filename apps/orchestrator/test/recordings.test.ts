@@ -71,4 +71,21 @@ describe("recording from the Designer", () => {
     const rec = (await call("POST", "/api/recordings", { agentId, kind: "desktop", program: picked.path, attach: true })).json();
     expect((await call("POST", "/api/agent/recordings/next", { agentId }, agent)).json()).toEqual({ id: rec.id, kind: "desktop", program: picked.path, attach: true });
   });
+
+  it("lets the person indicate an element on a web page or in an application, on agents that know it", async () => {
+    ({ app } = await buildApp({ config: { ...loadConfig({ ZAMTEST_AGENT_KEY: "k" }), dataDir: null }, ai: null }));
+    const agentId = (await call("POST", "/api/agent/register", { name: "pc", machine: "pc", version: "0.3.2" }, agent)).json().agentId as string;
+    expect((await call("POST", "/api/recordings", { agentId, kind: "pick", target: "web" })).statusCode).toBe(409);
+    await call("POST", "/api/agent/register", { agentId, name: "pc", machine: "pc", version: "0.3.3" }, agent);
+    expect((await call("GET", "/api/recordings/agents")).json()).toMatchObject([{ canPick: true }]);
+
+    const web = (await call("POST", "/api/recordings", { agentId, kind: "pick", target: "web", url: "erp.example/login", hint: "Click it" })).json();
+    expect((await call("POST", "/api/agent/recordings/next", { agentId }, agent)).json()).toEqual({ id: web.id, kind: "pick", target: "web", url: "https://erp.example/login", hint: "Click it" });
+    const element = { selector: 'css=[data-testid="sign-in"]', description: "The Sign in button" };
+    await call("POST", `/api/agent/recordings/${web.id}/progress`, { agentId, steps: [], done: true, element }, agent);
+    expect((await call("GET", `/api/recordings/${web.id}`)).json()).toMatchObject({ status: "done", element });
+
+    const app2 = (await call("POST", "/api/recordings", { agentId, kind: "pick" })).json();
+    expect((await call("POST", "/api/agent/recordings/next", { agentId }, agent)).json()).toEqual({ id: app2.id, kind: "pick", target: "desktop" });
+  });
 });
