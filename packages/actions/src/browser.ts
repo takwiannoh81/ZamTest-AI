@@ -126,6 +126,11 @@ async function withSelector<T>(
  * when the next run starts, or after LINGER_MS. Other jobs close their browsers.
  */
 const LINGER_MS = 10 * 60_000;
+/** How long a page may keep loading after it opens before the next step goes ahead anyway. */
+const SETTLE_TIMEOUT = 10_000;
+/** After typing, the text is checked this long later (a page that redraws its form wipes it). */
+const TYPE_CHECK_MS = 300;
+const TYPE_ATTEMPTS = 3;
 let keepOpen = false;
 const lingering = new Set<Browser>();
 
@@ -173,6 +178,9 @@ export const browserHandlers: Record<string, ActionHandler> = {
       await browser.close().catch(() => undefined);
     });
     await page.goto(String(props.url));
+    // Pages that keep loading after they appear (a login form drawn again when the app starts)
+    // would wipe what the next steps type: wait until the page is quiet, at most a few seconds.
+    await page.waitForLoadState("networkidle", { timeout: SETTLE_TIMEOUT }).catch(() => undefined);
     // In front of the Designer and other windows, so the person sees it work.
     if (!headless) await page.bringToFront().catch(() => undefined);
     ctx.log("info", `Opened ${kind} at ${props.url}`);
@@ -189,8 +197,23 @@ export const browserHandlers: Record<string, ActionHandler> = {
   "browser.type": (props, ctx) =>
     withSelector(ctx, props, async (sel, timeout) => {
       const loc = getPage(ctx).locator(sel);
-      if (props.clear !== false) await loc.fill(String(props.text ?? ""), { timeout });
-      else await loc.pressSequentially(String(props.text ?? ""), { timeout });
+      const text = String(props.text ?? "");
+      if (props.clear === false) await loc.pressSequentially(text, { timeout });
+      else {
+        // Some pages clear a field just after it was filled (the form is drawn again while the app
+        // finishes loading): check the text stayed, and type it again when it did not.
+        for (let attempt = 1; ; attempt++) {
+          await loc.fill(text, { timeout });
+          await getPage(ctx).waitForTimeout(TYPE_CHECK_MS);
+          const now = await loc.inputValue({ timeout: 2000 }).catch(() => undefined);
+          // Not an input (e.g. a rich text editor), or the text is there.
+          if (now === undefined || now === text) break;
+          if (attempt >= TYPE_ATTEMPTS) throw new Error(`The page cleared the field again after typing ${TYPE_ATTEMPTS} times (${sel})`);
+          // The text itself is not logged: it may be a password.
+          ctx.log("warn", `The page cleared the field right after typing (${sel}); typing again`);
+          await getPage(ctx).waitForLoadState("networkidle", { timeout: SETTLE_TIMEOUT }).catch(() => undefined);
+        }
+      }
       if (props.pressEnter) await loc.press("Enter", { timeout });
     }),
 
