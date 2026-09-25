@@ -440,6 +440,229 @@ public static class ZtRecorder {
 }
 '@
 
+# "Indicate": the person clicks the application to record. The window under the
+# mouse is outlined; the click is kept from the application; Esc cancels.
+$IndicateSource = @'
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Windows.Forms;
+
+public static class ZtIndicate {
+  [StructLayout(LayoutKind.Sequential)] struct POINT { public int x; public int y; }
+  [StructLayout(LayoutKind.Sequential)] struct RECT { public int l, t, r, b; }
+  [StructLayout(LayoutKind.Sequential)] struct MSLL { public POINT pt; public uint data, flags, time; public IntPtr extra; }
+  [StructLayout(LayoutKind.Sequential)] struct KBLL { public uint vk, scan, flags, time; public IntPtr extra; }
+  delegate IntPtr HookProc(int code, IntPtr w, IntPtr l);
+  delegate bool EnumProc(IntPtr h, IntPtr p);
+  [DllImport("user32.dll", SetLastError = true)] static extern IntPtr SetWindowsHookEx(int id, HookProc fn, IntPtr mod, uint tid);
+  [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr h);
+  [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr h, int code, IntPtr w, IntPtr l);
+  [DllImport("kernel32.dll")] static extern IntPtr GetModuleHandle(string name);
+  [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc fn, IntPtr p);
+  [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumProc fn, IntPtr p);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int index);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int value, int size);
+  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT value, int size);
+  [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder s, ref int n);
+
+  static readonly HashSet<IntPtr> own = new HashSet<IntPtr>();
+  static readonly int ownPid = Process.GetCurrentProcess().Id;
+  static HookProc mouseProc, keyProc;
+  static IntPtr mouseHook, keyHook, pressed, picked;
+  static bool cancelled;
+
+  /** Outlines the window under the mouse; click-through, never activated. */
+  class Outline : Form {
+    public Outline() {
+      FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true; StartPosition = FormStartPosition.Manual;
+      BackColor = Color.Magenta; TransparencyKey = Color.Magenta;
+      Paint += (s, e) => {
+        using (var pen = new Pen(Color.FromArgb(0x4f, 0x46, 0xe5), 6)) e.Graphics.DrawRectangle(pen, 3, 3, Width - 6, Height - 6);
+      };
+    }
+    protected override bool ShowWithoutActivation { get { return true; } }
+    protected override CreateParams CreateParams {
+      get { var p = base.CreateParams; p.ExStyle |= 0x80000 | 0x20 | 0x80 | 0x08000000; return p; }
+    }
+  }
+
+  /** What to do, at the top of the screen. */
+  class Banner : Form {
+    public Banner(string text) {
+      FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true; StartPosition = FormStartPosition.Manual;
+      BackColor = Color.FromArgb(0x31, 0x2e, 0x81); Opacity = 0.95;
+      var label = new Label { Text = text, AutoSize = true, Font = new Font("Segoe UI", 12f), ForeColor = Color.White, Location = new Point(20, 12) };
+      Controls.Add(label);
+      var size = label.GetPreferredSize(Size.Empty);
+      ClientSize = new Size(size.Width + 40, size.Height + 24);
+      var area = Screen.PrimaryScreen.WorkingArea;
+      Location = new Point(area.Left + (area.Width - Width) / 2, area.Top + 24);
+    }
+    protected override bool ShowWithoutActivation { get { return true; } }
+    protected override CreateParams CreateParams {
+      get { var p = base.CreateParams; p.ExStyle |= 0x20 | 0x80 | 0x08000000; return p; }
+    }
+  }
+
+  /** The application window the person clicks (null: Esc or the time ran out). */
+  public static Hashtable Pick(int timeoutMs, string hint) {
+    Hashtable result = null;
+    var t = new Thread(() => { result = Run(timeoutMs, hint); });
+    t.SetApartmentState(ApartmentState.STA);
+    t.IsBackground = true;
+    t.Start();
+    t.Join();
+    return result;
+  }
+
+  static Hashtable Run(int timeoutMs, string hint) {
+    pressed = picked = IntPtr.Zero;
+    cancelled = false;
+    own.Clear();
+    var outline = new Outline();
+    var banner = new Banner(hint);
+    own.Add(outline.Handle);
+    own.Add(banner.Handle);
+    banner.Show();
+    int started = Environment.TickCount;
+    var timer = new System.Windows.Forms.Timer { Interval = 50 };
+    timer.Tick += (s, e) => {
+      if (picked != IntPtr.Zero || cancelled || Environment.TickCount - started > timeoutMs) { Application.ExitThread(); return; }
+      POINT p;
+      GetCursorPos(out p);
+      IntPtr h = WindowAt(p.x, p.y);
+      RECT r;
+      if (h != IntPtr.Zero && Bounds(h, out r)) {
+        var box = new Rectangle(r.l - 3, r.t - 3, r.r - r.l + 6, r.b - r.t + 6);
+        if (outline.Bounds != box) { outline.Bounds = box; outline.Invalidate(); }
+        if (!outline.Visible) outline.Show();
+      } else if (outline.Visible) outline.Hide();
+    };
+    mouseProc = MouseHook;
+    keyProc = KeyHook;
+    IntPtr mod = GetModuleHandle(null);
+    mouseHook = SetWindowsHookEx(14, mouseProc, mod, 0);
+    keyHook = SetWindowsHookEx(13, keyProc, mod, 0);
+    timer.Start();
+    try { Application.Run(); }
+    finally {
+      timer.Stop();
+      UnhookWindowsHookEx(mouseHook);
+      UnhookWindowsHookEx(keyHook);
+      outline.Close();
+      banner.Close();
+    }
+    return picked == IntPtr.Zero ? null : Describe(picked);
+  }
+
+  /** A left click picks the window under it; the application gets neither the press nor the release. */
+  static IntPtr MouseHook(int code, IntPtr w, IntPtr l) {
+    if (code >= 0) {
+      int msg = w.ToInt32();
+      if (msg == 0x201) {
+        var d = (MSLL)Marshal.PtrToStructure(l, typeof(MSLL));
+        pressed = WindowAt(d.pt.x, d.pt.y);
+        return (IntPtr)1;
+      }
+      if (msg == 0x202) {
+        if (pressed != IntPtr.Zero) picked = pressed;
+        return (IntPtr)1;
+      }
+    }
+    return CallNextHookEx(mouseHook, code, w, l);
+  }
+
+  static IntPtr KeyHook(int code, IntPtr w, IntPtr l) {
+    if (code >= 0 && w.ToInt32() == 0x100) {
+      var k = (KBLL)Marshal.PtrToStructure(l, typeof(KBLL));
+      if (k.vk == 0x1B) { cancelled = true; return (IntPtr)1; }
+    }
+    return CallNextHookEx(keyHook, code, w, l);
+  }
+
+  /** The top-most application window at a point (not the desktop, the taskbar or these overlays). */
+  static IntPtr WindowAt(int x, int y) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows((h, unused) => {
+      if (own.Contains(h) || !IsWindowVisible(h) || IsIconic(h)) return true;
+      int cloaked;
+      if (DwmGetWindowAttribute(h, 14, out cloaked, 4) == 0 && cloaked != 0) return true;
+      if ((GetWindowLong(h, -20) & 0x20) != 0) return true;
+      RECT r;
+      if (!Bounds(h, out r) || x < r.l || x >= r.r || y < r.t || y >= r.b) return true;
+      uint pid;
+      GetWindowThreadProcessId(h, out pid);
+      if (pid == ownPid) return true;
+      found = h;
+      return false;
+    }, IntPtr.Zero);
+    if (found == IntPtr.Zero) return found;
+    var cls = new StringBuilder(256);
+    GetClassName(found, cls, 256);
+    string c = cls.ToString();
+    return c == "Progman" || c == "WorkerW" || c == "Shell_TrayWnd" || c == "Shell_SecondaryTrayWnd" ? IntPtr.Zero : found;
+  }
+
+  static bool Bounds(IntPtr h, out RECT r) {
+    if (DwmGetWindowAttribute(h, 9, out r, Marshal.SizeOf(typeof(RECT))) == 0 && r.r > r.l) return true;
+    return GetWindowRect(h, out r) && r.r > r.l && r.b > r.t;
+  }
+
+  static Hashtable Describe(IntPtr h) {
+    uint pid;
+    GetWindowThreadProcessId(h, out pid);
+    // Store apps (Calculator, ...): the frame is ApplicationFrameHost's, the app is a child window's process.
+    if (NameOf(pid) == "applicationframehost") {
+      uint inner = 0;
+      uint frame = pid;
+      EnumChildWindows(h, (c, unused) => {
+        uint p;
+        GetWindowThreadProcessId(c, out p);
+        if (p != frame) { inner = p; return false; }
+        return true;
+      }, IntPtr.Zero);
+      if (inner != 0) pid = inner;
+    }
+    var title = new StringBuilder(512);
+    GetWindowText(h, title, 512);
+    var result = new Hashtable();
+    result["path"] = PathOf(pid);
+    result["process"] = NameOf(pid);
+    result["title"] = title.ToString();
+    return result;
+  }
+
+  static string NameOf(uint pid) {
+    try { return Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant(); } catch { return ""; }
+  }
+
+  static string PathOf(uint pid) {
+    IntPtr h = OpenProcess(0x1000, false, pid);
+    if (h == IntPtr.Zero) return "";
+    try {
+      var sb = new StringBuilder(1024);
+      int n = sb.Capacity;
+      return QueryFullProcessImageName(h, 0, sb, ref n) ? sb.ToString() : "";
+    } finally { CloseHandle(h); }
+  }
+}
+'@
+
 function Initialize-Uia {
   if ($script:UiaReady) { return }
   if ($PSVersionTable.PSEdition -eq 'Core' -and -not $IsWindows) { throw 'Desktop automation needs Windows.' }
@@ -827,6 +1050,15 @@ function Invoke-Op([string]$op, $a) {
       $data = [Convert]::ToBase64String($ms.ToArray())
       $ms.Dispose()
       return @{ data = $data }
+    }
+    'indicateWindow' {
+      if (-not $script:IndicateReady) {
+        $refs = @([System.Windows.Forms.Form].Assembly.Location, [System.Drawing.Color].Assembly.Location)
+        Add-Type -TypeDefinition $IndicateSource -ReferencedAssemblies $refs -Language CSharp
+        $script:IndicateReady = $true
+      }
+      $hint = if ($a.hint) { [string]$a.hint } else { 'Click the application you want to record (Esc to cancel)' }
+      return [ZtIndicate]::Pick($timeout, $hint)
     }
     'recordStart' { [ZtRecorder]::Start(); return @{ ok = $true } }
     'recordPoll' { return , ([ZtRecorder]::Drain()) }

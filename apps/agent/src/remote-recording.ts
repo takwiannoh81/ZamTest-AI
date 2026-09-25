@@ -2,7 +2,8 @@
  * Recording asked for in the Designer: opens the browser (web) or starts the
  * program (desktop) on this PC, records clicks and typing, and reports the steps
  * so far about once a second until the Designer says to stop (or the browser
- * window is closed).
+ * window is closed). "Indicate" lets the person click the application to record
+ * instead of typing its path.
  */
 import { desktop } from "@zamtest/actions";
 import { errorMessage } from "@zamtest/core";
@@ -13,9 +14,20 @@ import { eventsToWorkflow, startRecording } from "./recorder.js";
 
 export interface RemoteRecordingRequest {
   id: string;
-  kind: "web" | "desktop";
+  kind: "web" | "desktop" | "indicate";
   url?: string;
   program?: string;
+  /** Desktop: the program is already open (it was indicated): record it without starting another one. */
+  attach?: boolean;
+  /** Indicate: the instruction shown on the screen, in the person's language. */
+  hint?: string;
+}
+
+/** The application the person clicked. */
+export interface IndicatedApp {
+  path: string;
+  process: string;
+  title: string;
 }
 
 export interface RecordingProgress {
@@ -23,6 +35,8 @@ export interface RecordingProgress {
   variables: VariableDef[];
   done?: boolean;
   error?: string;
+  /** Indicate: the application clicked (unset: Esc, or no click in time). */
+  picked?: IndicatedApp;
 }
 
 /** Sends the steps so far; answers whether the Designer asked to stop. */
@@ -36,6 +50,7 @@ const stepsOf = (workflow: Workflow) => workflow.root.slots?.body ?? [];
 export async function runRemoteRecording(request: RemoteRecordingRequest, report: ReportProgress, log: (message: string) => void): Promise<void> {
   try {
     if (request.kind === "web") await recordWeb(request, report);
+    else if (request.kind === "indicate") await indicate(request, report);
     else await recordDesktop(request, report);
     log(`Recording ${request.id} finished`);
   } catch (err) {
@@ -64,6 +79,19 @@ async function recordWeb(request: RemoteRecordingRequest, report: ReportProgress
   await report({ ...current(workflow), done: true });
 }
 
+/** How long the person has to click the application. */
+const INDICATE_TIMEOUT_MS = 60_000;
+
+async function indicate(request: RemoteRecordingRequest, report: ReportProgress) {
+  const driver = desktop.DesktopDriver.start();
+  try {
+    const picked = await driver.call<IndicatedApp | null>("indicateWindow", { timeoutMs: INDICATE_TIMEOUT_MS, hint: request.hint });
+    await report({ steps: [], variables: [], done: true, picked: picked ?? undefined });
+  } finally {
+    await driver.close();
+  }
+}
+
 async function recordDesktop(request: RemoteRecordingRequest, report: ReportProgress) {
   const driver = desktop.DesktopDriver.start();
   // With a program, only its windows are recorded (not the browser with the Designer, ...).
@@ -77,7 +105,7 @@ async function recordDesktop(request: RemoteRecordingRequest, report: ReportProg
     return { steps: stepsOf(workflow), variables: workflow.variables };
   };
   try {
-    if (request.program) await driver.call("launch", { path: request.program });
+    if (request.program && !request.attach) await driver.call("launch", { path: request.program });
     await driver.call("recordStart");
     for (;;) {
       await sleep(INTERVAL_MS);

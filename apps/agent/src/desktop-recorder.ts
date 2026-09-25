@@ -58,7 +58,7 @@ export function desktopEventsToWorkflow(
   let secretCount = 0;
   let launch: Step | undefined;
   if (options.program) {
-    launch = { id: newStepId(), type: "desktop.launch", label: `Start ${options.program}`, props: { path: options.program } };
+    launch = { id: newStepId(), type: "desktop.launch", label: `Start ${options.program.split(/[\\/]/).pop() || options.program}`, props: { path: options.program } };
     steps.push(launch);
   }
 

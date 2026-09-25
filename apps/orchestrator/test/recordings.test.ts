@@ -47,4 +47,28 @@ describe("recording from the Designer", () => {
     await call("POST", `/api/agent/recordings/${second.id}/progress`, { agentId, steps: [], error: "The program could not start" }, agent);
     expect((await call("GET", `/api/recordings/${second.id}`)).json()).toMatchObject({ status: "failed", error: "The program could not start" });
   });
+
+  it("indicates the application to record on newer agents, then records it without starting it again", async () => {
+    ({ app } = await buildApp({ config: { ...loadConfig({ ZAMTEST_AGENT_KEY: "k" }), dataDir: null }, ai: null }));
+    const register = async (version: string, agentId?: string) =>
+      (await call("POST", "/api/agent/register", { agentId, name: "my-pc", machine: "my-pc", version }, agent)).json().agentId as string;
+
+    // A 0.3.0 agent would record the whole desktop instead: not offered.
+    const agentId = await register("0.3.0");
+    await call("POST", "/api/agent/recordings/next", { agentId }, agent);
+    expect((await call("GET", "/api/recordings/agents")).json()).toMatchObject([{ canRecord: true, canIndicate: false }]);
+    expect((await call("POST", "/api/recordings", { agentId, kind: "indicate" })).statusCode).toBe(409);
+
+    await register("0.3.1", agentId);
+    expect((await call("GET", "/api/recordings/agents")).json()).toMatchObject([{ canIndicate: true }]);
+    const pick = (await call("POST", "/api/recordings", { agentId, kind: "indicate", hint: "Click the application" })).json();
+    expect((await call("POST", "/api/agent/recordings/next", { agentId }, agent)).json()).toEqual({ id: pick.id, kind: "indicate", hint: "Click the application" });
+    const picked = { path: "C:\\Windows\\System32\\charmap.exe", process: "charmap", title: "Character Map" };
+    await call("POST", `/api/agent/recordings/${pick.id}/progress`, { agentId, steps: [], done: true, picked }, agent);
+    expect((await call("GET", `/api/recordings/${pick.id}`)).json()).toMatchObject({ status: "done", picked });
+
+    // The indicated program is open already: the agent is told not to start it again.
+    const rec = (await call("POST", "/api/recordings", { agentId, kind: "desktop", program: picked.path, attach: true })).json();
+    expect((await call("POST", "/api/agent/recordings/next", { agentId }, agent)).json()).toEqual({ id: rec.id, kind: "desktop", program: picked.path, attach: true });
+  });
 });

@@ -10,6 +10,8 @@ interface RecordingPc {
   machine: string;
   os: string;
   canRecord: boolean;
+  /** The PC's agent can let the person click the application to record. */
+  canIndicate?: boolean;
 }
 
 interface Recording {
@@ -19,6 +21,8 @@ interface Recording {
   steps: Step[];
   variables: VariableDef[];
   error?: string;
+  /** Indicate: the application clicked on the PC. */
+  picked?: { path: string; process: string; title: string };
 }
 
 const PC_KEY = "zamtest.recordPc";
@@ -40,7 +44,8 @@ const remembered = () => {
 /**
  * Records on a PC (the person's own, with the ZamTech AI agent running): a
  * browser at an address, or a Windows program. The steps appear here as they are
- * recorded; Stop puts them into the workflow at the selected place.
+ * recorded; Stop puts them into the workflow at the selected place. For a
+ * program, "Indicate" lets the person click it on the PC instead of typing its path.
  */
 export function RecordModal({
   describe,
@@ -57,6 +62,10 @@ export function RecordModal({
   const [kind, setKind] = useState<"web" | "desktop">("web");
   const [url, setUrl] = useState("https://");
   const [program, setProgram] = useState("");
+  /** The program was indicated: it is open already, so the recording does not start it again. */
+  const [attach, setAttach] = useState(false);
+  const [indicating, setIndicating] = useState<Recording>();
+  const [indicated, setIndicated] = useState<string>();
   const [recording, setRecording] = useState<Recording>();
   const [error, setError] = useState<string>();
   const inserted = useRef(false);
@@ -90,13 +99,55 @@ export function RecordModal({
     }
   }, [recording, onInsert]);
 
+  // Indicate: wait for the person to click the application on the PC.
+  const pointing = indicating && ["pending", "recording", "stopping"].includes(indicating.status);
+  useEffect(() => {
+    if (!indicating || !pointing) return;
+    const timer = setInterval(() => {
+      api<Recording>(`/api/recordings/${indicating.id}`)
+        .then((r) => {
+          setIndicating(r);
+          if (r.status === "done") {
+            if (r.picked) {
+              setProgram(r.picked.path || `${r.picked.process}.exe`);
+              setAttach(true);
+              setIndicated(t("record.indicated", { app: r.picked.title || r.picked.process }));
+            } else setIndicated(t("record.indicateNone"));
+          } else if (r.status === "failed") setError(r.error ?? t("record.failed"));
+        })
+        .catch((e: Error) => setError(e.message));
+    }, 700);
+    return () => clearInterval(timer);
+  }, [indicating?.id, pointing]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const indicate = async () => {
+    setError(undefined);
+    setIndicated(undefined);
+    try {
+      remember(pcId);
+      setIndicating(await api<Recording>("/api/recordings", { method: "POST", body: { agentId: pcId, kind: "indicate", hint: t("record.indicateScreen") } }));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const stopIndicating = () => {
+    if (indicating && pointing) void api(`/api/recordings/${indicating.id}/cancel`, { method: "POST" }).catch(() => undefined);
+    setIndicating(undefined);
+  };
+
   const start = async () => {
     setError(undefined);
     try {
       remember(pcId);
       const started = await api<Recording>("/api/recordings", {
         method: "POST",
-        body: { agentId: pcId, kind, url: kind === "web" ? url : undefined, program: kind === "desktop" ? program || undefined : undefined },
+        body: {
+          agentId: pcId,
+          kind,
+          url: kind === "web" ? url : undefined,
+          program: kind === "desktop" ? program || undefined : undefined,
+          attach: kind === "desktop" && program ? attach : undefined,
+        },
       });
       setRecording(started);
     } catch (e) {
@@ -106,6 +157,7 @@ export function RecordModal({
   const stop = () => recording && api<Recording>(`/api/recordings/${recording.id}/stop`, { method: "POST" }).then(setRecording, (e: Error) => setError(e.message));
   const cancel = async () => {
     if (recording && active) await api(`/api/recordings/${recording.id}/cancel`, { method: "POST" }).catch(() => undefined);
+    stopIndicating();
     onClose();
   };
 
@@ -139,10 +191,10 @@ export function RecordModal({
           </>
         ) : (
           <>
-            <button className="btn-ghost" onClick={onClose}>
+            <button className="btn-ghost" onClick={() => void cancel()}>
               {t("common.cancel")}
             </button>
-            <button className="btn" disabled={!pcId || (kind === "web" && url.trim().length < 9)} onClick={() => void start()}>
+            <button className="btn" disabled={!pcId || pointing || (kind === "web" && url.trim().length < 9)} onClick={() => void start()}>
               ● {t("record.start")}
             </button>
           </>
@@ -165,9 +217,41 @@ export function RecordModal({
               <input value={url} autoFocus onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" />
             </Field>
           ) : (
-            <Field label={t("record.program")} hint={t("record.programHint")}>
-              <input value={program} autoFocus onChange={(e) => setProgram(e.target.value)} placeholder="notepad.exe" />
-            </Field>
+            <>
+              <Field label={t("record.program")} hint={t("record.programHint")}>
+                <div className="indicate-row">
+                  <input
+                    value={program}
+                    autoFocus
+                    onChange={(e) => {
+                      setProgram(e.target.value);
+                      setAttach(false);
+                      setIndicated(undefined);
+                    }}
+                    placeholder="notepad.exe"
+                  />
+                  <button
+                    type="button"
+                    className="btn-ghost indicate-btn"
+                    disabled={!pcId || pointing || pc?.canIndicate === false}
+                    title={pc?.canIndicate === false ? t("record.indicateTooOld") : t("record.indicateHint")}
+                    onClick={() => void indicate()}
+                  >
+                    ◎ {t("record.indicate")}
+                  </button>
+                </div>
+              </Field>
+              {pointing && (
+                <p className="indicate-status">
+                  {t("record.indicating", { pc: indicating.agentName })}{" "}
+                  <button type="button" className="link-btn" onClick={stopIndicating}>
+                    {t("common.cancel")}
+                  </button>
+                </p>
+              )}
+              {!pointing && indicated && <p className="muted tiny">{indicated}</p>}
+              {pc?.canIndicate === false && pc.canRecord && <p className="muted tiny">{t("record.indicateTooOld")}</p>}
+            </>
           )}
           <Field label={t("record.pc")}>
             <select value={pcId} onChange={(e) => setPcId(e.target.value)}>

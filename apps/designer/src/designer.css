@@ -182,3 +182,8 @@
 /* Recording from the Designer */
 .record-btn { color: var(--danger); font-weight: 600; }
 .recorded-steps { margin: 8px 0 0; padding-inline-start: 22px; max-height: 280px; overflow: auto; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.indicate-row { display: flex; gap: 8px; align-items: stretch; }
+.indicate-row input { flex: 1; min-width: 0; }
+.indicate-btn { white-space: nowrap; }
+.indicate-status { color: var(--accent); font-size: 13px; margin: -4px 0 10px; }
+.link-btn { background: none; border: none; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
