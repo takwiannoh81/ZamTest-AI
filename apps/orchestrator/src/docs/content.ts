@@ -309,7 +309,22 @@ For web steps, the **✨ AI** button next to the selector opens the **✨ AI sel
 2. In **Page HTML**, paste the page's HTML. In the browser, right-click the page, choose **Inspect**, right-click \`<html>\`, then **Copy > Copy outerHTML**.
 3. Click **Suggest selectors**, then **Use** on the one you want.
 
-Your description is saved as the step's target description.`,
+Your description is saved as the step's target description.
+
+## Dynamic targets: any item of a list
+
+A step can work on **an item of a list chosen when it runs**, instead of one fixed element: for example, "click the first camera that is not offline". This keeps the step working when the list changes. It works on web pages and in Windows applications.
+
+1. Click ◎ on the step and point at one item of the list (one row, one camera).
+2. The page outlines all similar items for a moment, and the Designer says "It is one of 17 similar items".
+3. Choose **Any item like this one**. (Choose **Only this one** for a fixed element.)
+4. In the step's properties, the **Item from a list** card sets the rules:
+   - **Which one**: the first, the last, any one, or **the next one if it does not work** (tries the items in turn until the step works).
+   - **Skip items that contain**: click ◎ and, in one item, point at what marks the items to skip, such as the offline icon. It shows how many items have it.
+   - **Only items whose text contains** and **Skip items whose text contains**.
+5. The step card then reads in plain words, such as "The first of 17 similar items, skipping the marked ones".
+
+**Use one exact element instead** turns it back into a fixed element. Build with AI and Fix with AI can also make steps dynamic.`,
   },
 
   /* ------------------------------------------------------------------ */

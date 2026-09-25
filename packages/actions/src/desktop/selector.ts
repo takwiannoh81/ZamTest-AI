@@ -219,3 +219,25 @@ export function describeChain(chain: ElementInfo[]): string {
   const label = target.name && stableName(target.name) ? `"${target.name}" ` : "";
   return `The ${label}${kind}${app && target !== win ? ` in ${app}` : ""}`;
 }
+
+/** Control types that are the items of a list, a grid, a tree or a menu. */
+const ITEM_TYPES = new Set(["listitem", "dataitem", "treeitem", "tabitem", "menuitem", "row", "custom"]);
+
+/**
+ * The list an indicated element belongs to (for "any item like this one"): its nearest
+ * ancestor (or itself) that is a list item, with only its type and class kept, under the
+ * same parents; and the part inside the item that was indicated. Undefined when the
+ * element is not in such an item.
+ */
+export function similarFromChain(chain: ElementInfo[]): { items: string; inner?: string } | undefined {
+  for (let k = chain.length - 1; k >= 1; k--) {
+    const item = chain[k]!;
+    if (!ITEM_TYPES.has(item.type)) continue;
+    const parents = parseSelector(selectorFromChain(chain.slice(0, k)));
+    const like = (e: ElementInfo): Segment => ({ type: e.type, conditions: e.class ? [{ attr: "class", op: "=", value: e.class }] : [] });
+    const items = formatSelector([...parents, like(item)]);
+    const inner = k < chain.length - 1 ? formatSelector([like(chain.at(-1)!)]) : undefined;
+    return { items, inner };
+  }
+  return undefined;
+}

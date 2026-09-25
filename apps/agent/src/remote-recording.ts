@@ -34,6 +34,9 @@ export interface RemoteRecordingRequest {
   prefix?: unknown;
   /** Pick: the banner's texts in the person's language (pick, paused, pause, resume, cancel). */
   texts?: Partial<PickTexts>;
+  /** Pick: an element (default), or something inside the items of a list (items: the list). */
+  mode?: "element" | "inside";
+  items?: string;
 }
 
 /** Inspect: what is on the PC now. */
@@ -177,7 +180,7 @@ async function pick(request: RemoteRecordingRequest, report: ReportProgress, run
     ask();
     const timer = setInterval(ask, 2000);
     try {
-      element = (await pickWebElement(request.url ?? "about:blank", texts, () => stopped, { attachTo })) ?? undefined;
+      element = (await pickWebElement(request.url ?? "about:blank", texts, () => stopped, { attachTo, mode: request.mode, items: request.items })) ?? undefined;
     } finally {
       clearInterval(timer);
     }
@@ -191,7 +194,15 @@ async function pick(request: RemoteRecordingRequest, report: ReportProgress, run
         pausedHint: texts?.paused,
       });
       const chain = picked ? (JSON.parse(picked.chain) as desktop.ElementInfo[]) : [];
-      if (chain.length) element = { selector: desktop.selectorFromChain(chain), description: desktop.describeChain(chain) };
+      if (chain.length) {
+        element = { selector: desktop.selectorFromChain(chain), description: desktop.describeChain(chain) };
+        // The list it belongs to, when there are several like it ("any item like this one").
+        const similar = desktop.similarFromChain(chain);
+        if (similar) {
+          const { count } = await driver.call<{ count: number }>("count", { selector: similar.items }).catch(() => ({ count: 0 }));
+          if (count >= 2) element.similar = { ...similar, count };
+        }
+      }
     } finally {
       await driver.close();
     }

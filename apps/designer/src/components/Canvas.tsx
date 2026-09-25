@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ActionMeta, Step } from "@zamtest/core";
 import type { Location } from "../tree";
 import { summarize } from "../tree";
+import { targetListOf } from "@zamtest/core";
+import { listSummary } from "./listText";
 import { CATEGORY_COLORS, iconFor } from "./icons";
 import { DRAG_ACTION, DRAG_STEP } from "./Palette";
 
@@ -184,6 +186,8 @@ function StepCard({ step, ...props }: CanvasProps & { step: Step }) {
   const status = props.runStatus[step.id];
   const [collapsed, setCollapsed] = useState(false);
   const slots = meta?.slots ?? Object.keys(step.slots ?? {});
+  // On an item of a list chosen at run time: said in plain words instead of the selector.
+  const list = targetListOf(step.props);
 
   return (
     <div
@@ -208,7 +212,7 @@ function StepCard({ step, ...props }: CanvasProps & { step: Step }) {
         </span>
         <div className="step-title">
           <strong>{step.label || (meta ? actionName(meta) : step.type)}</strong>
-          <small className="muted">{summarize(step) || (meta ? actionName(meta) : "")}</small>
+          <small className="muted">{list ? `☰ ${listSummary(t, list)}` : summarize(step) || (meta ? actionName(meta) : "")}</small>
         </div>
         <div className="step-tools">
           {step.retry?.count ? <span className="tag">{t("canvas.retry", { count: step.retry.count })}</span> : null}

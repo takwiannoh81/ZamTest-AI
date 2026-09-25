@@ -153,3 +153,32 @@ describe.skipIf(!canRun)("pausing to use the page before indicating", () => {
   });
 });
 
+const cameras = `data:text/html,${encodeURIComponent(`<div id="cams">
+  <div class="cam"><span class="icon offline">x</span><span class="name">Cam 1</span></div>
+  <div class="cam"><span class="icon offline">x</span><span class="name">Cam 2</span></div>
+  <div class="cam"><span class="icon online">o</span><span class="name">Cam 3</span></div>
+  <div class="cam"><span class="icon online">o</span><span class="name">Cam 4</span></div>
+</div>`)}`;
+
+describe.skipIf(!canRun)("indicating an item of a list", () => {
+  it("finds the list an element belongs to (every item like it) and the part inside the item", async () => {
+    const picked = await pickWebElement(cameras, undefined, () => false, {
+      headless: true,
+      timeoutMs: 20_000,
+      onPage: (p) => void p.getByText("Cam 2").click(),
+    });
+    expect(picked).toMatchObject({ similar: { items: "css=#cams > div.cam", count: 4, inner: "css=span.name" } });
+  });
+
+  it("picks something inside the items (the offline icon) and counts the items that have it", async () => {
+    const picked = await pickWebElement(cameras, undefined, () => false, {
+      headless: true,
+      timeoutMs: 20_000,
+      mode: "inside",
+      items: "css=#cams > div.cam",
+      onPage: (p) => void p.locator(".offline").first().click(),
+    });
+    expect(picked).toMatchObject({ selector: "css=span.icon.offline", inside: { matches: 2, total: 4 } });
+  });
+});
+

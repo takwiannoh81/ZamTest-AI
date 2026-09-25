@@ -986,6 +986,29 @@ function Invoke-Op([string]$op, $a) {
       return , $list
     }
     'count' { return @{ count = (Resolve-Selector $a.selector).Count } }
+    'list' {
+      # Every item of a list (dynamic targets): its name, and whether it contains the skip element.
+      $deadline = [DateTime]::UtcNow.AddMilliseconds([Math]::Max(0, $timeout))
+      do {
+        $items = Resolve-Selector $a.selector
+        if ($items.Count -gt 0) { break }
+        Start-Sleep -Milliseconds 250
+      } while ([DateTime]::UtcNow -lt $deadline)
+      $result = New-Object System.Collections.Generic.List[object]
+      foreach ($item in $items) {
+        $skipped = $false
+        if ($a.skip) {
+          $inside = @($item)
+          foreach ($segment in $a.skip) {
+            $inside = Find-Segment $inside $segment $false
+            if ($inside.Count -eq 0) { break }
+          }
+          $skipped = $inside.Count -gt 0
+        }
+        $result.Add(@{ name = [ZtTypes]::NameOf($item); skipped = $skipped })
+      }
+      return , $result.ToArray()
+    }
     'find' {
       $el = Wait-Element $a.selector $timeout
       $info = Get-Info $el

@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import type { Browser, Page } from "playwright";
 import type { ActionContext, ActionHandler } from "@zamtest/core";
-import { errorMessage } from "@zamtest/core";
+import { errorMessage, targetListOf, textAllows, tryOrder } from "@zamtest/core";
 import { getAi } from "./ai.js";
 import { expectation, matchOf, shown, textMatches, VerificationError, waitFor } from "./verify.js";
 
@@ -83,7 +83,61 @@ export async function snapshotDom(page: Page, maxChars = MAX_DOM_CHARS): Promise
  * one element. Healed selectors are reported as a `selectorHealed` event so
  * the Portal/Designer can offer to update the workflow.
  */
+/**
+ * Runs an action on the step's element: one fixed element (its selector), or an item
+ * chosen from a list at run time (its `list`: e.g. the first camera that is not offline).
+ */
 async function withSelector<T>(
+  ctx: ActionContext,
+  props: Record<string, unknown>,
+  action: (selector: string, timeout: number) => Promise<T>,
+): Promise<T> {
+  const list = targetListOf(props);
+  if (!list) return withOneSelector(ctx, props, action);
+  const page = getPage(ctx);
+  const timeout = Number(props.timeoutMs ?? 30_000);
+  const items = page.locator(list.items);
+  // The list may still be loading.
+  await items.first().waitFor({ state: "attached", timeout }).catch(() => undefined);
+  const total = await items.count();
+  const positions: number[] = [];
+  for (let i = 0; i < total; i++) {
+    const item = items.nth(i);
+    if (list.skipIfHas && (await item.locator(list.skipIfHas).count().catch(() => 0)) > 0) continue;
+    if ((list.onlyText || list.skipText) && !textAllows(list, await item.innerText({ timeout: 2000 }).catch(() => ""))) continue;
+    positions.push(i);
+  }
+  const order = tryOrder(list, positions);
+  if (!order.length) {
+    throw new Error(total ? `All ${total} items of the list were skipped by the step's rules (${list.items})` : `The list has no items (${list.items})`);
+  }
+  // Each in turn: a shorter wait per item, so a bad item does not hold the step up for long.
+  const each = list.which === "next" ? Math.min(timeout, LIST_ITEM_TIMEOUT) : timeout;
+  let last: unknown;
+  for (const [tried, i] of order.entries()) {
+    const selector = `${list.items} >> nth=${i}${list.inner ? ` >> ${list.inner}` : ""}`;
+    try {
+      const result = await action(selector, each);
+      ctx.log("info", `Used item ${i + 1} of ${total}${tried ? ` (after ${tried} that did not work)` : ""}`);
+      return result;
+    } catch (err) {
+      last = err;
+      if (list.which !== "next") throw err;
+      ctx.log("warn", `Item ${i + 1} of ${total} did not work (${errorMessage(err)}); trying the next one`);
+    }
+  }
+  throw last;
+}
+
+/** For checks: the step's element, or the list item its rules choose now (no retries: a check reports). */
+async function checkSelector(ctx: ActionContext, props: Record<string, unknown>): Promise<string> {
+  const list = targetListOf(props);
+  if (!list) return String(props.selector);
+  return withSelector(ctx, { ...props, list: { ...list, which: list.which === "next" ? "first" : list.which } }, async (selector) => selector);
+}
+
+/** One fixed element, with AI self-healing when its selector no longer matches. */
+async function withOneSelector<T>(
   ctx: ActionContext,
   props: Record<string, unknown>,
   action: (selector: string, timeout: number) => Promise<T>,
@@ -131,6 +185,8 @@ const SETTLE_TIMEOUT = 10_000;
 /** After typing, the text is checked this long later (a page that redraws its form wipes it). */
 const TYPE_CHECK_MS = 300;
 const TYPE_ATTEMPTS = 3;
+/** "Each in turn" lists: how long one item may take before the next is tried. */
+const LIST_ITEM_TIMEOUT = 5_000;
 let keepOpen = false;
 /** Running the steps before a step for Indicate: the browser is shown (the person points in it) and always kept. */
 let forPicking = false;
@@ -248,7 +304,7 @@ export const browserHandlers: Record<string, ActionHandler> = {
 
   "browser.verifyText": async (props, ctx) => {
     const page = getPage(ctx);
-    const selector = String(props.selector);
+    const selector = await checkSelector(ctx, props);
     const expected = String(props.text ?? "");
     const match = matchOf(props.match);
     const { passed, last } = await waitFor(
@@ -263,7 +319,7 @@ export const browserHandlers: Record<string, ActionHandler> = {
 
   "browser.verifyVisible": async (props, ctx) => {
     const page = getPage(ctx);
-    const selector = String(props.selector);
+    const selector = await checkSelector(ctx, props);
     const wanted = props.visible !== false;
     const { passed } = await waitFor(
       () => page.locator(selector).first().isVisible().catch(() => false),

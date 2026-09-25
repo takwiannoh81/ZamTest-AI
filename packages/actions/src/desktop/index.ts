@@ -1,13 +1,13 @@
 import { resolve } from "node:path";
 import type { ActionContext, ActionHandler } from "@zamtest/core";
-import { errorMessage } from "@zamtest/core";
+import { errorMessage, targetListOf, textAllows, tryOrder } from "@zamtest/core";
 import { getAi } from "../ai.js";
 import { expectation, matchOf, shown, textMatches, VerificationError, waitFor } from "../verify.js";
 import { DesktopDriver } from "./driver.js";
 import { formatSelector, parseSelector } from "./selector.js";
 
 export { DesktopDriver, DesktopUnsupportedError, DRIVER_SCRIPT } from "./driver.js";
-export { describeChain, formatSelector, parseSelector, selectorFromChain, SelectorError } from "./selector.js";
+export { describeChain, formatSelector, parseSelector, selectorFromChain, SelectorError, similarFromChain } from "./selector.js";
 export type { ElementInfo, Segment } from "./selector.js";
 
 const DRIVER = "desktop.driver";
@@ -49,8 +49,54 @@ export async function desktopSnapshot(ctx: ActionContext, selector?: string, max
   return tree;
 }
 
-/** Same contract as the browser version: on failure, ask AI for a replacement and validate it (exactly one match). */
+/**
+ * Runs an action on the step's element: one fixed element (its selector), or an item chosen
+ * from a list at run time (its `list`), as in the browser: all items are found now, the rules
+ * applied, and the chosen one (or each in turn) is addressed with [index=N].
+ */
 async function withDesktopSelector<T>(
+  ctx: ActionContext,
+  props: Record<string, unknown>,
+  action: (selector: string) => Promise<T>,
+): Promise<T> {
+  const list = targetListOf(props);
+  if (!list) return withOneDesktopSelector(ctx, props, action);
+  parseSelector(list.items);
+  const items = await getDesktop(ctx).call<Array<{ name: string; skipped: boolean }>>("list", {
+    selector: list.items,
+    skip: list.skipIfHas ? parseSelector(list.skipIfHas) : undefined,
+    timeoutMs: timeoutOf(props),
+  });
+  const positions = items.flatMap((item, i) => (!item.skipped && textAllows(list, item.name ?? "") ? [i] : []));
+  const order = tryOrder(list, positions);
+  if (!order.length) {
+    throw new Error(items.length ? `All ${items.length} items of the list were skipped by the step's rules (${list.items})` : `The list has no items (${list.items})`);
+  }
+  let last: unknown;
+  for (const [tried, i] of order.entries()) {
+    const selector = `${list.items}[index=${i + 1}]${list.inner ? ` > ${list.inner}` : ""}`;
+    try {
+      const result = await action(selector);
+      ctx.log("info", `Used item ${i + 1} of ${items.length}${items[i]?.name ? ` (${items[i]!.name})` : ""}${tried ? ` after ${tried} that did not work` : ""}`);
+      return result;
+    } catch (err) {
+      last = err;
+      if (list.which !== "next") throw err;
+      ctx.log("warn", `Item ${i + 1} of ${items.length} did not work (${errorMessage(err)}); trying the next one`);
+    }
+  }
+  throw last;
+}
+
+/** For checks: the step's element, or the list item its rules choose now. */
+async function checkDesktopSelector(ctx: ActionContext, props: Record<string, unknown>): Promise<string> {
+  const list = targetListOf(props);
+  if (!list) return String(props.selector);
+  return withDesktopSelector(ctx, { ...props, list: { ...list, which: list.which === "next" ? "first" : list.which } }, async (selector) => selector);
+}
+
+/** One fixed element. Same contract as the browser version: on failure, ask AI for a replacement and validate it (exactly one match). */
+async function withOneDesktopSelector<T>(
   ctx: ActionContext,
   props: Record<string, unknown>,
   action: (selector: string) => Promise<T>,
@@ -154,7 +200,7 @@ export const desktopHandlers: Record<string, ActionHandler> = {
     }),
 
   "desktop.verifyText": async (props, ctx) => {
-    const selector = String(props.selector);
+    const selector = await checkDesktopSelector(ctx, props);
     parseSelector(selector);
     const driver = getDesktop(ctx);
     const expected = String(props.text ?? "");
@@ -170,7 +216,7 @@ export const desktopHandlers: Record<string, ActionHandler> = {
   },
 
   "desktop.verifyExists": async (props, ctx) => {
-    const selector = String(props.selector);
+    const selector = await checkDesktopSelector(ctx, props);
     parseSelector(selector);
     const driver = getDesktop(ctx);
     const wanted = props.exists !== false;

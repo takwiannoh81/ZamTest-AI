@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ActionMeta, Step, VariableDef, Workflow } from "@zamtest/core";
+import { targetListOf } from "@zamtest/core";
 import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
 import { api } from "./api";
 import type { Job, WorkflowDraft, WorkflowSummary } from "./api";
@@ -236,7 +237,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
   /** Fix with AI of a failed run. */
   const [fixing, setFixing] = useState<{ jobId: string; stepId?: string }>();
   /** Indicate on screen: the step and its selector property. */
-  const [indicating, setIndicating] = useState<{ stepId: string; prop: string }>();
+  const [indicating, setIndicating] = useState<{ stepId: string; prop: string; inside?: string }>();
   // Source control: whether the workspace has a Git repository, and uses Development/Test/Production.
   const [gitConnected, setGitConnected] = useState(false);
   const [envsOn, setEnvsOn] = useState(false);
@@ -472,25 +473,48 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
     const selectorProp = prop ?? metas.get(step?.type ?? "")?.props.find((p) => p.type === "selector")?.name;
     if (step && selectorProp) setIndicating({ stepId, prop: selectorProp });
   };
-  const indicated = (selector: string, description: string) => {
+  /** Indicate, in one item of the step's list, what marks the items to skip (e.g. the offline icon). */
+  const indicateSkip = (stepId: string) => {
+    const list = targetListOf(findStep(root, stepId)?.props ?? {});
+    if (list) setIndicating({ stepId, prop: "selector", inside: list.items });
+  };
+  const indicated = (
+    selector: string,
+    description: string,
+    extra?: { list?: { items: string; count: number; inner?: string }; inside?: { matches: number; total: number } },
+  ) => {
     if (!indicating) return;
-    const { stepId, prop } = indicating;
+    const { stepId, prop, inside } = indicating;
+    if (inside) {
+      setRoot(
+        mapStep(root, stepId, (s) => {
+          const list = targetListOf(s.props);
+          return list ? { ...s, props: { ...s.props, list: { ...list, skipIfHas: selector, skipCount: extra?.inside?.matches } } } : s;
+        }),
+      );
+      setIndicating(undefined);
+      setStatus(t("list.skipSet", { matches: extra?.inside?.matches ?? "?", total: extra?.inside?.total ?? "?" }));
+      return;
+    }
     setRoot(
       mapStep(root, stepId, (s) => {
         const hasDescription = metas.get(s.type)?.props.some((p) => p.name === "description");
+        const { list: _old, ...props } = s.props;
         return {
           ...s,
           props: {
-            ...s.props,
+            ...props,
             // A window to wait for is the window part only.
             [prop]: prop === "waitFor" ? windowOf(selector) : selector,
             ...(hasDescription && !s.props.description ? { description } : {}),
+            // "Any item like this one": the list, chosen at run time (first item by default).
+            ...(extra?.list && prop === "selector" ? { list: { items: extra.list.items, inner: extra.list.inner, count: extra.list.count, which: "first" } } : {}),
           },
         };
       }),
     );
     setIndicating(undefined);
-    setStatus(t("indicate.done", { element: description }));
+    setStatus(extra?.list ? t("list.set", { count: extra.list.count }) : t("indicate.done", { element: description }));
   };
 
   const fixIssuesWithAi = () =>
@@ -632,6 +656,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
               onChange={(s) => setRoot(mapStep(root, s.id, () => s))}
               onSelectorAssist={(selectorProp) => setModal({ selectorProp })}
               onIndicate={(prop) => indicateStep(selected.id, prop)}
+              onIndicateSkip={() => indicateSkip(selected.id)}
             />
           ) : (
             <WorkflowSettings workflow={workflow} onChange={update} />
@@ -656,6 +681,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
           target={findStep(root, indicating.stepId)?.type.startsWith("desktop.") ? "desktop" : "web"}
           url={pageBefore(indicating.stepId)}
           prefix={stepsBefore(indicating.stepId)}
+          inside={indicating.inside}
           onPicked={indicated}
           onClose={() => setIndicating(undefined)}
         />

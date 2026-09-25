@@ -27,7 +27,14 @@ Property value rules:
   operators = ~= ^= $=. Example: window[process="notepad"] > document, window[name$=" - Notepad"] > menuitem[name="File"].
   Start desktop processes with desktop.launch (waitFor set to the window selector).
   When you cannot see the page, write your best guess and ALWAYS fill the "description" prop so selectors can be healed at run time.
-- Use "core.getAsset" for credentials and configuration; never hard-code secrets.`;
+- Use "core.getAsset" for credentials and configuration; never hard-code secrets.
+- Dynamic targets: a step that should act on one item of a list (rows, cards, list items, cameras, search results)
+  chosen when it runs, not a fixed one, keeps one example item in "selector" and adds props.list:
+  { "items": "<selector matching every item>", "inner": "<optional: part inside the item>",
+    "skipIfHas": "<optional: selector inside an item; items containing it are skipped, e.g. an offline icon>",
+    "onlyText": "<optional>", "skipText": "<optional>", "which": "first" | "last" | "random" | "next" }
+  ("next" tries the items in turn until the step works). Use it whenever the person says "any", "first available",
+  "an online one", or the item may change between runs.`;
 
 export function catalogPrompt(catalog: ActionMeta[]): string {
   return catalog

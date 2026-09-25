@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "@zamtest/i18n/react";
-import type { ActionMeta, PropDef, Step, VariableDef, Workflow } from "@zamtest/core";
+import type { ActionMeta, PropDef, Step, TargetList, VariableDef, Workflow } from "@zamtest/core";
+import { targetListOf } from "@zamtest/core";
+import { listSummary } from "./listText";
 import { api } from "../api";
 import type { WorkflowSummary } from "../api";
 import { Field } from "./ui";
@@ -14,6 +16,8 @@ interface Props {
   onSelectorAssist: (propName: string) => void;
   /** Indicate on screen: point at the element on a PC. */
   onIndicate?: (propName: string) => void;
+  /** Indicate, inside one item of the step's list, what marks the items to skip. */
+  onIndicateSkip?: () => void;
 }
 
 /** The workspace's workflows, for "Call Workflow". */
@@ -117,7 +121,7 @@ function JsonInput({ value, onChange }: { value: unknown; onChange: (v: unknown)
   );
 }
 
-export function Properties({ step, meta, variables, aiEnabled, onChange, onSelectorAssist, onIndicate }: Props) {
+export function Properties({ step, meta, variables, aiEnabled, onChange, onSelectorAssist, onIndicate, onIndicateSkip }: Props) {
   const { t, actionName, actionDescription, propLabel, propDescription } = useI18n();
   const setProp = (name: string, v: unknown) => {
     const props = { ...step.props };
@@ -152,6 +156,9 @@ export function Properties({ step, meta, variables, aiEnabled, onChange, onSelec
           </div>
         </Field>
       ))}
+      {meta?.props.some((d) => d.name === "selector" && d.type === "selector") && (
+        <ListCard step={step} onChange={onChange} onIndicateSkip={step.type.startsWith("browser.") ? onIndicateSkip : undefined} />
+      )}
       {!meta && <p className="warn-text">{t("props.unknown")}</p>}
       {meta && !meta.slots?.length && step.type !== "core.comment" && (
         <details className="advanced">
@@ -257,3 +264,69 @@ export function WorkflowSettings({ workflow, onChange }: { workflow: Workflow; o
     </div>
   );
 }
+
+/**
+ * A dynamic target: the step works on an item of a list chosen at run time (e.g. the first
+ * camera that is not offline) instead of one fixed element.
+ */
+function ListCard({ step, onChange, onIndicateSkip }: { step: Step; onChange: (step: Step) => void; onIndicateSkip?: () => void }) {
+  const { t } = useI18n();
+  const list = targetListOf(step.props);
+  if (!list) return <p className="muted tiny list-hint">{t("list.hint")}</p>;
+  const set = (patch: Partial<TargetList>) => {
+    const next: Record<string, unknown> = { ...list, ...patch };
+    for (const key of Object.keys(next)) if (next[key] === "" || next[key] === undefined) delete next[key];
+    onChange({ ...step, props: { ...step.props, list: next } });
+  };
+  const remove = () => {
+    const { list: _gone, ...props } = step.props;
+    onChange({ ...step, props });
+  };
+  return (
+    <div className="list-card">
+      <div className="list-card-head">
+        <strong>{t("list.title")}</strong>
+        {list.count !== undefined && <span className="tag">{t("list.similar", { count: list.count })}</span>}
+      </div>
+      <p className="list-summary">{listSummary(t, list)}</p>
+      <Field label={t("list.which")} hint={list.which === "next" ? t("list.whichNextHelp") : undefined}>
+        <select value={list.which} onChange={(e) => set({ which: e.target.value as TargetList["which"] })}>
+          {(["first", "last", "random", "next"] as const).map((w) => (
+            <option key={w} value={w}>
+              {t(`list.which.${w}`)}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label={t("list.skipIfHas")} hint={list.skipIfHas && list.skipCount !== undefined && list.count ? t("list.skips", { matches: list.skipCount, total: list.count }) : t("list.skipIfHasHelp")}>
+        <div className="prop-row">
+          <input className="mono" value={list.skipIfHas ?? ""} placeholder="css=.offline" onChange={(e) => set({ skipIfHas: e.target.value, skipCount: undefined })} />
+          {onIndicateSkip && (
+            <button className="btn-ghost indicate-btn" title={t("list.skipIfHasHelp")} aria-label={t("record.indicate")} onClick={onIndicateSkip}>
+              ◎
+            </button>
+          )}
+        </div>
+      </Field>
+      <Field label={t("list.onlyText")}>
+        <input value={list.onlyText ?? ""} onChange={(e) => set({ onlyText: e.target.value })} />
+      </Field>
+      <Field label={t("list.skipText")}>
+        <input value={list.skipText ?? ""} onChange={(e) => set({ skipText: e.target.value })} />
+      </Field>
+      <details className="advanced">
+        <summary>{t("list.advanced")}</summary>
+        <Field label={t("list.items")}>
+          <input className="mono" value={list.items} onChange={(e) => set({ items: e.target.value })} />
+        </Field>
+        <Field label={t("list.inner")}>
+          <input className="mono" value={list.inner ?? ""} onChange={(e) => set({ inner: e.target.value })} />
+        </Field>
+      </details>
+      <button className="btn-ghost small" onClick={remove}>
+        {t("list.useOne")}
+      </button>
+    </div>
+  );
+}
+

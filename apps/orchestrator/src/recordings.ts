@@ -39,8 +39,16 @@ export interface Recording {
   inspected?: { selector: string; found: boolean; tree: string; screen?: string };
   /** Pick: on a web page (at url) or in a Windows application. */
   target?: "web" | "desktop";
-  /** Pick: the element indicated (unset when the person pressed Esc or did not click in time). */
-  element?: { selector: string; description: string };
+  /** Pick: the element indicated (unset when the person pressed Esc or did not click in time), and the list it belongs to. */
+  element?: {
+    selector: string;
+    description: string;
+    similar?: { items: string; count: number; inner?: string };
+    inside?: { matches: number; total: number };
+  };
+  /** Pick: an element (default), or something inside the items of a list (items). */
+  mode?: "element" | "inside";
+  items?: string;
   /** Pick: the workflow's steps before the step, run first on the PC (open the page, log in). */
   prefix?: Workflow;
   /** Pick: the banner's texts in the person's language. */
@@ -77,6 +85,8 @@ export const canInspect = (version: string | undefined) => atLeast(version, [0, 
 export const canPick = (version: string | undefined) => atLeast(version, [0, 3, 3]);
 /** Pause on the page, and running the steps before a step first. */
 export const canPickAfterSteps = (version: string | undefined) => atLeast(version, [0, 3, 6]);
+/** "Any item like this one": finds the list an element belongs to, and runs steps on list items. */
+export const canPickLists = (version: string | undefined) => atLeast(version, [0, 3, 7]);
 
 /** What the Designer sees while it waits: not the screen image (the server gives that to AI). */
 const view = (r: Recording) => (r.inspected?.screen ? { ...r, inspected: { ...r.inspected, screen: undefined, hasScreen: true } } : r);
@@ -135,6 +145,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         canInspect: canInspect(a.version),
         canPick: canPick(a.version),
         canPickAfterSteps: canPickAfterSteps(a.version),
+        canPickLists: canPickLists(a.version),
         version: a.version,
       }));
   });
@@ -152,6 +163,8 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         target: z.enum(["web", "desktop"]).optional(),
         prefix: WorkflowSchema.optional(),
         texts: z.record(z.string().max(300)).optional(),
+        mode: z.enum(["element", "inside"]).optional(),
+        items: z.string().max(4000).optional(),
       }),
       req.body,
     );
@@ -186,6 +199,8 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       target: body.kind === "pick" ? body.target ?? "desktop" : undefined,
       prefix: body.kind === "pick" && body.prefix?.root.slots?.body?.length ? (body.prefix as Workflow) : undefined,
       texts: body.kind === "pick" ? body.texts : undefined,
+      mode: body.kind === "pick" ? body.mode : undefined,
+      items: body.kind === "pick" ? body.items : undefined,
       program: body.kind === "desktop" ? body.program || undefined : undefined,
       attach: body.kind === "desktop" && body.program ? body.attach || undefined : undefined,
       hint: body.kind === "indicate" || body.kind === "pick" ? body.hint || undefined : undefined,
@@ -230,7 +245,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     if (!next) return reply.status(204).send();
     next.status = "recording";
     next.updatedAt = nowIso();
-    return { id: next.id, kind: next.kind, url: next.url, program: next.program, attach: next.attach, hint: next.hint, selector: next.selector, target: next.target, prefix: next.prefix, texts: next.texts };
+    return { id: next.id, kind: next.kind, url: next.url, program: next.program, attach: next.attach, hint: next.hint, selector: next.selector, target: next.target, prefix: next.prefix, texts: next.texts, mode: next.mode, items: next.items };
   });
 
   /** The steps so far (all of them each time); the answer says whether to stop. */
@@ -250,7 +265,14 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         inspected: z
           .object({ selector: z.string().max(1000), found: z.boolean(), tree: z.string().max(400_000), screen: z.string().max(10_000_000).optional() })
           .optional(),
-        element: z.object({ selector: z.string().max(4000), description: z.string().max(1000) }).optional(),
+        element: z
+          .object({
+            selector: z.string().max(4000),
+            description: z.string().max(1000),
+            similar: z.object({ items: z.string().max(4000), count: z.number().int(), inner: z.string().max(2000).optional() }).optional(),
+            inside: z.object({ matches: z.number().int(), total: z.number().int() }).optional(),
+          })
+          .optional(),
         stage: z.enum(["prefix", "picking"]).optional(),
         note: z.string().max(2000).optional(),
       }),

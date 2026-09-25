@@ -10,6 +10,8 @@ interface PickPc {
   canPick?: boolean;
   /** Pause on the page and "run the steps before first" (agent 0.3.6). */
   canPickAfterSteps?: boolean;
+  /** "Any item like this one" (agent 0.3.7). */
+  canPickLists?: boolean;
   version?: string;
 }
 
@@ -17,7 +19,12 @@ interface Pick {
   id: string;
   status: "pending" | "recording" | "stopping" | "done" | "failed" | "cancelled";
   error?: string;
-  element?: { selector: string; description: string };
+  element?: {
+    selector: string;
+    description: string;
+    similar?: { items: string; count: number; inner?: string };
+    inside?: { matches: number; total: number };
+  };
   /** Running the steps before, or waiting for the click. */
   stage?: "prefix" | "picking";
   /** Why the steps before did not all run. */
@@ -51,13 +58,17 @@ export function IndicateModal({
   prefix,
   onPicked,
   onClose,
+  inside,
 }: {
   target: "web" | "desktop";
   /** Web: where the browser opens (the workflow's page before this step). */
   url?: string;
   /** The steps before this one (open the page, log in): run first on the PC when chosen. */
   prefix?: Workflow;
-  onPicked: (selector: string, description: string) => void;
+  /** The element; with `list` when the person chose "any item like this one"; with `inside` in inside mode. */
+  onPicked: (selector: string, description: string, extra?: { list?: { items: string; count: number; inner?: string }; inside?: { matches: number; total: number } }) => void;
+  /** Inside: pick something within the items of this list (e.g. the offline icon, to skip those items). */
+  inside?: string;
   onClose: () => void;
 }) {
   const { t } = useI18n();
@@ -65,6 +76,8 @@ export function IndicateModal({
   const [pcId, setPcId] = useState(remembered);
   const [pick, setPick] = useState<Pick>();
   const [message, setMessage] = useState<string>();
+  /** Picked, and part of a list: the person chooses this one or any like it. */
+  const [choice, setChoice] = useState<NonNullable<Pick["element"]>>();
   const [error, setError] = useState<string>();
   const started = useRef(false);
   const [runBefore, setRunBefore] = useState(Boolean(prefix));
@@ -77,7 +90,7 @@ export function IndicateModal({
     setMessage(undefined);
     try {
       remember(agentId);
-      const hint = target === "web" ? t("indicate.screenWeb") : t("indicate.screenDesktop");
+      const hint = inside ? t("indicate.screenInside") : target === "web" ? t("indicate.screenWeb") : t("indicate.screenDesktop");
       const texts = {
         pick: hint,
         paused: target === "web" ? t("indicate.pausedWeb") : t("indicate.pausedDesktop"),
@@ -88,7 +101,17 @@ export function IndicateModal({
       setPick(
         await api<Pick>("/api/recordings", {
           method: "POST",
-          body: { agentId, kind: "pick", target, url, hint, texts, prefix: before.current && newer.current ? prefix : undefined },
+          body: {
+            agentId,
+            kind: "pick",
+            target,
+            url,
+            hint,
+            texts,
+            prefix: before.current && newer.current ? prefix : undefined,
+            mode: inside ? "inside" : undefined,
+            items: inside,
+          },
         }),
       );
     } catch (e) {
@@ -119,7 +142,10 @@ export function IndicateModal({
         .then((r) => {
           setPick(r);
           if (r.status === "done") {
-            if (r.element) onPicked(r.element.selector, r.element.description);
+            const el = r.element;
+            if (el?.inside) onPicked(el.selector, el.description, { inside: el.inside });
+            else if (el?.similar && el.similar.count >= 2) setChoice(el);
+            else if (el) onPicked(el.selector, el.description);
             else setMessage(t("indicate.nothing"));
           } else if (r.status === "failed") setError(r.error ?? t("record.failed"));
         })
@@ -135,6 +161,31 @@ export function IndicateModal({
 
   const pc = pcs?.find((p) => p.id === pcId);
   newer.current = pc?.canPickAfterSteps !== false;
+  if (choice) {
+    return (
+      <Modal
+        title={t("indicate.title")}
+        onClose={onClose}
+        footer={
+          <>
+            <button className="btn-ghost" onClick={() => onPicked(choice.selector, choice.description)}>
+              {t("indicate.onlyThis")}
+            </button>
+            <button className="btn" onClick={() => onPicked(choice.selector, choice.description, { list: choice.similar })}>
+              {t("indicate.anyLikeThis")}
+            </button>
+          </>
+        }
+      >
+        <p>
+          <strong>{choice.description}</strong>
+        </p>
+        <p className="muted">{t("indicate.similarFound", { count: choice.similar!.count })}</p>
+        <p className="muted tiny">{t("indicate.anyLikeThisHelp")}</p>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       title={t("indicate.title")}
