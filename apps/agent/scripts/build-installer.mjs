@@ -166,7 +166,9 @@ if (!existsSync(csc)) throw new Error(`C# compiler not found at ${csc} (.NET Fra
 const toolsDir = join(outDir, "tools");
 mkdirSync(toolsDir, { recursive: true });
 run(csc, ["-nologo", `-out:${join(toolsDir, "IconGen.exe")}`, "-r:System.Drawing.dll", join(installerDir, "IconGen.cs")]);
-run(join(toolsDir, "IconGen.exe"), [join(stage, "agent.ico")]);
+// The icon, and the setup wizard's images (built into setup.exe, not installed).
+const wizardDir = join(toolsDir, "wizard");
+run(join(toolsDir, "IconGen.exe"), [join(stage, "agent.ico"), wizardDir]);
 run(csc, [
   "-nologo", "-optimize", "-target:winexe", "-platform:anycpu",
   `-out:${join(stage, "ZamTechAgent.exe")}`,
@@ -199,7 +201,7 @@ if (!iscc) {
   process.exit(1);
 }
 step(signCommand ? "Building and signing the installer" : "Building the installer (unsigned: set ZAMTEST_SIGN_COMMAND to sign it)");
-const isccArgs = ["/Q", `/DAppVersion=${version}`, `/DStage=${stage}`, `/DOutDir=${outDir}`];
+const isccArgs = ["/Q", `/DAppVersion=${version}`, `/DStage=${stage}`, `/DOutDir=${outDir}`, `/DWizardDir=${wizardDir}`];
 // Inno Setup runs the sign tool for setup.exe and the uninstaller: $f is the file, $q a quote.
 if (signCommand) isccArgs.push("/DSign", `/Szamtech=${signCommand.replaceAll('"', "$q").replaceAll("{file}", "$f")}`);
 run(iscc, [...isccArgs, join(installerDir, "zamtech-agent.iss")]);

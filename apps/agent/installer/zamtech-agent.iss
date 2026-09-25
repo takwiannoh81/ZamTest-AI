@@ -55,6 +55,11 @@ UninstallDisplayName=ZamTech AI Agent
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+#ifdef WizardDir
+; The ZamTech AI logo instead of Inno Setup's picture, drawn by IconGen.cs in every size.
+WizardImageFile={#WizardDir}\wizard-large-*.bmp
+WizardSmallImageFile={#WizardDir}\wizard-small-*.bmp
+#endif
 CloseApplications=no
 RestartApplications=no
 #ifdef Sign
