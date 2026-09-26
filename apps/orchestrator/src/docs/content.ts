@@ -169,6 +169,20 @@ With Git connected, **Commit** and **History** also appear (see **Environments, 
 
 Keyboard: Delete or Backspace removes the selected step when you are not typing in a field.
 
+## Working together
+
+Everyone in your workspace sees the same workflows and test cases. Several people can build at the same time, but only one person at a time can edit a given workflow or test case, so nobody's work is overwritten.
+
+- **Who is editing.** On the start screen, a card shows **✎ Anna is editing** while someone has it open. **✎ Open in another window** means you have it open yourself, in another tab or window.
+- **Read-only copy.** If you open something another person is editing, a banner says who and since when: "Anna has been editing this since 10:32. You're looking at a read-only copy." You can look at the steps, open **{ } JSON**, **Save to PC** and **▶ Run** it. Save, Publish, Commit, Record, Build with AI and Delete are turned off.
+- **When they are done.** When the other person closes it, your window loads the version they saved and you can edit it. The status says "You can edit now. This is the latest saved version." There is no need to reload the page.
+- **Take over editing.** If someone left a workflow open (for example they went home), click **Take over editing** in the banner. Changes they have not saved yet can then no longer be saved from their window.
+- **When someone takes over from you.** Your window becomes read-only and says who took over. Click **Save to PC** in the banner to keep your unsaved changes, then send the file to them or import it later.
+- **Someone saved after you opened it.** A workflow can also change while you have it open, for example from a Git pull, a CI pipeline or the API. When you save, the Designer tells you "Anna saved this after you opened it" and saves nothing yet. Choose **Replace with my version** to save yours over theirs, or **Load their version** to drop your changes and continue from theirs.
+- **Closed without saying so.** If a browser closes or a PC loses its connection, the workflow is free again after about a minute and a half.
+
+People who cannot build (Operators and Viewers) never block anyone: they only look.
+
 ## Running and the Run panel
 
 Click **▶ Run**. The Designer saves the workflow and sends it to an available PC. The **Test run** panel opens under the canvas:
@@ -1104,6 +1118,8 @@ If both the webhook and a pipeline publish on push, turn off the webhook's publi
 
 Developers and Admins are **builders**: each one uses a builder seat on your plan. Operators and Viewers are free.
 
+Several builders can work in the same workspace at the same time. Only one person at a time edits a given workflow or test case; others see a read-only copy (see **Designer basics**, **Working together**).
+
 If you try something your role does not allow, you see: "You don't have permission to do that. Ask an administrator for a role with more access."
 
 ## Add people (admins)
@@ -1292,6 +1308,18 @@ The screen changed, or the selector was never right.
 - Use **Wait for window** with the window's selector, so the next steps wait until the window is open.
 - Check the window part of the selector, for example \`window[process="notepad"]\`. Use ◎ Indicate to get it right.
 - Run **Desktop self-test** from the tray menu or the Start menu to check that desktop automation works on the PC.
+
+## "... is editing this" or a read-only workflow
+
+Someone else has the workflow or test case open in the Designer, so you see a read-only copy. Wait until they close it: your window becomes editable by itself. If they left it open by mistake, click **Take over editing**. If it says **You have this open in another window**, close the other tab or window, or take over here. See **Designer basics**, **Working together**.
+
+## "... saved this after you opened it"
+
+Someone saved the workflow while you were editing it (or it changed through Git, CI or the API). Nothing of yours is saved yet. Click **Replace with my version** to keep yours, or **Load their version** to continue from theirs. To keep both, click **Save to PC** first.
+
+## "... took over editing"
+
+Someone clicked **Take over editing** while you had the workflow open. Your window can no longer save. Click **Save to PC** to keep your changes, and agree with them who continues.
 
 ## "Update the agent"
 

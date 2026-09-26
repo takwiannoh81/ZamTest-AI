@@ -44,6 +44,7 @@ import { parse } from "./errors.js";
 import { apiTokenPrincipal, effectiveEnv, ENV_NAMES, environmentsOn, isIn, publishWorkflow, registerCicd } from "./cicd.js";
 import { GitRepos } from "./git.js";
 import { recordTestResult, registerTestCases } from "./testcases.js";
+import { registerEditing } from "./editing.js";
 import { registerRecordings } from "./recordings.js";
 import type { Recordings } from "./recordings.js";
 import { liveOf, registerAiFix } from "./ai-fix.js";
@@ -55,7 +56,7 @@ import { BugReportFiles, registerBugReports } from "./bugreports.js";
  * account existed before it came out. A new release gets a new id (and new texts in
  * @zamtest/help's WhatsNew).
  */
-export const WHATS_NEW = { id: "2026-09-25", since: "2026-09-25T00:00:00.000Z" };
+export const WHATS_NEW = { id: "2026-09-26", since: "2026-09-26T00:00:00.000Z" };
 import { registerHelp } from "./help.js";
 import { registerOutreach } from "./outreach.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
@@ -182,7 +183,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
     if (err instanceof PlanLimitError) return reply.status(402).send({ error: err.message, code: "plan_limit", limit: err.limit });
     if (err instanceof HttpError) {
-      return reply.status(err.statusCode).send({ error: err.message, ...(err.statusCode === 403 ? { code: "forbidden" } : {}) });
+      return reply.status(err.statusCode).send({ error: err.message, ...(err.statusCode === 403 ? { code: "forbidden" } : {}), ...err.extra });
     }
     if (err instanceof AiNotConfiguredError) return reply.status(503).send({ error: err.message });
     if (err instanceof AiRefusalError) return reply.status(422).send({ error: err.message });
@@ -898,10 +899,13 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* ---------------------------- workflows --------------------------- */
+  // Who has a workflow or test case open in the Designer, and saves that would overwrite someone's work.
+  const editing = registerEditing(app, { store, me, own });
+
   app.get("/api/workflows", async (req) =>
     mine(store.data.workflows, req)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .map(({ definition, ...rest }) => ({ ...rest, steps: countSteps(definition.root) })),
+      .map(({ definition, ...rest }) => ({ ...rest, steps: countSteps(definition.root), editing: editing.editing(req, rest.id) })),
   );
 
   app.post("/api/workflows", async (req, reply) => {
@@ -926,17 +930,19 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.put<{ Params: { id: string } }>("/api/workflows/:id", async (req) => {
     const wf = own(store.data.workflows, req.params.id, "Workflow", req);
     const body = parse(WorkflowBody, req.body);
+    editing.check(req, wf);
     if (body.name) wf.name = body.name;
     if (body.description !== undefined) wf.description = body.description;
     if (body.definition) wf.definition = body.definition;
     wf.definition = { ...wf.definition, id: wf.id, name: wf.name, description: wf.description ?? wf.definition.description };
     wf.updatedAt = nowIso();
+    wf.updatedBy = me(req).name;
     store.save();
     return wf;
   });
 
   app.delete<{ Params: { id: string } }>("/api/workflows/:id", async (req, reply) => {
-    own(store.data.workflows, req.params.id, "Workflow", req);
+    editing.check(req, own(store.data.workflows, req.params.id, "Workflow", req));
     delete store.data.workflows[req.params.id];
     store.save();
     return reply.status(204).send();
@@ -1970,7 +1976,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* ---------------------------- test cases -------------------------- */
-  registerTestCases(app, { store, me, own, mine });
+  registerTestCases(app, { store, me, own, mine, editing });
   registerReports(app, { store, screenshots, me, own });
 
   /* ------------------------------ alerts ---------------------------- */

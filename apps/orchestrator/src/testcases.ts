@@ -15,6 +15,7 @@ import { createJob } from "./jobs.js";
 import { remapCalls } from "./calls.js";
 import { PlanLimitError } from "./plans.js";
 import { newId, nowIso } from "./store.js";
+import type { Editing } from "./editing.js";
 import type { Store } from "./store.js";
 import type { Job, Principal, TestCase, TestData, TestFolder, TestRun, TestRunItem, WorkflowDraft } from "./types.js";
 
@@ -23,6 +24,7 @@ export interface TestCaseContext {
   me(req: FastifyRequest): Principal;
   own<T extends { workspaceId: string }>(collection: Record<string, T>, id: string, what: string, req: FastifyRequest): T;
   mine<T extends { workspaceId: string }>(collection: Record<string, T>, req: FastifyRequest): T[];
+  editing: Editing;
 }
 
 export type TestStatus = "pending" | "running" | "passed" | "failed" | "cancelled";
@@ -329,6 +331,7 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
   app.put<{ Params: { id: string } }>("/api/test-cases/:id", async (req) => {
     const testCase = ctx.own(store.data.testCases, req.params.id, "Test case", req);
     const body = parse(CaseBody.partial(), req.body);
+    ctx.editing.check(req, testCase);
     if (body.workflowId) ctx.own(store.data.workflows, body.workflowId, "Workflow", req);
     if (body.targetAgentId) ctx.own(store.data.agents, body.targetAgentId, "Agent", req);
     if (body.name) testCase.name = body.name;
@@ -342,6 +345,7 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
     if (body.description !== undefined) testCase.description = body.description ?? undefined;
     if (body.data !== undefined) testCase.data = body.data ?? undefined;
     testCase.updatedAt = nowIso();
+    testCase.updatedBy = ctx.me(req).name;
     store.save();
     return caseView(testCase);
   });
@@ -353,7 +357,7 @@ export function registerTestCases(app: FastifyInstance, ctx: TestCaseContext): v
   });
 
   app.delete<{ Params: { id: string } }>("/api/test-cases/:id", async (req, reply) => {
-    ctx.own(store.data.testCases, req.params.id, "Test case", req);
+    ctx.editing.check(req, ctx.own(store.data.testCases, req.params.id, "Test case", req));
     delete store.data.testCases[req.params.id];
     store.save();
     return reply.status(204).send();

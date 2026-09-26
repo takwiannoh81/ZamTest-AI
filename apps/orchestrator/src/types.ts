@@ -191,6 +191,8 @@ export interface WorkflowDraft {
   definition: Workflow;
   createdAt: string;
   updatedAt: string;
+  /** Who saved it last (in the Designer or Portal). */
+  updatedBy?: string;
   /** Its file in the workspace's Git repository, and the last commit of it. */
   git?: { path: string; commit?: string; committedAt?: string; committedBy?: string };
 }
@@ -551,6 +553,8 @@ export interface TestCase {
   description?: string;
   createdAt: string;
   updatedAt: string;
+  /** Who saved it last. */
+  updatedBy?: string;
   /** The job of its latest run. */
   lastJobId?: string;
   /** Test data: the test runs once per row, each column's value in the variable of that name. */

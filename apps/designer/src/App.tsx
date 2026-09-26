@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActionMeta, Step, VariableDef, Workflow } from "@zamtest/core";
 import { targetListOf } from "@zamtest/core";
 import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
-import { api } from "./api";
-import type { Job, WorkflowDraft, WorkflowSummary } from "./api";
+import { api, ApiError } from "./api";
+import type { EditLock, Job, WorkflowDraft, WorkflowSummary } from "./api";
 import { AiGenerateModal, JsonModal, SelectorAssistModal } from "./components/AiModals";
 import { GitHistoryModal } from "./components/GitHistory";
 import { RecordModal } from "./components/RecordModal";
@@ -21,7 +21,8 @@ import type { Location } from "./tree";
 import { validate } from "./validate";
 import type { Issue } from "./validate";
 import { fileSlug, isProjectFile, saveJson } from "./files";
-import { signOut, useMe } from "./components/session";
+import { atLeast, signOut, useMe } from "./components/session";
+import { useEditLock } from "./components/editLock";
 import type { MessageKey } from "@zamtest/i18n";
 
 function UserMenu() {
@@ -206,6 +207,11 @@ function StartScreen({ onOpen, onOpenTest }: { onOpen: (id: string) => void; onO
               <strong>{w.name}</strong>
               <span className="muted">{w.description || t("designer.stepCount", { count: w.steps })}</span>
               <small className="muted">{t("designer.updatedAt", { time: dateTime(w.updatedAt) })}</small>
+              {w.editing && (
+                <small className="editing-badge" title={t("editing.badgeSince", { time: dateTime(w.editing.since) })}>
+                  ✎ {w.editing.sameUser ? t("editing.badgeYou") : t("editing.badge", { name: w.editing.name })}
+                </small>
+              )}
               <button className="icon-btn" title={t("common.delete")} onClick={(e) => { e.stopPropagation(); void remove(w); }}>
                 🗑
               </button>
@@ -248,14 +254,33 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
   const [run, setRun] = useState<RunState>();
   const [runStatus, setRunStatus] = useState<Record<string, "running" | "ok" | "error">>({});
   const [showIssues, setShowIssues] = useState(false);
+  /** The version on the server this window's copy is based on (a save of an older one is refused). */
+  const basedOn = useRef<string | undefined>(undefined);
+  /** Someone else saved it after this window opened it. */
+  const [conflict, setConflict] = useState<{ name?: string; updatedAt: string }>();
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api<WorkflowDraft>(endpoint)
-      .then((d) => setWorkflow(d.definition))
+      .then((d) => {
+        setWorkflow(d.definition);
+        basedOn.current = d.updatedAt;
+        setHistory({ past: [], future: [] });
+        setDirty(false);
+      })
       .catch((e: Error) => setStatus(e.message));
   }, [endpoint]);
+  useEffect(load, [load]);
+
+  // One person edits at a time; everyone else sees a read-only copy. (Viewers and operators cannot edit anyway.)
+  const me = useMe();
+  const edit = useEditLock(endpoint, atLeast(me, "developer"), () => {
+    load();
+    setStatus(t("editing.yourTurn"));
+  });
+  const readOnly = edit.lock.state === "other" || edit.lock.state === "lost";
 
   const update = (next: Workflow) => {
+    if (readOnly) return;
     if (workflow) setHistory((h) => ({ past: [...h.past.slice(-99), workflow], future: [] }));
     setWorkflow(next);
     setDirty(true);
@@ -263,7 +288,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
 
   const undo = () => {
     const prev = history.past.at(-1);
-    if (!prev || !workflow) return;
+    if (!prev || !workflow || readOnly) return;
     setHistory({ past: history.past.slice(0, -1), future: [workflow, ...history.future] });
     setWorkflow(prev);
     setDirty(true);
@@ -271,7 +296,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
 
   const redo = () => {
     const next = history.future[0];
-    if (!next || !workflow) return;
+    if (!next || !workflow || readOnly) return;
     setHistory({ past: [...history.past, workflow], future: history.future.slice(1) });
     setWorkflow(next);
     setDirty(true);
@@ -280,20 +305,48 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
   /** Saves the workflow (or the given version of it, e.g. just fixed by AI). */
   const save = useCallback(async (override?: Workflow) => {
     const w = override ?? workflow;
-    if (!w) return false;
+    if (!w || readOnly) return false;
     try {
-      await api(endpoint, {
+      const saved = await api<{ updatedAt: string }>(endpoint, {
         method: "PUT",
+        headers: { ...edit.headers, ...(basedOn.current ? { "x-zamtech-based-on": basedOn.current } : {}) },
         body: isTest ? { name: w.name, definition: w } : { name: w.name, description: w.description ?? "", definition: w },
       });
+      basedOn.current = saved.updatedAt;
+      setConflict(undefined);
       setDirty(false);
       setStatus(t("toolbar.saved", { time: i18n.time(Date.now()) }));
       return true;
     } catch (e) {
-      setStatus(t("toolbar.saveFailed", { error: (e as Error).message }));
+      if (e instanceof ApiError && e.data.code === "changed") {
+        setConflict({ name: e.data.updatedBy as string | undefined, updatedAt: String(e.data.updatedAt) });
+        setStatus(undefined);
+      } else if (e instanceof ApiError && e.data.code === "locked") {
+        edit.lost(e.data.lock as EditLock);
+        setStatus(undefined);
+      } else {
+        setStatus(t("toolbar.saveFailed", { error: (e as Error).message }));
+      }
       return false;
     }
-  }, [id, workflow, t, i18n]);
+  }, [id, workflow, t, i18n, readOnly, edit.headers, edit.lost]);
+
+  /** After a conflict: save this window's version over theirs. */
+  const overwrite = async () => {
+    if (!conflict) return;
+    basedOn.current = conflict.updatedAt;
+    await save();
+  };
+  /** After a conflict: drop this window's changes and load theirs. */
+  const loadTheirs = () => {
+    if (!confirm(t("editing.loadTheirsConfirm"))) return;
+    setConflict(undefined);
+    load();
+  };
+  const takeOver = () => {
+    if (edit.lock.state !== "other") return;
+    if (confirm(t("editing.takeOverConfirm", { name: edit.lock.lock.name }))) void edit.takeOver();
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -394,7 +447,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
 
   /** Saves and runs the workflow (or the given version of it); the run's job id. */
   const testRun = async (override?: Workflow): Promise<string | undefined> => {
-    await save(override);
+    if (!readOnly) await save(override);
     try {
       if (isTest) {
         // A test case runs as a test run, so its result shows in the Test cases tab too. With test data:
@@ -525,21 +578,21 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
   const selectorModal = modal && typeof modal === "object" ? modal : undefined;
 
   return (
-    <div className="designer">
+    <div className={`designer${readOnly ? " read-only" : ""}`}>
       <header className="toolbar">
         <button className="icon-btn" title={t("toolbar.allWorkflows")} onClick={() => (!dirty || confirm(t("toolbar.discard"))) && onExit()}>
           <span className="flip-rtl">←</span>
         </button>
         <span className="logo small">Z</span>
         {isTest && <span className="kind-badge">{t("tests.badge")}</span>}
-        <input className="wf-name" value={workflow.name} onChange={(e) => update({ ...workflow, name: e.target.value })} />
+        <input className="wf-name" value={workflow.name} readOnly={readOnly} onChange={(e) => update({ ...workflow, name: e.target.value })} />
         {dirty && <span className="dirty" title={t("toolbar.unsaved")}>●</span>}
         <span className="muted tiny status">{status}</span>
         <span className="spacer" />
-        <button className="btn-ghost" disabled={!history.past.length} onClick={undo} title={t("toolbar.undo")}>
+        <button className="btn-ghost" disabled={readOnly || !history.past.length} onClick={undo} title={t("toolbar.undo")}>
           <span className="flip-rtl">↶</span>
         </button>
-        <button className="btn-ghost" disabled={!history.future.length} onClick={redo} title={t("toolbar.redo")}>
+        <button className="btn-ghost" disabled={readOnly || !history.future.length} onClick={redo} title={t("toolbar.redo")}>
           <span className="flip-rtl">↷</span>
         </button>
         <button className={`btn-ghost${issues.length ? " warn" : ""}`} onClick={() => setShowIssues(!showIssues)}>
@@ -551,13 +604,13 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
         <button className="btn-ghost" onClick={() => void saveToPc()} title={t("files.saveToPcHint")}>
           {t("files.saveToPc")}
         </button>
-        <button className="btn-ghost record-btn" onClick={() => setModal("record")} title={t("record.hint")}>
+        <button className="btn-ghost record-btn" disabled={readOnly} onClick={() => setModal("record")} title={t("record.hint")}>
           ● {t("record.button")}
         </button>
-        <button className="btn-ghost ai" disabled={!aiEnabled} title={aiEnabled ? "" : t("toolbar.aiNeedsKey")} onClick={() => setModal("ai")}>
+        <button className="btn-ghost ai" disabled={readOnly || !aiEnabled} title={aiEnabled ? "" : t("toolbar.aiNeedsKey")} onClick={() => setModal("ai")}>
           {t("toolbar.buildWithAi")}
         </button>
-        <button className="btn-ghost" onClick={() => void save()}>
+        <button className="btn-ghost" disabled={readOnly} onClick={() => void save()}>
           {t("common.save")}
         </button>
         <button className="btn-ghost" onClick={() => void testRun()}>
@@ -568,18 +621,19 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
             <button className="btn-ghost" onClick={() => setModal("history")}>
               {t("git.history")}
             </button>
-            <button className="btn-ghost" onClick={() => void commit()}>
+            <button className="btn-ghost" disabled={readOnly} onClick={() => void commit()}>
               {t("git.commit")}
             </button>
           </>
         )}
         {!isTest && (
-          <button className="btn" onClick={() => void publish()}>
+          <button className="btn" disabled={readOnly} onClick={() => void publish()}>
             {t("toolbar.publish")}
           </button>
         )}
         <button
           className="icon-btn danger"
+          disabled={readOnly}
           title={isTest ? t("tests.deleteCase") : t("designer.deleteWorkflow")}
           aria-label={isTest ? t("tests.deleteCase") : t("designer.deleteWorkflow")}
           onClick={() => void deleteWorkflow()}
@@ -590,6 +644,35 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
         <ThemeSelect className="lang-select" />
         <HelpButton where={`the Designer, editing the ${isTest ? "test case" : "workflow"} "${workflow.name}"`} />
       </header>
+      {edit.lock.state === "other" && (
+        <div className="edit-banner">
+          <span>
+            {edit.lock.lock.sameUser ? t("editing.lockedByYou") : t("editing.lockedBy", { name: edit.lock.lock.name, time: i18n.time(edit.lock.lock.since) })}
+          </span>
+          <button className="btn-ghost" onClick={takeOver}>
+            {t("editing.takeOver")}
+          </button>
+        </div>
+      )}
+      {edit.lock.state === "lost" && (
+        <div className="edit-banner warn">
+          <span>{t("editing.lost", { name: edit.lock.lock.name })}</span>
+          <button className="btn-ghost" onClick={() => void saveToPc()}>
+            {t("files.saveToPc")}
+          </button>
+        </div>
+      )}
+      {conflict && !readOnly && (
+        <div className="edit-banner warn">
+          <span>{t("editing.changed", { name: conflict.name ?? t("editing.someone") })}</span>
+          <button className="btn-ghost" onClick={() => void overwrite()}>
+            {t("editing.overwrite")}
+          </button>
+          <button className="btn-ghost" onClick={loadTheirs}>
+            {t("editing.loadTheirs")}
+          </button>
+        </div>
+      )}
       {showIssues && issues.length > 0 && (
         <div className="issues">
           {issues.map((i, n) => (
@@ -648,6 +731,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
           )}
         </main>
         <aside className="inspector">
+          <fieldset className="plain" disabled={readOnly}>
           {selected && selected.id !== root.id ? (
             <Properties
               step={selected}
@@ -662,6 +746,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
           ) : (
             <WorkflowSettings workflow={workflow} onChange={update} />
           )}
+          </fieldset>
         </aside>
       </div>
       {modal === "record" && <RecordModal describe={describeStep} onInsert={insertRecorded} onClose={() => setModal(null)} />}

@@ -5,6 +5,7 @@ import type { HelpApi } from "./index";
 
 /** This release's news: the same cards as the website's "What's new" (translated there already). */
 const ITEMS: Array<{ icon: string; key: string }> = [
+  { icon: "👥", key: "teamEditing" },
   { icon: "✨", key: "genTests" },
   { icon: "🔔", key: "alerts" },
   { icon: "📊", key: "reports" },

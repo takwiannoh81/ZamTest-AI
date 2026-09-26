@@ -29,6 +29,14 @@
 .issues { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; background: color-mix(in srgb, var(--warn) 10%, var(--surface)); border-bottom: 1px solid var(--border); }
 .issue { background: none; border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); color: var(--text); border-radius: 999px; padding: 2px 10px; font-size: 12.5px; }
 
+/* editing together: someone else has it open, or saved in between */
+.edit-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.edit-banner.warn { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); }
+.edit-banner span { flex: 1 1 240px; }
+.designer.read-only .palette { opacity: 0.5; pointer-events: none; }
+fieldset.plain { border: none; margin: 0; padding: 0; min-width: 0; }
+.editing-badge { color: var(--accent); font-weight: 600; }
+
 .workspace { flex: 1; display: grid; grid-template-columns: 240px 1fr 320px; min-height: 0; }
 .center { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 

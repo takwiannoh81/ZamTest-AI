@@ -5,6 +5,8 @@ export class HttpError extends Error {
   constructor(
     public readonly statusCode: number,
     message: string,
+    /** More fields for the answer's body (for example a `code` the apps act on). */
+    public readonly extra?: Record<string, unknown>,
   ) {
     super(message);
   }

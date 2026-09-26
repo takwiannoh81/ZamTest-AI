@@ -17,11 +17,28 @@ export const FORBIDDEN_EVENT = "zamtest:forbidden";
 /** Fired (detail: the server's message) when the workspace's plan does not allow the request (402). */
 export const LIMIT_EVENT = "zamtest:limit";
 
-export async function api<T = unknown>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+/** A refused request: its status and the server's answer (e.g. `code`). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly data: Record<string, unknown>,
+  ) {
+    super(message);
+  }
+}
+
+export async function api<T = unknown>(
+  path: string,
+  init: { method?: string; body?: unknown; headers?: Record<string, string>; keepalive?: boolean } = {},
+): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: init.method ?? "GET",
     credentials: "include",
+    // Still sent when the page is closing (giving back an edit lock).
+    keepalive: init.keepalive,
     headers: {
+      ...init.headers,
       ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
       // Proves the request comes from this app, not another site using the cookie.
       "x-zamtech-client": "designer",
@@ -43,9 +60,9 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
   if (res.status === 402) window.dispatchEvent(new CustomEvent(LIMIT_EVENT, { detail: (data as { error?: string }).error ?? "" }));
   if (!res.ok) {
     const message = (data as { error?: string }).error ?? `HTTP ${res.status}`;
-    // Kept for a bug report (sent only if the person sends one).
-    if (res.status !== 401) noteProblem(`${init.method ?? "GET"} ${path.split("?")[0]} -> ${res.status}: ${message}`);
-    throw new Error(message);
+    // Kept for a bug report (sent only if the person sends one). 409: someone else is editing, not a problem.
+    if (res.status !== 401 && res.status !== 409) noteProblem(`${init.method ?? "GET"} ${path.split("?")[0]} -> ${res.status}: ${message}`);
+    throw new ApiError(message, res.status, data as Record<string, unknown>);
   }
   return data as T;
 }
@@ -59,6 +76,16 @@ export interface WorkflowSummary {
   description?: string;
   steps: number;
   updatedAt: string;
+  /** Someone has it open in the Designer. */
+  editing?: EditLock;
+}
+
+/** Who has a workflow or test case open in the Designer. */
+export interface EditLock {
+  name: string;
+  since: string;
+  /** The same person, in another window. */
+  sameUser: boolean;
 }
 
 export interface WorkflowDraft {
@@ -67,6 +94,7 @@ export interface WorkflowDraft {
   description?: string;
   definition: Workflow;
   updatedAt: string;
+  updatedBy?: string;
 }
 
 export interface Job {

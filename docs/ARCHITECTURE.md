@@ -117,7 +117,8 @@ A manual agent loop in `packages/ai/src/agent.ts` runs tool calls one at a time,
 
 | Entity | Notes |
 |---|---|
-| Workflow (draft) | Edited by the Designer |
+| Workflow (draft) | Edited by the Designer. Records `updatedBy` |
+| Edit lock | In memory (`editing.ts`), per workflow or test case. One Designer window holds it and renews it every 30 s; it expires after 90 s. Saves and deletes by anyone else get 409 `locked` |
 | Package ("process") | Immutable, versioned snapshot created by **Publish** |
 | Job | Status: `pending → running → succeeded / failed / cancelled` (with `cancelling` in between). Stores inputs, outputs, logs and healed selectors |
 | Agent | `online / busy / offline`, derived from heartbeats. Jobs on an agent that stays silent for 2 minutes are failed |
@@ -126,6 +127,8 @@ A manual agent loop in `packages/ai/src/agent.ts` runs tool calls one at a time,
 
 | Queue / item | Work queues. Items are `new → in-progress → successful / failed / business-exception`. A failed item goes back to `new` until the queue's retry limit is reached. Items locked by a job that ends are released as failed |
 | User / session | Accounts with roles (admin, developer, operator, viewer). Only the SHA-256 of each session token is stored, and passwords are stored as scrypt hashes |
+
+**Editing together.** The Designer sends `x-zamtech-edit-session` (its window's lock) and `x-zamtech-based-on` (the `updatedAt` it loaded) with each save. A save based on an older version gets 409 `changed`, and the person chooses to overwrite or reload. Locks live in one process's memory, so running several API servers would need them in a shared store.
 
 Persistence is a debounced, atomic JSON file (`ZAMTEST_DATA_DIR/db.json`) behind the small `Store` class. That class is the seam for moving to Postgres.
 

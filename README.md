@@ -13,6 +13,7 @@ ZamTech AI is a low-code, AI-native automation (RPA) platform, in the same space
 ## What works today (v0.1)
 
 - **Visual Designer**: action palette, drag-and-drop canvas with nested containers (If / For Each / While / Try-Catch), a properties panel, variables and in/out arguments, undo/redo, design-time validation, JSON import/export, a test run on a live bot with a streaming log, and publishing versioned processes.
+- **Working together**: one person at a time edits a workflow or test case. Others in the workspace see who is editing and get a read-only copy that becomes editable when that person closes it, and they can take over one left open. A save based on an older version (another person, a Git pull, a CI import) is refused, and the person chooses to replace it with theirs or load the newer one. The server enforces this for the Portal and the API too.
 - **AI in the Designer**:
   - *Build with AI* generates a whole workflow from a plain-language description, or edits the current one. Output is checked against the workflow schema and the action catalog, and any errors go back to Claude to fix.
   - The *AI selector assistant* proposes robust selectors from a page's HTML and a plain-language description of the element.
