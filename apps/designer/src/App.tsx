@@ -11,6 +11,7 @@ import { FixModal, windowOf } from "./components/FixModal";
 import { HelpButton } from "./components/Help";
 import { IndicateModal } from "./components/IndicateModal";
 import { TestCases } from "./components/TestCases";
+import { TemplatesModal } from "./components/Templates";
 import { Canvas } from "./components/Canvas";
 import { Palette } from "./components/Palette";
 import { Properties, WorkflowSettings } from "./components/Properties";
@@ -101,6 +102,7 @@ function StartScreen({ onOpen, onOpenTest }: { onOpen: (id: string) => void; onO
   const [list, setList] = useState<WorkflowSummary[]>();
   const [tab, setTab] = useState<"workflows" | "tests">(() => (window.location.hash === "#/tests" ? "tests" : "workflows"));
   const [notice, setNotice] = useState<string>();
+  const [templates, setTemplates] = useState(false);
   const loadList = useCallback(() => {
     api<WorkflowSummary[]>("/api/workflows").then(setList).catch(() => setList([]));
   }, []);
@@ -165,6 +167,9 @@ function StartScreen({ onOpen, onOpenTest }: { onOpen: (id: string) => void; onO
         <button className="btn" onClick={() => void create()}>
           {t("designer.newWorkflow")}
         </button>
+        <button className="btn-ghost" onClick={() => setTemplates(true)}>
+          📚 {t("templates.button")}
+        </button>
         <label className="btn-ghost">
           {t("files.import")}
           <input
@@ -219,8 +224,18 @@ function StartScreen({ onOpen, onOpenTest }: { onOpen: (id: string) => void; onO
           ))}
         </div>
       ) : (
-        <div className="empty">{list ? t("designer.noWorkflows") : t("common.loading")}</div>
+        <div className="empty">
+          {list ? t("designer.noWorkflows") : t("common.loading")}
+          {list && (
+            <div>
+              <button className="btn start-template" onClick={() => setTemplates(true)}>
+                📚 {t("templates.emptyStart")}
+              </button>
+            </div>
+          )}
+        </div>
       )}
+      {templates && <TemplatesModal onClose={() => setTemplates(false)} onCreated={(kind, id) => (kind === "test" ? onOpenTest(id) : onOpen(id))} />}
     </div>
   );
 }

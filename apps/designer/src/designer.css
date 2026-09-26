@@ -282,3 +282,20 @@ fieldset.plain { border: none; margin: 0; padding: 0; min-width: 0; }
 @keyframes gen-spin { to { transform: rotate(360deg); } }
 @media (max-width: 640px) { .gen-row, .gen-row.two { grid-template-columns: 1fr; } }
 .modal:has(.report-problem) { width: min(680px, 100%); }
+
+/* template gallery */
+.modal:has(.tpl-grid) { width: min(980px, 100%); }
+.tpl-bar { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 14px; }
+.tpl-search { width: 100%; }
+.tpl-cats { display: flex; flex-wrap: wrap; gap: 6px; }
+.tpl-cats .chip.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.tpl-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.tpl-card p { margin: 0; flex: 1; color: var(--muted); }
+.tpl-card .btn { align-self: flex-start; }
+.tpl-head { display: flex; align-items: center; gap: 8px; }
+.tpl-icon { font-size: 22px; }
+.tpl-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tpl-tag { font-size: 11.5px; border-radius: 999px; padding: 2px 8px; background: var(--surface-2); color: var(--muted); }
+.tpl-tag.ai { color: #db2777; background: color-mix(in srgb, #db2777 10%, transparent); }
+.start-template { margin-top: 12px; }

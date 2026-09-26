@@ -5,3 +5,4 @@ export * from "./engine.js";
 export * from "./changes.js";
 export * from "./target-list.js";
 export * from "./sign-in.js";
+export * from "./templates.js";

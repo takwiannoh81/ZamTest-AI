@@ -54,3 +54,12 @@ describe.each(Object.entries(LOCALE_LOADERS))("locale %s", (code, load) => {
     expect(extra).toEqual([]);
   });
 });
+
+describe("templates", () => {
+  it("every template has a name, description and set-up note", async () => {
+    const { TEMPLATES } = await import("@zamtest/core");
+    for (const template of TEMPLATES) {
+      for (const part of ["name", "description", "setup"]) expect(en, `${template.id}.${part}`).toHaveProperty([`templates.${template.id}.${part}`]);
+    }
+  });
+});

@@ -30,7 +30,7 @@ export const DOCS: DocSection[] = [
 1. **Create an account.** On the Portal's sign-in page, choose **Create an account**. Enter your company, your name, your email and a password (at least 10 characters). The Free plan needs no card.
 2. **Confirm your email.** Open the link we send you. If it does not arrive, use **Send the link again** and check your spam folder.
 3. **Install the agent.** In the Portal, open **Bot Agents** and click **⬇ Download for Windows**. Run the installer and approve the PC in the Portal. The Designer opens next.
-4. **Build a workflow.** In the Designer, click **+ New workflow**. Click **● Record** to record what you do in a website or Windows program, or drag actions from the palette on the left.
+4. **Build a workflow.** In the Designer, click **+ New workflow**, or **📚 Templates** to start from a ready-made one. Click **● Record** to record what you do in a website or Windows program, or drag actions from the palette on the left.
 5. **Try it.** Click **Save**, then **▶ Run**. The Run panel shows each step as it happens on your PC.
 6. **Publish it.** Click **Publish**. The workflow becomes a process in the Portal.
 7. **Run it for real.** In the Portal, open **Processes** and click **▶ Start**, or create a schedule under **Schedules**.
@@ -122,10 +122,30 @@ On Linux, for example a cloud server, the agent runs web automations only (headl
 ## The start screen
 
 - **+ New workflow** creates an empty workflow and opens it.
+- **📚 Templates** starts from a ready-made workflow or test case (see **Templates** below).
 - **Import from PC** opens a workflow file, or a whole project file, from your computer.
 - **Export project** saves all workflows, test folders and test cases in one file on your PC.
 - **Open Portal ↗** opens the Portal.
 - The **Workflows** and **Test cases** tabs list your work. Click a card to open it, or 🗑 to delete it.
+
+## Templates
+
+Click **📚 Templates** on the start screen (or **Start from a template** when you have no workflows yet) to start from a ready-made automation or test. Filter by **Email**, **Excel & data**, **Websites**, **Integrations** or **Testing**, or search. Each card says whether it works best with a trigger or on a schedule, and whether it uses AI. Click **Use this template**: a new workflow (or, for tests, a test case) opens in the editor.
+
+The templates use example addresses, files, mail servers and asset names. The new workflow's **Description** (in the Properties panel when no step is selected) says what to change: usually the addresses, the files, a credential in **Assets**, and **Indicate** (◎) on the steps that click or type, so they point at your own screens.
+
+- **Invoices from email to Excel**: AI reads each invoice emailed to you and adds it to an Excel register. Start it with an email trigger.
+- **Daily email digest with AI**: AI summarizes your unread emails and sends you the digest. Start it with a schedule.
+- **Excel rows into a web form**: types each Excel row into a form on a website, and lists the rows that failed. Start it from the Portal (**Processes**, **▶ Start**) with the file's path.
+- **Web page table into Excel with AI**: reads a table on a web page and saves it in Excel, one sheet per day. Start it with a schedule.
+- **Web request into another system**: creates a contact in a CRM through its API when another system calls you. Start it with a web request trigger.
+- **Work queue: add items, then process them**: queues one item per Excel row, then processes them with retries. Start it with a schedule.
+- **Document register with AI**: AI says what each new PDF is and adds it to a register (CSV). Start it with a file trigger.
+- **Web page watcher**: emails you when a text (for example "In stock") appears on a page. Start it with a schedule.
+- **Website smoke test**: checks the home page, title, menu and a main page (a test case). Start it with a schedule.
+- **Sign-in test**: signs in with a saved user name and password and checks the account page (a test case). Start it with a schedule.
+
+The step names in templates are in English; rename them as you like.
 
 ## The editor
 
