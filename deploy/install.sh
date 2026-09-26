@@ -54,8 +54,15 @@ say "Fetching ZamTech AI ($BRANCH)"
 if [ -d "$INSTALL_DIR/.git" ]; then
   git config --global --add safe.directory "$INSTALL_DIR"
   if git -C "$INSTALL_DIR" fetch --quiet origin "$BRANCH"; then
+    before=$(git -C "$INSTALL_DIR" rev-parse HEAD)
     git -C "$INSTALL_DIR" checkout --quiet "$BRANCH"
     git -C "$INSTALL_DIR" merge --quiet --ff-only "origin/$BRANCH" || warn "Local changes in $INSTALL_DIR; using the code as it is."
+    # New code may bring a new version of this script: go on with that one, so its
+    # new steps (such as settings added to .env) run in this same update.
+    if [ -z "${ZAMTEST_INSTALLER_RESTARTED:-}" ] && ! git -C "$INSTALL_DIR" diff --quiet "$before" HEAD -- deploy/install.sh; then
+      say "The installer was updated; continuing with the new version"
+      ZAMTEST_INSTALLER_RESTARTED=1 exec bash "$INSTALL_DIR/deploy/install.sh" "$@"
+    fi
   else
     warn "Could not fetch updates; using the code already in $INSTALL_DIR."
   fi
