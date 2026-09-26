@@ -1,5 +1,5 @@
 ; ZamTech AI Agent setup. Built by scripts/build-installer.mjs:
-;   ISCC.exe /DAppVersion=0.3.8 /DStage=<staged app folder> /DOutDir=<output folder> zamtech-agent.iss
+;   ISCC.exe /DAppVersion=0.3.9 /DStage=<staged app folder> /DOutDir=<output folder> zamtech-agent.iss
 ;
 ; Installs per user (no administrator rights) because desktop automation has to
 ; run in the user's signed-in session, not as a service. There is nothing to
@@ -15,7 +15,7 @@
 ; An upgrade waits for a running job to finish (up to 10 minutes) unless /CANCELJOB is given.
 
 #ifndef AppVersion
-  #define AppVersion "0.3.8"
+  #define AppVersion "0.3.9"
 #endif
 #ifndef Stage
   #define Stage "..\dist\installer\app"

@@ -33,6 +33,10 @@ ZamTech AI is a low-code, AI-native automation (RPA) platform, in the same space
   - **Email:** send over SMTP and read over IMAP, with attachments. The password comes from a credential asset.
   - **PDF:** read text, which pairs well with **AI Extract Data**, and merge files.
   - **Work queues:** add, take and complete items.
+- **Triggers**: start a process (or test cases) by itself when something happens. The Portal's **Triggers** page manages them.
+  - **Web request:** another system calls a secret address (`POST /api/hooks/<id>/<secret>`). Its JSON becomes the process's input.
+  - **Email arrives:** the server checks an IMAP mailbox every minute and starts the process for each new email that matches the sender or subject. **Read Email** can then fetch that exact email (by its message ID) to save the attachments.
+  - **File arrives:** a bot PC (agent 0.3.9+) watches a folder and starts the process on that PC for each new file, once it has finished copying.
 - **Work queues**: queues of work items (for example one per invoice) that bots process one at a time.
   - **Retries:** failed items are retried automatically. Business exceptions (bad data) are not retried.
   - **Duplicates:** a duplicate reference is rejected.

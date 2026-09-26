@@ -286,7 +286,7 @@ export interface Job {
   inputs: Record<string, unknown>;
   outputs?: Record<string, unknown>;
   status: JobStatus;
-  source: "manual" | "schedule" | "designer" | "api" | "test";
+  source: "manual" | "schedule" | "designer" | "api" | "test" | "trigger";
   scheduleId?: string;
   /** The test run it is part of. */
   testRunId?: string;
@@ -329,6 +329,55 @@ export interface Schedule {
   environment?: EnvironmentId;
   enabled: boolean;
   lastRunAt?: string;
+  createdAt: string;
+}
+
+/** Starts a process (or test cases) when something happens: see triggers.ts. */
+export interface Trigger {
+  id: string;
+  workspaceId: string;
+  name: string;
+  kind: "webhook" | "email" | "file";
+  enabled: boolean;
+  /** What it runs: a published process ... */
+  packageId?: string;
+  /** ... or test cases (as a schedule). */
+  tests?: { caseIds?: string[]; folderId?: string };
+  /** Fixed inputs of the process; the event is added as `eventArgument`. */
+  inputs: Record<string, unknown>;
+  /** The PC it runs on (for a file trigger: the PC whose folder is watched). */
+  targetAgentId?: string;
+  environment?: EnvironmentId;
+  /** The process's in-argument that receives the event. */
+  eventArgument: string;
+  webhook?: { token: string };
+  email?: {
+    /** IMAP host:port. */
+    server: string;
+    /** Credential asset of the mailbox. */
+    credential: string;
+    folder: string;
+    /** Only emails whose sender or subject contains this. */
+    from?: string;
+    subject?: string;
+    markAsRead: boolean;
+    /** The last email seen (IMAP UID), and the mailbox's UIDVALIDITY. */
+    lastUid?: number;
+    uidValidity?: string;
+    checkedAt?: string;
+  };
+  file?: {
+    folder: string;
+    /** File names, e.g. "*.pdf". */
+    pattern: string;
+    /** Files changed before this do not start anything. */
+    since?: string;
+    /** Files already started ("path|size|time"), newest last. */
+    seen?: string[];
+  };
+  fired?: number;
+  lastFiredAt?: string;
+  lastError?: { at: string; message: string };
   createdAt: string;
 }
 

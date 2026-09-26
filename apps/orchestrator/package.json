@@ -19,7 +19,9 @@
     "croner": "^9.0.0",
     "exceljs": "^4.4.0",
     "fastify": "^5.2.0",
+    "imapflow": "^2.0.6",
     "jose": "^6.2.12",
+    "mailparser": "^3.9.28",
     "nodemailer": "^10.0.10",
     "pg": "^8.23.0",
     "stripe": "^22.6.2",
@@ -28,6 +30,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@electric-sql/pglite-socket": "^0.2.11",
+    "@types/mailparser": "^3.4.6",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1"
   }

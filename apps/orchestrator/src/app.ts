@@ -45,6 +45,8 @@ import { apiTokenPrincipal, effectiveEnv, ENV_NAMES, environmentsOn, isIn, publi
 import { GitRepos } from "./git.js";
 import { recordTestResult, registerTestCases } from "./testcases.js";
 import { registerEditing } from "./editing.js";
+import { EMAIL_POLL_MS, registerTriggers } from "./triggers.js";
+import type { Mailbox } from "./triggers.js";
 import { registerRecordings } from "./recordings.js";
 import type { Recordings } from "./recordings.js";
 import { liveOf, registerAiFix } from "./ai-fix.js";
@@ -83,6 +85,8 @@ declare module "fastify" {
 export interface AppOptions {
   config: OrchestratorConfig;
   store?: Store;
+  /** Reads the mailboxes of email triggers (tests use a fake); IMAP by default. */
+  mailbox?: Mailbox;
   /** Inject an AI facade (tests); defaults to a real client when an API key is configured. */
   ai?: ZamAI | null;
   logger?: boolean;
@@ -251,7 +255,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       return;
     }
     // Stripe's webhook proves itself with its signature (checked in the route); Git webhooks likewise.
-    if (PUBLIC_ROUTES.has(url) || url.startsWith("/api/git/webhook/")) return;
+    // Trigger web requests prove themselves with the secret in their address (checked in the route).
+    if (PUBLIC_ROUTES.has(url) || url.startsWith("/api/git/webhook/") || url.startsWith("/api/hooks/")) return;
     const cookieToken = req.headers.authorization ? undefined : readCookie(req.headers.cookie, SESSION_COOKIE);
     // A CI pipeline's API token, or a person (or the master token).
     // Signed out after inactivity: the workspace's time (the master access token's sessions: the default).
@@ -1320,7 +1325,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     const cancelJobIds = Object.values(store.data.jobs)
       .filter((j) => j.agentId === agent.id && j.status === "cancelling")
       .map((j) => j.id);
-    return { cancelJobIds };
+    // Folders this PC watches for file triggers (agent 0.3.9 and newer).
+    return { cancelJobIds, watches: triggers.watchesFor(agent) };
   });
 
   app.post("/api/agent/jobs/next", async (req, reply) => {
@@ -1977,6 +1983,12 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
 
   /* ---------------------------- test cases -------------------------- */
   registerTestCases(app, { store, me, own, mine, editing });
+  const triggers = registerTriggers(app, { store, me, own, mine, agentFor, mailbox: options.mailbox, log: (m) => app.log.info(m) });
+  // Mailboxes of email triggers, every minute.
+  const mailChecks = setInterval(() => void triggers.checkMailboxes(), EMAIL_POLL_MS);
+  mailChecks.unref();
+  // For tests: check the mailboxes now.
+  app.decorate("triggersCheck", () => triggers.checkMailboxes());
   registerReports(app, { store, screenshots, me, own });
 
   /* ------------------------------ alerts ---------------------------- */
@@ -2098,6 +2110,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   options.backup?.start();
   app.addHook("onClose", async () => {
     clearInterval(sweeper);
+    clearInterval(mailChecks);
     scheduler.stop();
     options.backup?.stop();
     await store.close();

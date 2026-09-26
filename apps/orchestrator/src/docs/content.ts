@@ -879,6 +879,63 @@ Scheduled jobs show the source **schedule** on the **Jobs** page and count towar
 
   /* ------------------------------------------------------------------ */
   {
+    id: "triggers",
+    title: "Triggers",
+    summary: "Start a process by itself when a web request, an email or a file arrives",
+    body: `A **trigger** starts a process (or test cases) by itself when something happens, instead of by hand or on a schedule. Open **Triggers** in the Portal and click **+ New trigger**. Choose what starts it under **Start when**:
+
+- **A web request**: another system calls a secret web address. For example a web shop when an order is placed, a form, Zapier or Make, or your CI pipeline after a deployment.
+- **An email arrives**: the server checks a mailbox every minute, and each new email that matches starts the process. For example, supplier invoices sent to accounts@yourcompany.com.
+- **A file arrives**: a bot PC watches a folder, and each new file starts the process on that PC. For example, scans saved in \`C:\\Scans\\Invoices\`.
+
+Then choose **What to run** (a published process or test cases), and click **Save**. Triggers are included in the plans that include schedules (Pro and Enterprise).
+
+## What the process gets
+
+The process receives what happened in one of its in-arguments: by default the one called \`trigger\` (change it under **Argument that receives the event**). Add that argument to the workflow in the Designer: under **Variables & arguments**, add \`trigger\` with direction **in** and type **object**, then publish. Other in-arguments can be given fixed values in the trigger.
+
+- **Web request**: \`{{ trigger.body }}\` is the JSON that was sent, and \`{{ trigger.query }}\` the address's query parameters. Fields at the top of the JSON that have the name of another in-argument of the process fill it too: sending \`{ "customer": "ACME" }\` sets the \`customer\` argument.
+- **Email**: \`{{ trigger.subject }}\`, \`{{ trigger.from }}\`, \`{{ trigger.to }}\`, \`{{ trigger.date }}\`, \`{{ trigger.text }}\` (the text of the email), \`{{ trigger.attachments }}\` (names and sizes) and \`{{ trigger.messageId }}\`.
+- **File**: \`{{ trigger.path }}\` (the full path on the PC), \`{{ trigger.name }}\`, \`{{ trigger.size }}\` and \`{{ trigger.modifiedAt }}\`.
+
+## Web requests
+
+After saving, the trigger shows its **Address to call**. Click **Copy** and give it to the other system. It must send a **POST** request, with JSON in the body if it has data. The answer (status 202) says which job started, for example \`{ "jobId": "job_..." }\`.
+
+- Keep the address secret: anyone who has it can start the process. If it leaks, click **New address**; the old one stops working at once.
+- A trigger accepts up to 60 requests a minute.
+- A trigger that is turned off answers with status 409.
+
+## Emails
+
+- **IMAP server**: the mail server and its port, for example \`outlook.office365.com:993\` or \`imap.gmail.com:993\`.
+- **Mailbox sign-in**: a credential in **Assets** with the mailbox's user name and password. Outlook and Gmail usually need an app password for this, not your normal password.
+- **Folder**: \`INBOX\` unless you want another folder.
+- **Sender contains** and **Subject contains** (optional): only emails that match start the process. For example, subject \`invoice\`.
+- **Mark matching emails as read** (optional).
+
+Only emails that arrive after the trigger is set up (or turned on again) start the process; older emails in the mailbox do not. Each email starts it once.
+
+**Attachments.** The process gets the attachments' names. To save the files, add **Read Email** to the workflow with the same server and credential, and put \`{{ trigger.messageId }}\` in its **Message ID** and a folder in **Save attachments to**. It then reads exactly that email, and its result includes each attachment's path.
+
+## Files in a folder
+
+- **PC with the folder**: the bot PC that has the folder. The process runs on that PC too, so it can open the file. The PC needs the ZamTech AI Agent **0.3.9** or newer; update it from **Bot Agents** (**⬇ Download for Windows**).
+- **Folder**: for example \`C:\\Scans\\Invoices\` or a shared folder the PC can reach, such as \`\\\\server\\scans\`.
+- **File names**: \`*\` for any file, or for example \`*.pdf\` or \`invoice-*.xlsx\`.
+
+The PC looks at the folder every few seconds and starts the process once a file has stopped changing, so a file that is still being copied is not started early. Each file starts the process once. Files that were already there when the trigger was set up do not. Move or delete the file at the end of the workflow if the folder should stay tidy.
+
+## Try it, and see what happened
+
+- **Try it** starts the process now with an example event, to check that it works.
+- Each trigger shows when it last started a process and how many times. Its jobs appear in **Jobs** with the source **trigger**.
+- If something goes wrong (for example the mailbox refused the password, or the process is not in the environment), the trigger shows the problem in orange. Fix it and it clears on the next success.
+- Turn a trigger off with its **On** box, without deleting it.`,
+  },
+
+  /* ------------------------------------------------------------------ */
+  {
     id: "queues",
     title: "Work queues",
     summary: "Share items of work between bots, with automatic retries",
@@ -1331,6 +1388,15 @@ Someone clicked **Take over editing** while you had the workflow open. Your wind
 ## Generate tests: "the sign-in steps did not all run"
 
 With **With a user name and password**, the PC could not sign in. Check the user name and password (in the Portal, **Assets**, edit the saved sign-in), and that **Sign-in page** is the page with the sign-in form. If the site asks for the user name and password on separate pages, or for a code, choose **I sign in myself in the browser** instead.
+
+## A trigger does not start
+
+Open **Triggers** in the Portal and look at the trigger:
+- A problem in orange says what went wrong, for example that the mailbox refused the sign-in (check the credential in **Assets**; Outlook and Gmail usually need an app password).
+- Is it **On**? Does your plan include schedules and triggers?
+- Emails and files from before the trigger was set up (or turned on again) do not start it.
+- A file trigger needs agent 0.3.9 or newer on its PC, and the PC must be online.
+- Click **Try it** to start it with an example event, then open the job in **Jobs**.
 
 ## "Update the agent"
 

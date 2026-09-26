@@ -5,6 +5,8 @@ import type { QueueItem } from "@zamtest/actions";
 import type { AfterStepInfo, EngineEvent } from "@zamtest/core";
 import { execute } from "./runtime.js";
 import { runRemoteRecording } from "./remote-recording.js";
+import { FolderWatcher } from "./folder-watch.js";
+import type { Watch } from "./folder-watch.js";
 import type { RecordingProgress, RemoteRecordingRequest } from "./remote-recording.js";
 
 export interface AgentOptions {
@@ -28,7 +30,9 @@ interface JobPayload {
   source?: string;
 }
 
-const VERSION = "0.3.8";
+const VERSION = "0.3.9";
+/** How often watched folders are looked at (a file is reported after two equal looks). */
+const WATCH_MS = 5_000;
 
 /** A timer that does not keep the process alive. */
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref());
@@ -47,9 +51,12 @@ export class AgentConnection {
   private draining = false;
   private loop?: Promise<void>;
   private readonly log: (message: string) => void;
+  /** Folders of file triggers on this PC. */
+  private readonly watcher: FolderWatcher;
 
   constructor(private readonly options: AgentOptions) {
     this.log = options.log ?? ((m) => console.log(`[agent] ${m}`));
+    this.watcher = new FolderWatcher(this.log);
   }
 
   private async call<T>(method: string, path: string, body?: unknown): Promise<T | undefined> {
@@ -101,6 +108,7 @@ export class AgentConnection {
     await this.retryForever(() => this.register(), () => this.draining);
     if (this.draining || this.stopped) return;
     void this.heartbeatLoop();
+    void this.watchLoop();
     while (!this.stopped && !this.draining) {
       try {
         const job = await this.call<JobPayload>("POST", "/api/agent/jobs/next", { agentId: this.agentId });
@@ -206,13 +214,29 @@ export class AgentConnection {
     while (!this.stopped) {
       await sleep(this.options.heartbeatMs ?? 10_000).catch(() => undefined);
       try {
-        const res = await this.call<{ cancelJobIds: string[] }>("POST", "/api/agent/heartbeat", { agentId: this.agentId });
+        const res = await this.call<{ cancelJobIds: string[]; watches?: Watch[] }>("POST", "/api/agent/heartbeat", { agentId: this.agentId });
+        this.watcher.setWatches(res?.watches ?? []);
         if (this.current && res?.cancelJobIds.includes(this.current.id)) {
           this.log(`Cancelling job ${this.current.id}`);
           this.current.controller.abort();
         }
       } catch (err) {
         await this.handleError(err);
+      }
+    }
+  }
+
+  /** Reports new files in watched folders; the orchestrator starts their jobs. */
+  private async watchLoop() {
+    while (!this.stopped && !this.draining) {
+      await delay(WATCH_MS);
+      try {
+        const events = await this.watcher.scan();
+        for (let i = 0; i < events.length; i += 100) {
+          await this.call("POST", "/api/agent/file-events", { agentId: this.agentId, events: events.slice(i, i + 100) });
+        }
+      } catch (err) {
+        this.log(`Watched folders: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   }

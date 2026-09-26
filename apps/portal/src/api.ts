@@ -258,6 +258,30 @@ export interface Schedule {
   nextRunAt?: string;
 }
 
+export type TriggerKind = "webhook" | "email" | "file";
+
+/** Starts a process (or test cases) when a web request, an email or a file arrives. */
+export interface Trigger {
+  id: string;
+  name: string;
+  kind: TriggerKind;
+  enabled: boolean;
+  packageId?: string | null;
+  tests?: { caseIds?: string[]; folderId?: string | null } | null;
+  inputs: Record<string, unknown>;
+  targetAgentId?: string;
+  agentName?: string;
+  environment?: EnvironmentId;
+  eventArgument: string;
+  /** The address other systems call (with its secret). */
+  webhook?: { path: string };
+  email?: { server: string; credential: string; folder: string; from?: string; subject?: string; markAsRead: boolean; checkedAt?: string };
+  file?: { folder: string; pattern: string };
+  fired?: number;
+  lastFiredAt?: string;
+  lastError?: { at: string; message: string };
+}
+
 export interface Asset {
   id: string;
   name: string;

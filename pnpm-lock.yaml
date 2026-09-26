@@ -98,9 +98,15 @@ importers:
       fastify:
         specifier: ^5.2.0
         version: 5.12.5
+      imapflow:
+        specifier: ^2.0.6
+        version: 2.0.6
       jose:
         specifier: ^6.2.12
         version: 6.2.12
+      mailparser:
+        specifier: ^3.9.28
+        version: 3.9.28
       nodemailer:
         specifier: ^10.0.10
         version: 10.0.10
@@ -120,6 +126,9 @@ importers:
       '@electric-sql/pglite-socket':
         specifier: ^0.2.11
         version: 0.2.11(@electric-sql/pglite-age@0.0.9(@electric-sql/pglite@0.5.8))(@electric-sql/pglite-pg_hashids@0.0.9(@electric-sql/pglite@0.5.8))(@electric-sql/pglite-pg_ivm@0.0.9(@electric-sql/pglite@0.5.8))(@electric-sql/pglite-pg_textsearch@0.0.10(@electric-sql/pglite@0.5.8))(@electric-sql/pglite-pg_uuidv7@0.0.9(@electric-sql/pglite@0.5.8))(@electric-sql/pglite-pgtap@0.0.9(@electric-sql/pglite@0.5.8))(@electric-sql/pglite-pgvector@0.0.9(@electric-sql/pglite@0.5.8))(@electric-sql/pglite@0.5.8)
+      '@types/mailparser':
+        specifier: ^3.4.6
+        version: 3.4.6
       '@types/nodemailer':
         specifier: ^8.0.2
         version: 8.0.2

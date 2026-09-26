@@ -548,6 +548,12 @@ export const BUILTIN_ACTIONS: ActionMeta[] = [
       { name: "server", label: "IMAP server", type: "string", required: true, description: "host:port, e.g. outlook.office365.com:993" },
       { name: "credential", label: "Credential asset", type: "string", required: true, description: "Name of a credential asset with the mailbox username and password." },
       { name: "folder", label: "Folder", type: "string", default: "INBOX" },
+      {
+        name: "messageId",
+        label: "Message ID",
+        type: "string",
+        description: "Only this email, read or not, e.g. {{ trigger.messageId }} from an email trigger. Empty = the newest emails.",
+      },
       { name: "unreadOnly", label: "Unread only", type: "boolean", default: true },
       { name: "limit", label: "Maximum messages", type: "number", default: 10 },
       { name: "markAsRead", label: "Mark as read", type: "boolean", default: false },

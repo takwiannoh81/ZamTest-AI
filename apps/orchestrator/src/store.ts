@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join } from "node:path";
 import { PostgresPersistence, pgSql } from "./db.js";
 import type { Sql } from "./db.js";
-import type { Agent, Announcement, ApiToken, Asset, AuditEvent, BugReport, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, TestCase, TestFolder, TestRun, User, WorkflowDraft, Workspace } from "./types.js";
+import type { Agent, Announcement, ApiToken, Asset, AuditEvent, BugReport, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, TestCase, TestFolder, TestRun, Trigger, User, WorkflowDraft, Workspace } from "./types.js";
 import { DEFAULT_WORKSPACE } from "./types.js";
 
 export interface Data {
@@ -13,6 +13,8 @@ export interface Data {
   jobs: Record<string, Job>;
   jobLogs: Record<string, JobLog[]>;
   schedules: Record<string, Schedule>;
+  /** Event triggers: web requests, emails, files. */
+  triggers: Record<string, Trigger>;
   assets: Record<string, Asset>;
   users: Record<string, User>;
   sessions: Record<string, Session>;
@@ -56,6 +58,7 @@ export const emptyData = (): Data => ({
   jobs: {},
   jobLogs: {},
   schedules: {},
+  triggers: {},
   assets: {},
   users: {},
   sessions: {},
@@ -156,7 +159,7 @@ export class Store {
     // Versions from before environments existed are in Production.
     for (const pkg of Object.values(this.data.packages)) pkg.deployments ??= { prod: { at: pkg.publishedAt, by: "ZamTech AI" } };
     const owned = [
-      this.data.workflows, this.data.packages, this.data.agents, this.data.jobs, this.data.schedules, this.data.assets,
+      this.data.workflows, this.data.packages, this.data.agents, this.data.jobs, this.data.schedules, this.data.triggers, this.data.assets,
       this.data.users, this.data.queues, this.data.queueItems, this.data.installKeys, this.data.promotions, this.data.apiTokens, this.data.testFolders, this.data.testCases, this.data.testRuns,
     ] as Array<Record<string, { workspaceId?: string }>>;
     for (const collection of owned) {

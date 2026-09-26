@@ -346,3 +346,21 @@ tr.highlight td { background: var(--accent-soft); }
 .bug-answer { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
 .bug-answer select { width: auto; }
 .bug-answer textarea { flex: 1; min-width: 220px; }
+
+/* Triggers */
+.trigger-list { display: flex; flex-direction: column; gap: 12px; }
+.trigger-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius, 10px); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.trigger-card.off { opacity: 0.65; }
+.trigger-head { display: flex; align-items: flex-start; gap: 12px; }
+.trigger-icon { font-size: 22px; line-height: 1; }
+.trigger-title { flex: 1; min-width: 0; }
+.trigger-title .muted { overflow-wrap: anywhere; }
+.trigger-detail { display: flex; flex-direction: column; gap: 4px; }
+.trigger-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.switch-row { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.copy-field { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 4px 4px 4px 10px; }
+.copy-field code { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12.5px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tiny { font-size: 12px; }
+.segmented button:disabled { opacity: 0.4; cursor: default; }
+@media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } .trigger-head { flex-wrap: wrap; } }

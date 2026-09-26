@@ -53,8 +53,10 @@ export const emailHandlers: Record<string, ActionHandler> = {
     await client.connect();
     const lock = await client.getMailboxLock(String(props.folder || "INBOX"));
     try {
-      const found = await client.search(props.unreadOnly === false ? { all: true } : { seen: false }, { uid: true });
-      const uids = (found || []).slice(-Math.max(1, Number(props.limit ?? 10))).reverse(); // newest first
+      // One email (e.g. the one that started an email trigger), or the newest ones.
+      const messageId = props.messageId ? String(props.messageId).trim() : "";
+      const found = await client.search(messageId ? { header: { "message-id": messageId } } : props.unreadOnly === false ? { all: true } : { seen: false }, { uid: true });
+      const uids = (found || []).slice(messageId ? -1 : -Math.max(1, Number(props.limit ?? 10))).reverse(); // newest first
       const folder = props.attachmentsFolder ? String(props.attachmentsFolder) : undefined;
       if (folder) await mkdir(folder, { recursive: true });
       const messages = [];
