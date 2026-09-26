@@ -2,6 +2,8 @@ export interface OrchestratorConfig {
   port: number;
   host: string;
   dataDir: string | null;
+  /** postgres://... : the data is kept in Postgres (else in db.json in dataDir). */
+  databaseUrl?: string;
   adminToken?: string;
   /**
    * Shared key for agents that were not approved in the Portal (the cloud bot
@@ -37,6 +39,7 @@ export function loadConfig(env = process.env): OrchestratorConfig {
     port: Number(env.ZAMTEST_PORT ?? 4000),
     host: env.ZAMTEST_HOST ?? "127.0.0.1",
     dataDir: env.ZAMTEST_DATA_DIR ?? ".data",
+    databaseUrl: env.ZAMTEST_DATABASE_URL?.trim() || env.DATABASE_URL?.trim() || undefined,
     adminToken: env.ZAMTEST_ADMIN_TOKEN || undefined,
     agentKey: env.ZAMTEST_AGENT_KEY || (env.NODE_ENV === "production" ? undefined : "dev-agent-key"),
     portalUrl: (env.ZAMTEST_PORTAL_URL || "http://localhost:5173").replace(/\/+$/, ""),

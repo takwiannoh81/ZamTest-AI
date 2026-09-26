@@ -15,6 +15,7 @@ SITE_DOMAIN=$domain
 ACME_EMAIL=$email
 ZAMTEST_ADMIN_TOKEN=$(openssl rand -hex 32)
 ZAMTEST_AGENT_KEY=$(openssl rand -hex 32)
+ZAMTEST_DB_PASSWORD=$(openssl rand -hex 24)
 ANTHROPIC_API_KEY=$anthropic
 ZAMTEST_AI_MODEL=
 ENV

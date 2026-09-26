@@ -130,7 +130,12 @@ A manual agent loop in `packages/ai/src/agent.ts` runs tool calls one at a time,
 
 **Editing together.** The Designer sends `x-zamtech-edit-session` (its window's lock) and `x-zamtech-based-on` (the `updatedAt` it loaded) with each save. A save based on an older version gets 409 `changed`, and the person chooses to overwrite or reload. Locks live in one process's memory, so running several API servers would need them in a shared store.
 
-Persistence is a debounced, atomic JSON file (`ZAMTEST_DATA_DIR/db.json`) behind the small `Store` class. That class is the seam for moving to Postgres.
+Persistence is behind the `Store` class. The working data lives in memory (`store.data`) and routes change it synchronously; `store.save()` persists it, debounced:
+
+- **Postgres** (`ZAMTEST_DATABASE_URL`, `db.ts`): `records` has one JSONB row per record (collection, id, workspace), `list_items` one row per job log line or audit event, and `meta` single values. Each save writes only the records whose JSON changed, and the list entries added or trimmed, in one transaction; saves run one after another and a failed one is retried. At start everything is loaded, and an existing `db.json` is imported once.
+- **JSON file** (`ZAMTEST_DATA_DIR/db.json`, written atomically) when no database is set, and in memory only in tests.
+
+Every orchestrator process holds the data in memory, so there is one orchestrator per database. Running several would mean reading from Postgres per request instead (the `workspace_id` column is there for that), and moving the edit locks into it.
 
 ### Agent protocol
 

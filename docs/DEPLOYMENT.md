@@ -319,7 +319,7 @@ sudo docker compose stop orchestrator
 sudo docker compose run --rm orchestrator node_modules/.bin/tsx apps/orchestrator/src/restore.ts latest
 sudo docker compose start orchestrator
 ```
-To restore an older copy, replace `latest` with an object key from S3, for example `zamtest/db-2026-09-20T03-00-00-000Z.json.gz`. The database that was replaced is kept next to it as `db.json.before-restore-<time>`.
+To restore an older copy, replace `latest` with an object key from S3, for example `zamtest/db-2026-09-20T03-00-00-000Z.json.gz`. A copy of the data that was replaced is kept in the data volume as `db.json.before-restore-<time>`. With Postgres, the restore replaces what the database holds.
 
 ## 6b. Step screenshots
 
@@ -329,16 +329,29 @@ Bot PCs take a screenshot after every browser and desktop step, and whenever a s
 - To turn them off on a PC, set the environment variable `ZAMTEST_SCREENSHOTS=off` for its agent. Consider this for PCs whose screens show confidential data.
 - Bot PCs need the agent version with this feature: the cloud bot updates with `install.sh`, and Windows PCs with the next agent installer release.
 
+## 6c. Data and Postgres
+
+The platform's data (workspaces, users, workflows, processes, jobs and their logs, schedules, queues, assets, test cases, the audit log) is kept in **Postgres**, in the `postgres` service of `docker-compose.yml`. Only the orchestrator can reach it; it is not exposed to the internet.
+
+- **Password.** `install.sh` creates `ZAMTEST_DB_PASSWORD` in `deploy/.env`, on new servers and on existing ones the first time they update.
+- **Moving an existing server.** The first time the orchestrator starts with Postgres, it moves the data of `/data/db.json` into the database. The file stays in the data volume, renamed `db.json.imported-<time>`. Nothing else is needed: run `sudo bash ZamTest-AI/deploy/install.sh` as for any update.
+- **How it works.** The orchestrator keeps its working data in memory and writes each change to Postgres a moment later, in one transaction, writing only what changed. Job logs and the audit log are written line by line. If a write fails (for example Postgres restarts), it is tried again 5 seconds later.
+- **Memory.** Postgres is set up for a 2 GB server (128 MB of shared buffers).
+- **Without Docker Compose.** Set `ZAMTEST_DATABASE_URL=postgres://user:password@host:5432/database` for the orchestrator. The tables are created on first start. Without it, the data is kept in `db.json` in `ZAMTEST_DATA_DIR`, as before.
+
+The S3 backups in section 6 keep working as they are: each one is a complete copy of the data.
+
 ## 7. Operations
 
 | Task | Command |
 |---|---|
 | Update to the latest code | `git pull && docker compose up -d --build` |
 | Logs | `docker compose logs -f orchestrator` (or `web`, `agent`) |
-| Manual local backup | `docker run --rm -v zamtest_zamtest_data:/data -v $PWD:/backup alpine tar czf /backup/zamtest-$(date +%F).tgz -C /data .` |
-| Restore | Stop the stack, extract the archive into the `zamtest_zamtest_data` volume, then start it again |
+| Manual database backup | `docker compose exec -T postgres pg_dump -U zamtech zamtech \| gzip > zamtest-$(date +%F).sql.gz` |
+| Manual backup of files (screenshots) | `docker run --rm -v zamtest_zamtest_data:/data -v $PWD:/backup alpine tar czf /backup/zamtest-files-$(date +%F).tgz -C /data .` |
+| Database shell | `docker compose exec postgres psql -U zamtech zamtech` |
 
-The data volume holds the workflows, processes, jobs, schedules, assets (including credentials) and user accounts (passwords are stored only as scrypt hashes). Set up the S3 backups in section 6 so that copies leave the server every night.
+Postgres holds the workflows, processes, jobs, schedules, assets (including credentials) and user accounts (passwords are stored only as scrypt hashes). The data volume holds step screenshots and translated docs. Set up the S3 backups in section 6 so that copies leave the server every night.
 
 ## Security checklist
 

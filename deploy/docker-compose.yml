@@ -27,12 +27,35 @@ services:
       - orchestrator
     restart: unless-stopped
 
+  # The platform's data (docs/DEPLOYMENT.md, "Data and Postgres"). Only the orchestrator reaches it.
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: zamtech
+      POSTGRES_USER: zamtech
+      POSTGRES_PASSWORD: ${ZAMTEST_DB_PASSWORD:?run deploy/install.sh to create ZAMTEST_DB_PASSWORD}
+    # Small instances (2 GB): modest memory.
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=30"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zamtech -d zamtech"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
   orchestrator:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
       target: orchestrator
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
+      # On first start, the data of an existing /data/db.json moves into Postgres (the file is kept, renamed).
+      ZAMTEST_DATABASE_URL: postgres://zamtech:${ZAMTEST_DB_PASSWORD}@postgres:5432/zamtech
       ZAMTEST_ADMIN_TOKEN: ${ZAMTEST_ADMIN_TOKEN}
       ZAMTEST_AGENT_KEY: ${ZAMTEST_AGENT_KEY}
       ZAMTEST_CORS_ORIGINS: https://portal.${SITE_DOMAIN},https://designer.${SITE_DOMAIN},https://${SITE_DOMAIN}
@@ -95,6 +118,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres_data:
   zamtest_data:
   caddy_data:
   caddy_config:

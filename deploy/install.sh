@@ -70,6 +70,13 @@ if [ ! -f .env ]; then
   # init-env.sh is interactive; read from the terminal even when piped from curl.
   bash ./init-env.sh < /dev/tty
 fi
+# Settings added in later versions: filled in on existing servers too.
+if ! grep -q '^ZAMTEST_DB_PASSWORD=.' .env; then
+  say "Creating the Postgres database password"
+  grep -v '^ZAMTEST_DB_PASSWORD=' .env > .env.tmp || true
+  printf 'ZAMTEST_DB_PASSWORD=%s\n' "$(openssl rand -hex 24)" >> .env.tmp
+  cat .env.tmp > .env && rm -f .env.tmp
+fi
 # Only what this script needs. .env is not run as a script: values may contain
 # spaces or <> (MAIL_FROM, passwords); Docker Compose reads the file itself.
 SITE_DOMAIN=$(grep -m1 '^SITE_DOMAIN=' .env | cut -d= -f2- | tr -d "\"'\r")

@@ -12,7 +12,7 @@ if (problems.length) {
   console.error(`Refusing to start in production:\n- ${problems.join("\n- ")}\nGenerate values with: openssl rand -hex 32`);
   process.exit(1);
 }
-const store = new Store(config.dataDir);
+const store = await Store.open({ dataDir: config.dataDir, databaseUrl: config.databaseUrl, log: (message) => console.log(message) });
 const backupConfig = loadBackupConfig();
 const backup = backupConfig
   ? new BackupService(store, backupConfig, s3Target(backupConfig), (msg) => console.log(`[backup] ${msg}`))
@@ -36,6 +36,7 @@ else {
     (err: Error) => app.log.error(`Email: ${host} refused the sign-in or could not be reached: ${err.message}`),
   );
 }
+app.log.info(store.kind === "postgres" ? "Data: Postgres" : store.kind === "file" ? `Data: ${config.dataDir}/db.json (set ZAMTEST_DATABASE_URL to use Postgres)` : "Data: in memory only");
 app.log.info(billing ? `Billing: Stripe (${billingConfig!.secretKey.startsWith("sk_live_") ? "live" : "test"} mode)` : "Billing: not set up (no STRIPE_* settings)");
 if (backupConfig) app.log.info(`Backups: s3://${backupConfig.bucket}/${backupConfig.prefix} on "${backupConfig.cron}", keeping ${backupConfig.keepDays} days`);
 

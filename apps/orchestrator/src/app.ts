@@ -2100,7 +2100,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     clearInterval(sweeper);
     scheduler.stop();
     options.backup?.stop();
-    store.flush();
+    await store.close();
   });
 
   return { app, store, scheduler };
