@@ -611,12 +611,19 @@ AI can write a website's test cases for you. It looks at the real site through o
 2. Enter the **Website address**.
 3. Choose how to handle **Signing in**:
    - **No sign-in needed**.
+   - **With a user name and password**: the PC fills in the site's sign-in form for you. Under **Sign-in to use**, pick a saved sign-in, or choose **New sign-in...** and enter the **User name or email** and **Password**. A new sign-in is saved as a credential in **Assets** under **Save as** (for example \`Login/shop.example.com\`), so later runs can use it too. The password is never written into a test: each test reads it from the asset when it runs. If the sign-in form is not on the website address you entered, put its address in **Sign-in page**. Every new test starts with the same sign-in steps. This works for a normal sign-in form with a user name, a password and Enter. If the site asks for the user name and the password on separate pages, or for a code, use **I sign in myself in the browser** instead.
    - **Sign in with steps I already have**: pick a test case or workflow that opens the site and signs in (for example your login test). It runs first on the PC, and every new test starts with it.
    - **I sign in myself in the browser**: the browser opens on the PC with a bar at the top. Sign in (or open the page to start from), then click **Start exploring**. Choose a credential under **The tests sign in with**, so the new tests can sign in by themselves when they run.
-4. Optionally say **What to test**, for example "the orders list and its filters".
-5. Choose how many **Tests to write**, how many **Pages to explore**, and the PC. Click **Explore and write tests**.
+4. Under **What kinds of tests**, untick what you do not need: **Pages and content**, **Menus and links**, **Forms and error messages**, **Search and filters**, and **Tables and lists**. The tests are spread over what is ticked.
+5. Optionally say **What to test**, for example "the orders list and its filters".
+6. Optionally give **Test data**: values the tests should use, one per line, for example \`Search for: blue mug\` or \`Customer number: 4711\`. Do not put passwords here; use a sign-in instead.
+7. Choose how many **Tests to write** (up to 15), how many **Pages to explore** (up to 20), and the PC.
+8. On a test environment, you can tick **The tests may create and change data**. The tests may then fill in and submit forms and create or change records, with made-up values starting with "Test". They still never delete, pay, order or sign out. Leave it unticked for a live site.
+9. Click **Explore and write tests**.
 
-The PC visits the site's pages by following its links and sends each page's fields, buttons, links, text and screen. It never presses buttons or sends forms, and skips sign-out, delete and download links. AI then writes the tests, which takes one or two minutes. Each test checks one thing, with real selectors from the pages and Verify steps.
+The dialog remembers your choices on this browser for next time, except the password.
+
+The PC visits the site's pages by following its links and sends each page's fields, buttons, links, text and screen. While exploring, it never presses buttons or sends forms (apart from the sign-in form), and skips sign-out, delete and download links. AI then writes the tests, which takes one or two minutes. Each test checks one thing, with real selectors from the pages and Verify steps.
 
 Untick the tests you do not want, choose the folder, and click **Create**. With **Run them now** ticked, they run straight away. Open a test to see or change its steps, like any other test case. AI's first draft is a starting point: check that each test verifies what matters to you.
 
@@ -1320,6 +1327,10 @@ Someone saved the workflow while you were editing it (or it changed through Git,
 ## "... took over editing"
 
 Someone clicked **Take over editing** while you had the workflow open. Your window can no longer save. Click **Save to PC** to keep your changes, and agree with them who continues.
+
+## Generate tests: "the sign-in steps did not all run"
+
+With **With a user name and password**, the PC could not sign in. Check the user name and password (in the Portal, **Assets**, edit the saved sign-in), and that **Sign-in page** is the page with the sign-in form. If the site asks for the user name and password on separate pages, or for a code, choose **I sign in myself in the browser** instead.
 
 ## "Update the agent"
 

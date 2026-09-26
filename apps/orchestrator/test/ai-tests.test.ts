@@ -115,6 +115,65 @@ describe("Generate tests with AI", () => {
   });
 });
 
+describe("Generate tests with a user name and password", () => {
+  it("starts each test with the saved sign-in, and passes the kinds of tests, test data and changes allowed to AI", async () => {
+    let seen: GenerateTestsInput | undefined;
+    const ai = {
+      model: "test",
+      generateTests: async (input: GenerateTestsInput) => {
+        seen = input;
+        return {
+          notes: "",
+          tests: [{ name: "Orders", description: "", variables: [], steps: [{ id: "n", type: "browser.navigate", props: { url: "https://shop.example/orders" } }, { id: "v", type: "browser.verifyTitle", props: { text: "Orders" } }] }],
+        };
+      },
+    } as unknown as ZamAI;
+    ({ app } = await buildApp({ config: { ...loadConfig({ ZAMTEST_AGENT_KEY: "k" }), dataDir: null }, ai }));
+    const pc = (await call("POST", "/api/agent/register", { name: "qa-pc", version: "0.3.8" }, agent)).json();
+    const started = (await call("POST", "/api/recordings", { agentId: pc.agentId, kind: "explore", url: "shop.example" })).json();
+    await call("POST", "/api/agent/recordings/next", { agentId: pc.agentId }, agent);
+    await call("POST", `/api/agent/recordings/${started.id}/progress`, { agentId: pc.agentId, steps: [], done: true, explored: { pages: [page("/orders")] } }, agent);
+
+    const signIn = { kind: "login", asset: "Shop/Login", signInUrl: "shop.example/login", url: "shop.example" };
+    expect((await call("POST", "/api/ai/generate-tests", { exploreId: started.id, signIn })).statusCode).toBe(404);
+    await call("POST", "/api/assets", { name: "Shop/Login", type: "credential", value: { username: "qa", password: "secret-pw" } });
+
+    const result = await call("POST", "/api/ai/generate-tests", {
+      exploreId: started.id,
+      signIn,
+      kinds: ["forms", "search"],
+      testData: "Search for: blue mug",
+      allowChanges: true,
+    });
+    expect(result.statusCode, result.body).toBe(200);
+    expect(seen).toMatchObject({
+      kinds: ["forms", "search"],
+      testData: "Search for: blue mug",
+      allowChanges: true,
+      signIn: { kind: "steps", description: 'they sign in with the saved user name and password "Shop/Login"' },
+    });
+    const definition = result.json().tests[0].definition;
+    expect(definition.variables).toEqual([expect.objectContaining({ name: "signIn", type: "object" })]);
+    const body = definition.root.slots.body;
+    expect(body.map((s: { type: string }) => s.type)).toEqual([
+      "core.getAsset",
+      "browser.open",
+      "browser.type",
+      "browser.type",
+      "browser.verifyVisible",
+      "browser.navigate",
+      "browser.navigate",
+      "browser.verifyTitle",
+    ]);
+    expect(body[1].props.url).toBe("https://shop.example/login");
+    expect(body[3].props).toMatchObject({ text: "{{ signIn.password }}", pressEnter: true });
+    // The password itself is never in a test.
+    expect(JSON.stringify(definition)).not.toContain("secret-pw");
+
+    expect((await call("POST", "/api/ai/generate-tests", { exploreId: started.id, kinds: ["everything"] })).statusCode).toBe(400);
+  });
+});
+
 describe("checking AI's tests", () => {
   const catalog = BUILTIN_ACTIONS;
   const reply = (tests: unknown) => "- summary\n```json\n" + JSON.stringify({ tests }) + "\n```";

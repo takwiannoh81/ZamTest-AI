@@ -265,6 +265,12 @@ fieldset.plain { border: none; margin: 0; padding: 0; min-width: 0; }
 /* Generate tests with AI */
 .modal:has(.gen-list), .modal:has(.gen-row) { width: min(720px, 100%); }
 .gen-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.gen-row.two { grid-template-columns: repeat(2, 1fr); }
+.gen-login { border-inline-start: 3px solid var(--border); padding-inline-start: 12px; margin-bottom: 4px; }
+.gen-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.gen-kind { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px 4px 8px; font-size: 13px; cursor: pointer; user-select: none; }
+.gen-kind.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.gen-kind input { margin: 0; }
 .gen-list { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow: auto; margin: 8px 0 12px; }
 .gen-item { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
 .gen-item input { margin-top: 3px; }
@@ -274,5 +280,5 @@ fieldset.plain { border: none; margin: 0; padding: 0; min-width: 0; }
 .gen-progress { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 18px 0; }
 .gen-progress .spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: gen-spin 0.9s linear infinite; }
 @keyframes gen-spin { to { transform: rotate(360deg); } }
-@media (max-width: 640px) { .gen-row { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .gen-row, .gen-row.two { grid-template-columns: 1fr; } }
 .modal:has(.report-problem) { width: min(680px, 100%); }

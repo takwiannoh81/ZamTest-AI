@@ -5,8 +5,9 @@
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { BUILTIN_ACTIONS, newStepId } from "@zamtest/core";
+import { BUILTIN_ACTIONS, newStepId, SIGN_IN_VARIABLES, signInSteps } from "@zamtest/core";
 import type { Step, VariableDef, Workflow } from "@zamtest/core";
+import { TEST_KINDS } from "@zamtest/ai";
 import type { ZamAI } from "@zamtest/ai";
 import { languageName } from "@zamtest/i18n";
 import { HttpError, parse } from "./errors.js";
@@ -32,9 +33,15 @@ export function freshIds(steps: Step[]): Step[] {
   }));
 }
 
+/** An address as typed: https:// is added when it has no scheme. */
+export const withScheme = (url: string) => (/^(https?|file):\/\//i.test(url) ? url : `https://${url}`);
+
 const Body = z.object({
   exploreId: z.string().min(1),
   focus: z.string().max(2000).optional(),
+  kinds: z.array(z.enum(TEST_KINDS)).max(TEST_KINDS.length).optional(),
+  testData: z.string().max(4000).optional(),
+  allowChanges: z.boolean().optional(),
   count: z.number().int().min(1).max(15).default(8),
   language: z.string().optional(),
   signIn: z
@@ -42,6 +49,8 @@ const Body = z.object({
       z.object({ kind: z.literal("none") }),
       z.object({ kind: z.literal("steps"), workflowId: z.string().optional(), testCaseId: z.string().optional() }),
       z.object({ kind: z.literal("asset"), asset: z.string().min(1).max(200) }),
+      // Signs in with a saved user name and password on the site's sign-in form (see signInSteps).
+      z.object({ kind: z.literal("login"), asset: z.string().min(1).max(200), signInUrl: z.string().trim().max(2000).optional(), url: z.string().trim().max(2000).optional() }),
     ])
     .default({ kind: "none" }),
 });
@@ -75,18 +84,33 @@ export function registerAiTests(app: FastifyInstance, ctx: AiTestsContext): void
         before = { steps: def.root.slots.body, variables: def.variables, description: `the steps of the test case "${tc.name}" run first` };
       } else throw new HttpError(400, "Choose the workflow or test case that signs in");
     }
-    if (body.signIn.kind === "asset") {
+    if (body.signIn.kind === "asset" || body.signIn.kind === "login") {
       const asset = Object.values(store.data.assets).find((a) => a.workspaceId === workspaceId && a.name === (body.signIn as { asset: string }).asset);
       if (!asset) throw new HttpError(404, `There is no asset called "${body.signIn.asset}"`);
       if (asset.type !== "credential") throw new HttpError(400, `"${asset.name}" is not a credential (a user name and password)`);
-      if (!pages.some((p) => p.beforeSignIn)) throw new HttpError(409, "The sign-in page was not seen: explore again with \"I sign in myself\"");
+    }
+    if (body.signIn.kind === "asset" && !pages.some((p) => p.beforeSignIn)) {
+      throw new HttpError(409, "The sign-in page was not seen: explore again with \"I sign in myself\"");
+    }
+    if (body.signIn.kind === "login") {
+      const url = body.signIn.url ? withScheme(body.signIn.url) : undefined;
+      const signInUrl = body.signIn.signInUrl ? withScheme(body.signIn.signInUrl) : url;
+      if (!signInUrl) throw new HttpError(400, "Enter the address of the sign-in page");
+      before = {
+        steps: signInSteps({ asset: body.signIn.asset, signInUrl, thenUrl: url }),
+        variables: SIGN_IN_VARIABLES,
+        description: `they sign in with the saved user name and password "${body.signIn.asset}"`,
+      };
     }
     ctx.useAi(workspaceId);
 
     const result = await ai.generateTests({
       pages: pages.map((p) => ({ ...p, screen: p.screen ? Buffer.from(p.screen, "base64") : undefined })),
-      signIn: body.signIn.kind === "steps" ? { kind: "steps", description: before!.description } : body.signIn.kind === "asset" ? { kind: "asset", asset: body.signIn.asset } : { kind: "none" },
+      signIn: before ? { kind: "steps", description: before.description } : body.signIn.kind === "asset" ? { kind: "asset", asset: body.signIn.asset } : { kind: "none" },
       focus: body.focus,
+      kinds: body.kinds,
+      testData: body.testData,
+      allowChanges: body.allowChanges,
       count: body.count,
       assets: Object.values(store.data.assets)
         .filter((a) => a.workspaceId === workspaceId)

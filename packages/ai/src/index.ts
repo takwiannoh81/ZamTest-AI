@@ -18,7 +18,8 @@ export type { DesktopSelectorCandidate, SelectorCandidate, SelectorSuggestion } 
 export type { GenerateWorkflowInput, GenerateWorkflowResult } from "./workflow-gen.js";
 export type { DiagnoseInput, Diagnosis, Fix } from "./diagnose.js";
 export type { DocText, HelpChatInput } from "./help.js";
-export type { GenerateTestsInput, GenerateTestsResult, GeneratedTest, SitePage } from "./test-gen.js";
+export type { GenerateTestsInput, GenerateTestsResult, GeneratedTest, SitePage, TestKind } from "./test-gen.js";
+export { TEST_KINDS } from "./test-gen.js";
 export { checkTests } from "./test-gen.js";
 
 /** Facade over every AI capability of the platform. */

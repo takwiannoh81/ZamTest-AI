@@ -26,12 +26,29 @@ export interface GenerateTestsInput {
   signIn: { kind: "none" } | { kind: "steps"; description: string } | { kind: "asset"; asset: string };
   /** What the person wants tested (optional). */
   focus?: string;
+  /** The kinds of tests to write (unset: whatever matters most). */
+  kinds?: TestKind[];
+  /** Values the tests should use, from the person (search terms, customer numbers...). */
+  testData?: string;
+  /** A test environment: tests may submit forms that create or change data. */
+  allowChanges?: boolean;
   count: number;
   assets?: Array<{ name: string; type: string }>;
   catalog?: ActionMeta[];
   /** English name of the person's language. */
   language?: string;
 }
+
+export const TEST_KINDS = ["pages", "navigation", "forms", "search", "tables"] as const;
+export type TestKind = (typeof TEST_KINDS)[number];
+
+const KIND_TEXT: Record<TestKind, string> = {
+  pages: "pages and their content: the key pages load and show their main headings, texts and data",
+  navigation: "navigation: menus, tabs and links reach the right pages",
+  forms: "forms: fields accept valid input, and required or invalid input is refused with an error message",
+  search: "search, filters and sorting: they change the results shown",
+  tables: "tables and lists: they show the expected columns, and rows of data",
+};
 
 export interface GeneratedTest {
   name: string;
@@ -60,12 +77,21 @@ const RULES = `How to write the tests:
   prop when the action has one, so broken selectors can be healed.
 - Check with the Verify actions (browser.verifyText with text that is really on the page, browser.verifyVisible,
   browser.verifyTitle, browser.verifyUrl). Every test has at least one check after its actions.
-- Never do anything that changes or deletes real data or costs money: do not submit forms that create, save, send, pay, order,
-  delete, approve or sign out, unless the person's focus asks for it. Checking that a form refuses empty or invalid input
-  (submit it empty and verify the error message) is fine when the page data shows required fields.
+- {{CHANGES}}
 - Tests are independent: each one opens what it needs and ends with browser.close.
 - Wait for slow pages with browser.waitFor (a selector from the page) before checking, when the page loads data.
 - Name each test in a few words ("Dashboard shows the orders list") and describe in one sentence what it checks.`;
+
+const CHANGES = {
+  safe:
+    "Never do anything that changes or deletes real data or costs money: do not submit forms that create, save, send, pay, order,\n" +
+    "  delete, approve or sign out, unless the person's focus asks for it. Checking that a form refuses empty or invalid input\n" +
+    "  (submit it empty and verify the error message) is fine when the page data shows required fields.",
+  allowed:
+    "This is a test environment: tests MAY fill in and submit forms that create or change records, and then check the result\n" +
+    "  (e.g. the new record is listed). Use made-up values that are easy to recognise (names starting with \"Test \"). Still never\n" +
+    "  delete, pay, order, send messages to real people or sign out.",
+};
 
 const SIGN_IN = {
   none: "The site needs no sign-in: each test starts with browser.open at the address of the page it tests.",
@@ -107,7 +133,7 @@ ${FORMAT}
 Available actions (* = required prop):
 ${catalogPrompt(actions)}
 
-${RULES}
+${RULES.replace("{{CHANGES}}", input.allowChanges ? CHANGES.allowed : CHANGES.safe)}
 
 ${ANSWER}`;
 
@@ -118,7 +144,11 @@ ${ANSWER}`;
       : "";
   const content: Exclude<BetaMessageParam["content"], string> = [];
   const text = (t: string) => content.push({ type: "text", text: t });
-  text(`Write ${input.count} test cases for this website.${input.focus ? `\nWhat the person wants tested: ${input.focus}` : ""}\n\n${signIn}${language}`);
+  const kinds = input.kinds?.length ? `\nWrite tests of these kinds, spread over them:\n${input.kinds.map((k) => `- ${KIND_TEXT[k]}`).join("\n")}` : "";
+  const data = input.testData?.trim()
+    ? `\nValues to use in the tests, from the person (use them where they fit, e.g. as search terms or form input; do not invent others when one fits):\n${input.testData.trim()}`
+    : "";
+  text(`Write ${input.count} test cases for this website.${input.focus ? `\nWhat the person wants tested: ${input.focus}` : ""}${kinds}${data}\n\n${signIn}${language}`);
   if (input.assets?.length) text(`Assets in this account (names only):\n${input.assets.map((a) => `- ${a.name} (${a.type})`).join("\n")}`);
   let screens = 0;
   input.pages.forEach((p, i) => {

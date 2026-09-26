@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { SIGN_IN_VARIABLES, signInSteps } from "@zamtest/core";
 import type { Step, Workflow } from "@zamtest/core";
+import type { MessageKey } from "@zamtest/i18n";
 import { currentLocale, useI18n } from "@zamtest/i18n/react";
 import { api } from "../api";
 import type { WorkflowSummary } from "../api";
@@ -35,7 +37,11 @@ interface Proposal {
   page?: string;
   definition: Workflow;
 }
-type SignIn = "none" | "steps" | "self";
+type SignIn = "none" | "login" | "steps" | "self";
+
+/** The kinds of tests AI can be asked for (as in @zamtest/ai). */
+const KINDS = ["pages", "navigation", "forms", "search", "tables"] as const;
+type Kind = (typeof KINDS)[number];
 
 const PC_KEY = "zamtest.recordPc";
 const remembered = () => {
@@ -43,6 +49,38 @@ const remembered = () => {
     return localStorage.getItem(PC_KEY) ?? "";
   } catch {
     return "";
+  }
+};
+
+/** The choices made last time on this browser (never the password). */
+interface Settings {
+  url: string;
+  signIn: SignIn;
+  stepsFrom: string;
+  loginAsset: string;
+  signInUrl: string;
+  kinds: Kind[];
+  testData: string;
+  allowChanges: boolean;
+  count: number;
+  maxPages: number;
+}
+const SETTINGS_KEY = "zamtest.genTests";
+const lastSettings = (): Partial<Settings> => {
+  try {
+    return JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}") as Partial<Settings>;
+  } catch {
+    return {};
+  }
+};
+
+const withScheme = (url: string) => (/^(https?|file):\/\//i.test(url) ? url : `https://${url}`);
+/** A name for a new saved sign-in: Login/<the site's host>. */
+const loginNameFor = (url: string) => {
+  try {
+    return `Login/${new URL(withScheme(url.trim())).host.replace(/[^A-Za-z0-9_.-]+/g, "-")}`;
+  } catch {
+    return "Login/website";
   }
 };
 
@@ -71,14 +109,24 @@ export function GenerateTestsModal({
   const { t } = useI18n();
   const [pcs, setPcs] = useState<Pc[]>();
   const [pcId, setPcId] = useState(remembered);
-  const [url, setUrl] = useState("");
-  const [signIn, setSignIn] = useState<SignIn>("none");
-  const [stepsFrom, setStepsFrom] = useState("");
+  const [last] = useState(lastSettings);
+  const [url, setUrl] = useState(last.url ?? "");
+  const [signIn, setSignIn] = useState<SignIn>(last.signIn ?? "none");
+  // With a user name and password: a saved sign-in (credential asset), or a new one saved as one.
+  const [loginAsset, setLoginAsset] = useState(last.loginAsset ?? "");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginName, setLoginName] = useState("");
+  const [signInUrl, setSignInUrl] = useState(last.signInUrl ?? "");
+  const [kinds, setKinds] = useState<Set<Kind>>(() => new Set(last.kinds?.filter((k) => KINDS.includes(k)).length ? last.kinds : KINDS));
+  const [testData, setTestData] = useState(last.testData ?? "");
+  const [allowChanges, setAllowChanges] = useState(last.allowChanges ?? false);
+  const [stepsFrom, setStepsFrom] = useState(last.stepsFrom ?? "");
   const [asset, setAsset] = useState("");
   const [assets, setAssets] = useState<Array<{ name: string; type: string }>>([]);
   const [focus, setFocus] = useState("");
-  const [count, setCount] = useState(8);
-  const [maxPages, setMaxPages] = useState(8);
+  const [count, setCount] = useState(last.count ?? 8);
+  const [maxPages, setMaxPages] = useState(last.maxPages ?? 8);
   const [folderId, setFolderId] = useState(initialFolder ?? "");
   const [explore, setExplore] = useState<Explore>();
   const [writing, setWriting] = useState(false);
@@ -99,7 +147,12 @@ export function GenerateTestsModal({
       })
       .catch((e: Error) => setError(e.message));
     api<Array<{ name: string; type: string }>>("/api/assets")
-      .then((list) => setAssets(list.filter((a) => a.type === "credential")))
+      .then((list) => {
+        const credentials = list.filter((a) => a.type === "credential");
+        setAssets(credentials);
+        // The saved sign-in chosen last time was deleted.
+        setLoginAsset((chosen) => (chosen && !credentials.some((a) => a.name === chosen) ? "" : chosen));
+      })
       .catch(() => undefined);
   }, []);
 
@@ -127,14 +180,19 @@ export function GenerateTestsModal({
         body: {
           exploreId,
           focus: focus.trim() || undefined,
+          kinds: [...kinds],
+          testData: testData.trim() || undefined,
+          allowChanges,
           count,
           language: currentLocale(),
           signIn:
-            signIn === "steps"
-              ? { kind: "steps", ...(kind === "wf" ? { workflowId: sourceId } : { testCaseId: sourceId }) }
-              : signIn === "self" && asset
-                ? { kind: "asset", asset }
-                : { kind: "none" },
+            signIn === "login"
+              ? { kind: "login", asset: loginAsset, signInUrl: signInUrl.trim() || undefined, url: url.trim() || undefined }
+              : signIn === "steps"
+                ? { kind: "steps", ...(kind === "wf" ? { workflowId: sourceId } : { testCaseId: sourceId }) }
+                : signIn === "self" && asset
+                  ? { kind: "asset", asset }
+                  : { kind: "none" },
         },
       });
       setProposals(result.tests);
@@ -158,12 +216,39 @@ export function GenerateTestsModal({
     setError(undefined);
     setProposals(undefined);
     try {
+      let prefix: Workflow | undefined;
+      let savedLogin = loginAsset;
+      if (signIn === "login") {
+        // A new sign-in is saved as a credential first: the PC reads it from there, and so do the tests.
+        if (!savedLogin) {
+          const name = loginName.trim() || loginNameFor(url || signInUrl);
+          if (!username.trim() || !password) throw new Error(t("genTests.loginMissing"));
+          if (assets.some((a) => a.name === name)) throw new Error(t("genTests.loginExists", { name }));
+          await api("/api/assets", {
+            method: "POST",
+            body: { name, type: "credential", value: { username: username.trim(), password }, description: t("genTests.loginDescription", { site: url.trim() || signInUrl.trim() }) },
+          });
+          setAssets((list) => [...list, { name, type: "credential" }]);
+          setLoginAsset(name);
+          setPassword("");
+          savedLogin = name;
+        }
+        const site = url.trim() ? withScheme(url.trim()) : undefined;
+        prefix = {
+          schemaVersion: 1,
+          id: "sign-in",
+          name: "Sign in",
+          variables: SIGN_IN_VARIABLES,
+          root: { id: "root", type: "core.sequence", props: {}, slots: { body: signInSteps({ asset: savedLogin, signInUrl: signInUrl.trim() ? withScheme(signInUrl.trim()) : site!, thenUrl: site }) } },
+        };
+      }
       try {
         localStorage.setItem(PC_KEY, pcId);
+        const settings: Settings = { url, signIn, stepsFrom, loginAsset: savedLogin, signInUrl, kinds: [...kinds], testData, allowChanges, count, maxPages };
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
       } catch {
         /* storage unavailable */
       }
-      let prefix: Workflow | undefined;
       if (signIn === "steps") {
         if (!sourceId) throw new Error(t("genTests.chooseSteps"));
         prefix = kind === "wf" ? (await api<{ definition: Workflow }>(`/api/workflows/${sourceId}`)).definition : (await api<{ definition: Workflow }>(`/api/test-cases/${sourceId}`)).definition;
@@ -219,7 +304,19 @@ export function GenerateTestsModal({
     const f = folders.find((x) => x.id === id);
     return f ? (f.parentId ? `${pathOf(f.parentId)} / ${f.name}` : f.name) : "";
   };
-  const canStart = Boolean(pc?.canExplore) && (url.trim() || (signIn === "steps" && sourceId)) && (signIn !== "steps" || sourceId);
+  const loginReady = Boolean(loginAsset || (username.trim() && password)) && Boolean(url.trim() || signInUrl.trim());
+  const canStart =
+    Boolean(pc?.canExplore) &&
+    kinds.size > 0 &&
+    (url.trim() || (signIn === "steps" && sourceId) || (signIn === "login" && signInUrl.trim())) &&
+    (signIn !== "steps" || sourceId) &&
+    (signIn !== "login" || loginReady);
+  const toggleKind = (k: Kind, on: boolean) => {
+    const next = new Set(kinds);
+    if (on) next.add(k);
+    else next.delete(k);
+    setKinds(next);
+  };
   const pagesFound = explore?.explored?.pages.filter((p) => !p.beforeSignIn).length ?? 0;
 
   let body;
@@ -312,10 +409,44 @@ export function GenerateTestsModal({
         <Field label={t("genTests.signIn")}>
           <select value={signIn} onChange={(e) => setSignIn(e.target.value as SignIn)}>
             <option value="none">{t("genTests.signInNone")}</option>
+            <option value="login">{t("genTests.signInLogin")}</option>
             <option value="steps">{t("genTests.signInSteps")}</option>
             <option value="self">{t("genTests.signInSelf")}</option>
           </select>
         </Field>
+        {signIn === "login" && (
+          <div className="gen-login">
+            <Field label={t("genTests.savedLogin")}>
+              <select value={loginAsset} onChange={(e) => setLoginAsset(e.target.value)}>
+                <option value="">{t("genTests.newLogin")}</option>
+                {assets.map((a) => (
+                  <option key={a.name} value={a.name}>
+                    🔑 {a.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {!loginAsset && (
+              <>
+                <div className="gen-row two">
+                  <Field label={t("genTests.username")}>
+                    <input value={username} autoComplete="off" onChange={(e) => setUsername(e.target.value)} />
+                  </Field>
+                  <Field label={t("genTests.password")}>
+                    <input type="password" value={password} autoComplete="new-password" onChange={(e) => setPassword(e.target.value)} />
+                  </Field>
+                </div>
+                <Field label={t("genTests.saveAs")} hint={t("genTests.saveAsHint")}>
+                  <input value={loginName} placeholder={loginNameFor(url || signInUrl)} onChange={(e) => setLoginName(e.target.value)} />
+                </Field>
+              </>
+            )}
+            <Field label={t("genTests.signInUrl")} hint={t("genTests.signInUrlHint")}>
+              <input value={signInUrl} placeholder="https://.../login" onChange={(e) => setSignInUrl(e.target.value)} />
+            </Field>
+            <p className="muted tiny">{t("genTests.loginHow")}</p>
+          </div>
+        )}
         {signIn === "steps" && (
           <Field label={t("genTests.stepsFrom")} hint={t("genTests.stepsFromHint")}>
             <select value={stepsFrom} onChange={(e) => setStepsFrom(e.target.value)}>
@@ -351,13 +482,26 @@ export function GenerateTestsModal({
             </select>
           </Field>
         )}
+        <Field label={t("genTests.kinds")} hint={kinds.size ? t("genTests.kindsHint") : t("genTests.kindsNone")}>
+          <div className="gen-kinds">
+            {KINDS.map((k) => (
+              <label key={k} className={`gen-kind${kinds.has(k) ? " on" : ""}`}>
+                <input type="checkbox" checked={kinds.has(k)} onChange={(e) => toggleKind(k, e.target.checked)} />
+                {t(`genTests.kind.${k}` as MessageKey)}
+              </label>
+            ))}
+          </div>
+        </Field>
         <Field label={t("genTests.focus")} hint={t("genTests.focusHint")}>
           <textarea rows={2} value={focus} placeholder={t("genTests.focusPlaceholder")} onChange={(e) => setFocus(e.target.value)} />
+        </Field>
+        <Field label={t("genTests.testData")} hint={t("genTests.testDataHint")}>
+          <textarea rows={2} value={testData} placeholder={t("genTests.testDataPlaceholder")} onChange={(e) => setTestData(e.target.value)} />
         </Field>
         <div className="gen-row">
           <Field label={t("genTests.count")}>
             <select value={count} onChange={(e) => setCount(Number(e.target.value))}>
-              {[3, 5, 8, 12].map((n) => (
+              {[3, 5, 8, 12, 15].map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>
@@ -366,7 +510,7 @@ export function GenerateTestsModal({
           </Field>
           <Field label={t("genTests.pages")}>
             <select value={maxPages} onChange={(e) => setMaxPages(Number(e.target.value))}>
-              {[3, 5, 8, 12].map((n) => (
+              {[3, 5, 8, 12, 20].map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>
@@ -386,7 +530,11 @@ export function GenerateTestsModal({
           </Field>
         </div>
         {pc && !pc.canExplore && <p className="warn-text small">{t("genTests.tooOld", { pc: pc.name, version: pc.version || "?" })}</p>}
-        <p className="muted tiny">{t("genTests.safe")}</p>
+        <label className="check-row">
+          <input type="checkbox" checked={allowChanges} onChange={(e) => setAllowChanges(e.target.checked)} />
+          {t("genTests.allowChanges")}
+        </label>
+        <p className={allowChanges ? "warn-text tiny" : "muted tiny"}>{allowChanges ? t("genTests.safeChanges") : t("genTests.safe")}</p>
       </>
     );
   }

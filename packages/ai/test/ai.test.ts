@@ -119,3 +119,24 @@ describe("languages", () => {
     expect(first).toContain("ASCII identifiers");
   });
 });
+
+describe("generateTests", () => {
+  const answer = text('- covered\n```json\n{"tests":[{"name":"T","description":"d","steps":[{"id":"a","type":"browser.open","props":{"url":"https://x"}},{"id":"b","type":"browser.verifyTitle","props":{"text":"X"}}]}]}\n```');
+  const page = { url: "https://x", title: "X", headings: [], text: "", fields: [], buttons: [], links: [], tables: [] };
+  const prompt = (r: Record<string, unknown>) => JSON.stringify(r);
+
+  it("asks for the kinds of tests and uses the person's test data; allows changes only when asked", async () => {
+    const { client, requests } = fakeClient([{ content: [answer] }, { content: [answer] }]);
+    const ai = new ZamAI({ client });
+    await ai.generateTests({ pages: [page], signIn: { kind: "none" }, count: 1, kinds: ["forms", "tables"], testData: "Customer: 4711", allowChanges: true });
+    await ai.generateTests({ pages: [page], signIn: { kind: "none" }, count: 1 });
+    const [changing, safe] = requests.map(prompt);
+    expect(changing).toContain("forms: fields accept valid input");
+    expect(changing).toContain("tables and lists");
+    expect(changing).not.toContain("search, filters");
+    expect(changing).toContain("Customer: 4711");
+    expect(changing).toContain("This is a test environment");
+    expect(safe).toContain("Never do anything that changes or deletes real data");
+    expect(safe).not.toContain("Write tests of these kinds");
+  });
+});
