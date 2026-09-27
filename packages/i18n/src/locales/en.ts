@@ -1454,6 +1454,8 @@ export const en = {
   "site.new.runControl.text": "Pause a run from the Designer's toolbar or the Portal: the bot finishes the step it is on and waits until you resume it. Stop ends the run.",
   "site.new.codeView.title": "View and edit tests as code",
   "site.new.codeView.text": "Switch a workflow or test to </> Code: the same steps as short, readable code. Edit either one and the other follows. Export a test as a Playwright test for your own tools.",
+  "site.new.vision.title": "AI Vision",
+  "site.new.vision.text": "Click, type, read and check by what is on the screen, described in words, for remote desktops, Citrix and apps where selectors do not work. A Click or Type whose selector breaks also tries AI Vision.",
   "site.new.triggers.title": "Triggers",
   "site.new.triggers.text": "Start a process by itself when a web request, a new email or a new file in a folder arrives.",
   "site.new.templates.title": "Templates",

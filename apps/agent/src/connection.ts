@@ -1,7 +1,7 @@
 import { hostname, platform, release } from "node:os";
 import { parseWorkflow, sleep } from "@zamtest/core";
 import { captureStep, closeLingeringBrowsers, keepBrowsersOpen, lingeringBrowsers } from "@zamtest/actions";
-import type { DocumentResult, QueueItem } from "@zamtest/actions";
+import type { DocumentResult, QueueItem, VisionAnswer } from "@zamtest/actions";
 import type { AfterStepInfo, EngineEvent } from "@zamtest/core";
 import { execute } from "./runtime.js";
 import { runRemoteRecording } from "./remote-recording.js";
@@ -312,6 +312,10 @@ export class AgentConnection {
         afterStep,
         beforeStep,
         getAsset: async (name) => (await this.call<{ value: unknown }>("GET", `/api/agent/assets/${encodeURIComponent(name)}`))?.value,
+        // AI Vision: the server looks at the screenshots.
+        vision: {
+          look: async (input) => (await this.call<VisionAnswer>("POST", "/api/agent/vision", { agentId: this.agentId, jobId: job.id, ...input }))!,
+        },
         // Documents are read by AI on the server, which keeps their reviews.
         documents: {
           process: async ({ data, mediaType, ...rest }) => {

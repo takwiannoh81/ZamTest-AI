@@ -2,7 +2,7 @@ const ICONS: Record<string, string> = {
   list: "☰", split: "⑂", repeat: "↻", loop: "⟳", shield: "⛨", stop: "⏹", alert: "⚠", message: "✉",
   equals: "=", clock: "⏱", note: "✎", key: "🔑", code: "{}", globe: "🌐", braces: "{ }", file: "📄",
   save: "💾", browser: "🧭", arrow: "➜", pointer: "👆", keyboard: "⌨", text: "T", hourglass: "⌛",
-  camera: "📷", close: "✕", sparkles: "✨", fileCheck: "🧾", table: "▦", robot: "🤖", window: "🗔", rocket: "🚀",
+  camera: "📷", close: "✕", sparkles: "✨", fileCheck: "🧾", table: "▦", robot: "🤖", window: "🗔", rocket: "🚀", eye: "👁",
 };
 
 export function iconFor(name?: string): string {
@@ -16,6 +16,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
   Files: "#ca8a04",
   Browser: "#2563eb",
   AI: "#db2777",
+  "AI Vision": "#c026d3",
   "Excel & CSV": "#16a34a",
   Email: "#ea580c",
   PDF: "#dc2626",

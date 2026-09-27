@@ -47,6 +47,7 @@ import { recordTestResult, registerTestCases } from "./testcases.js";
 import { registerEditing } from "./editing.js";
 import { EMAIL_POLL_MS, registerTriggers } from "./triggers.js";
 import { DocumentFiles, registerDocuments } from "./documents.js";
+import { registerVision } from "./vision.js";
 import type { Mailbox } from "./triggers.js";
 import { registerRecordings } from "./recordings.js";
 import type { Recordings } from "./recordings.js";
@@ -59,7 +60,7 @@ import { BugReportFiles, registerBugReports } from "./bugreports.js";
  * account existed before it came out. A new release gets a new id (and new texts in
  * @zamtest/help's WhatsNew).
  */
-export const WHATS_NEW = { id: "2026-09-26e", since: "2026-09-26T00:00:00.000Z" };
+export const WHATS_NEW = { id: "2026-09-26f", since: "2026-09-26T00:00:00.000Z" };
 import { registerHelp } from "./help.js";
 import { registerOutreach } from "./outreach.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
@@ -2041,6 +2042,8 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   // For tests: check the mailboxes now.
   app.decorate("triggersCheck", () => triggers.checkMailboxes());
   registerReports(app, { store, screenshots, me, own });
+  // AI Vision steps: find, read or check something on a screenshot.
+  registerVision(app, { store, getAi, agentFor });
 
   /* ------------------------------ alerts ---------------------------- */
   const alerts = new Alerts({ store, mailer, screenshots, portalUrl: config.portalUrl, designerUrl: config.designerUrl, log: (m) => app.log.warn(m), fetch: options.fetch });

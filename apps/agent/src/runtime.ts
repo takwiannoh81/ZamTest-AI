@@ -1,5 +1,5 @@
 import { builtinHandlers } from "@zamtest/actions";
-import type { DocumentService, QueueService } from "@zamtest/actions";
+import type { DocumentService, QueueService, VisionService } from "@zamtest/actions";
 import { AiClient, ZamAI } from "@zamtest/ai";
 import { BUILTIN_ACTIONS, runWorkflow } from "@zamtest/core";
 import type { AfterStepInfo, EngineEvent, EngineServices, RunResult, Step, Workflow } from "@zamtest/core";
@@ -11,6 +11,7 @@ export interface ExecuteOptions {
   getAsset?: (name: string) => Promise<unknown>;
   queues?: QueueService;
   documents?: DocumentService;
+  vision?: VisionService;
   /** After each action step (see RunOptions.afterStep), e.g. to take a screenshot. */
   afterStep?: (info: AfterStepInfo) => unknown | Promise<unknown>;
   /** Before each step (see RunOptions.beforeStep): a paused run waits here. */
@@ -25,7 +26,7 @@ function sharedAi(): ZamAI | null {
 
 /** Runs a workflow with every built-in action and (when configured) AI services. */
 export function execute(workflow: Workflow, options: ExecuteOptions = {}): Promise<RunResult> {
-  const services: EngineServices = { getAsset: options.getAsset, queues: options.queues, documents: options.documents };
+  const services: EngineServices = { getAsset: options.getAsset, queues: options.queues, documents: options.documents, vision: options.vision };
   const aiService = sharedAi();
   if (aiService) services.ai = aiService;
   return runWorkflow(workflow, {

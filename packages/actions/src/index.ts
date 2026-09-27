@@ -11,11 +11,13 @@ import { pdfHandlers } from "./pdf.js";
 import { queueHandlers } from "./queue.js";
 import { systemHandlers } from "./system.js";
 import { verifyHandlers } from "./verify.js";
+import { visionHandlers, withVisionFallback } from "./vision.js";
 
 export { actionTools, getAi } from "./ai.js";
 export { closeLingeringBrowsers, keepBrowsersOpen, lingeringBrowsers, snapshotDom, takeLingeringBrowser } from "./browser.js";
 export { captureStep } from "./screenshots.js";
 export type { DocumentResult, DocumentService } from "./documents.js";
+export type { VisionAnswer, VisionService, VisionTask } from "./vision.js";
 export type { StepScreenshot } from "./screenshots.js";
 export * as desktop from "./desktop/index.js";
 export type { QueueItem, QueueItemStatus, QueueService } from "./queue.js";
@@ -43,7 +45,12 @@ export const builtinHandlers: Record<string, ActionHandler> = {
   ...aiHandlers,
   ...documentHandlers,
   ...verifyHandlers,
+  ...visionHandlers,
 };
+// A Click or Type whose selector does not work tries AI Vision last.
+for (const type of ["browser.click", "browser.type", "desktop.click", "desktop.type"] as const) {
+  builtinHandlers[type] = withVisionFallback(type, builtinHandlers[type]!);
+}
 
 export const builtinPackage: ActionPackage = {
   name: "@zamtest/actions",

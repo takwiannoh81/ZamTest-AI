@@ -15,6 +15,16 @@ const output = (label = "Save result to"): PropDef => ({
   description: "Variable that receives the result",
 });
 
+/** Where AI Vision looks. */
+const VISION_WHERE: PropDef = {
+  name: "where",
+  label: "Look at",
+  type: "enum",
+  options: ["auto", "page", "screen"],
+  default: "auto",
+  description: "page: the open web page. screen: the whole Windows screen (also remote desktops and Citrix). auto: the web page if one is open, else the screen.",
+};
+
 const healing: PropDef[] = [
   {
     name: "description",
@@ -700,6 +710,69 @@ export const BUILTIN_ACTIONS: ActionMeta[] = [
       },
       { name: "maxSteps", label: "Max steps", type: "number", default: 20 },
       output("Save final answer to"),
+    ],
+  },
+  /* ------------------------------ AI Vision ------------------------------ */
+  {
+    type: "vision.click",
+    displayName: "Click (AI Vision)",
+    category: "AI Vision",
+    description: "AI looks at the screen and clicks what you describe in words, e.g. the blue Submit button. For screens where selectors do not work: remote desktops, Citrix, canvas and old applications.",
+    icon: "eye",
+    props: [
+      { name: "target", label: "What to click", type: "string", required: true, description: "In words, e.g. the blue Submit button under the form" },
+      { name: "button", label: "Click", type: "enum", options: ["left", "right", "double"], default: "left" },
+      VISION_WHERE,
+    ],
+  },
+  {
+    type: "vision.type",
+    displayName: "Type (AI Vision)",
+    category: "AI Vision",
+    description: "AI looks at the screen, clicks the field you describe in words and types into it.",
+    icon: "eye",
+    props: [
+      { name: "target", label: "Where to type", type: "string", required: true, description: "In words, e.g. the Amount field" },
+      { name: "text", label: "Text", type: "string", required: true },
+      { name: "clear", label: "Clear first", type: "boolean", default: true },
+      { name: "pressEnter", label: "Press Enter after", type: "boolean", default: false },
+      VISION_WHERE,
+    ],
+  },
+  {
+    type: "vision.read",
+    displayName: "Read from Screen (AI Vision)",
+    category: "AI Vision",
+    description: "AI reads a value from the screen, e.g. the invoice total, as it is written there.",
+    icon: "eye",
+    props: [
+      { name: "target", label: "What to read", type: "string", required: true, description: "In words, e.g. the total at the bottom of the invoice" },
+      VISION_WHERE,
+      output("Save value to"),
+    ],
+  },
+  {
+    type: "vision.verify",
+    displayName: "Check Screen (AI Vision)",
+    category: "AI Vision",
+    description: "Checks that the screen shows what you describe, e.g. an order confirmation with number 1042; otherwise the test fails.",
+    icon: "eye",
+    props: [
+      { name: "expectation", label: "The screen should show", type: "string", required: true, description: "In words, e.g. an order confirmation with number 1042" },
+      { name: "timeoutMs", label: "Timeout (ms)", type: "number", default: 5000 },
+      VISION_WHERE,
+    ],
+  },
+  {
+    type: "vision.waitFor",
+    displayName: "Wait Until Screen Shows (AI Vision)",
+    category: "AI Vision",
+    description: "Waits until the screen shows what you describe, e.g. the Welcome page.",
+    icon: "eye",
+    props: [
+      { name: "expectation", label: "Wait until it shows", type: "string", required: true, description: "In words, e.g. the Welcome page with the user's name" },
+      { name: "timeoutMs", label: "Timeout (ms)", type: "number", default: 30000 },
+      VISION_WHERE,
     ],
   },
   /* ------------------------------ Workflows ------------------------------ */

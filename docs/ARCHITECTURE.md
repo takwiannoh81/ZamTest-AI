@@ -147,6 +147,7 @@ Every orchestrator process holds the data in memory, so there is one orchestrato
 | `POST /api/agent/heartbeat` | Every 10 s. The response lists jobs to cancel |
 | `POST /api/agent/jobs/next` | Pull model, FIFO. Respects `targetAgentId`. Returns 204 when there is no work |
 | `POST /api/agent/jobs/:id/events` | Batched engine events (about 1 s, also with none, and before a step when the last answer is older than 0.5 s). The response can request cancellation or a pause |
+| `POST /api/agent/vision` | AI Vision: a screenshot (base64 JPEG, sized to about 1456 x 816) and a task (locate, read or check). The answer is a position, a value or a yes/no, with a reason. One AI request per look; the image is not kept |
 | `POST /api/agent/jobs/:id/complete` | Final status and outputs |
 | `GET /api/agent/assets/:name` | Used by the Get Asset action |
 | `POST /api/agent/queues/:name/items` | Add Queue Item |

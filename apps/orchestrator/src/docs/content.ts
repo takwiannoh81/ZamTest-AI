@@ -390,6 +390,8 @@ When a selector is healed, the Run panel shows **✨ Self-healed** with **Apply 
 
 Self-healing runs on the bot PC and needs AI to be set up for the agent. Ask your administrator if healing never happens.
 
+When the selector still does not work, a Click or Type step tries **AI Vision** last: AI looks for the target description on the screen and clicks it there (see **AI Vision**).
+
 ## ✨ AI selector suggestions
 
 For web steps, the **✨ AI** button next to the selector opens the **✨ AI selector assistant**:
@@ -485,6 +487,46 @@ AI Prompt, AI Extract Data, AI Agent and AI self-healing run on the bot PC. They
 ## AI requests and your plan
 
 Build with AI, Fix with AI and AI selector suggestions count as AI requests. The Free plan includes 20 a month; Pro includes 500 a month for each builder seat. See **Plans and billing**. When they are used up, the Designer shows a message with **View plans**.`,
+  },
+
+  /* ------------------------------------------------------------------ */
+  {
+    id: "ai-vision",
+    title: "AI Vision",
+    summary: "Click, type, read and check by what is on the screen, for remote desktops, Citrix and apps without selectors",
+    body: `Most steps find what they work on with a selector (\`#login\`, or a Windows control). That does not work on some screens: a remote desktop or Citrix (the bot only sees a picture), canvas and graphic apps, and old applications that do not show their controls. For those, use **AI Vision**: you describe what to click or read in words, and AI finds it on the screen.
+
+## The actions
+
+They are in the **AI Vision** group of the palette.
+
+- **Click (AI Vision)**: clicks what you describe, for example "the blue Submit button under the form". **Click** can be left, right or double.
+- **Type (AI Vision)**: clicks the field you describe ("the Amount field") and types the text. **Clear first** and **Press Enter after** work as in **Type Text**.
+- **Read from Screen (AI Vision)**: reads a value as it is written on the screen ("the total at the bottom of the invoice") into a variable, as text.
+- **Check Screen (AI Vision)**: checks that the screen shows what you describe ("an order confirmation with number 1042"); otherwise the test fails. It looks again until **Timeout (ms)** (5 seconds).
+- **Wait Until Screen Shows (AI Vision)**: waits until the screen shows what you describe ("the Welcome page"), up to **Timeout (ms)** (30 seconds).
+
+**Look at** says where AI looks: **page** (the open web page), **screen** (the whole Windows screen, also a remote desktop or Citrix window) or **auto** (the web page when one is open, otherwise the screen).
+
+In the code view they read: \`vision.click("the blue Submit button")\`, \`vision.type("the Amount field", total)\`, \`total = vision.read("the invoice total")\`, \`vision.verify("an order confirmation")\` and \`vision.waitFor("the Welcome page")\`.
+
+## Describing well
+
+- Say what it looks like and where: "the green Save button at the bottom right", "the second row's Edit link", "the search box at the top".
+- Use the text that is on it when there is some: "the button that says Continue".
+- One thing per step. For "type the user and the password", use two **Type (AI Vision)** steps.
+
+## When a selector breaks
+
+A **Click** or **Type Text** step (web or desktop) whose selector does not work, even after AI self-healing, tries AI Vision last: it looks for the step's **Target description** (or its name) on the page or the screen. The log says "The selector did not work ... AI Vision looks for ...", and "AI Vision did the step" when it worked. Then update the step's selector (for example with **◎ Indicate**), so the next run does not need AI Vision. Turning off **AI self-healing** on a step turns this off too.
+
+## What to know
+
+- Each look is **one AI request** of your plan. **Check Screen** and **Wait Until Screen Shows** look again every few seconds while they wait, and each look counts.
+- A look takes a few seconds. Use selectors where they work, and AI Vision where they do not.
+- The screenshot is sent to ZamTech AI's AI to be read, and is not kept. The step's screenshot in the job (web pages) shows a red circle where AI Vision clicked; the log has the position and what AI saw.
+- The screen must be visible: the bot PC needs a signed-in desktop that is not locked, and for **screen**, the application must be in front.
+- AI Vision needs the ZamTech AI Agent **0.4.0** or newer on the bot PC, and AI set up on the ZamTech AI server (it is on zamtechai.com).`,
   },
 
   /* ------------------------------------------------------------------ */
@@ -1537,6 +1579,14 @@ Open **Triggers** in the Portal and look at the trigger:
 - Emails and files from before the trigger was set up (or turned on again) do not start it.
 - A file trigger needs agent 0.3.9 or newer on its PC, and the PC must be online.
 - Click **Try it** to start it with an example event, then open the job in **Jobs**.
+
+## "AI Vision did not find ... on the page" (or "on the screen")
+
+AI looked at the screenshot and did not see what the step describes. The message ends with what AI saw. Check that the right window or page is in front and not covered, and describe it more precisely: what it looks like, the text on it, and where it is ("the blue Save button at the bottom right"). See **AI Vision**.
+
+## "No handler registered for action vision.click"
+
+The bot PC has an agent older than 0.4.0, which has no AI Vision. Update it from **Bot Agents** (**⬇ Download for Windows**).
 
 ## The code view says "Problems" and the steps do not change
 

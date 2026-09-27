@@ -186,3 +186,31 @@ describe("readDocument", () => {
     expect(() => parseFieldList("total amount")).toThrow('Cannot read the field "total amount"');
   });
 });
+
+describe("lookAtScreen (AI Vision)", () => {
+  const image = Buffer.from("fake jpeg");
+  it("sends the screenshot with its size and keeps the click inside the element", async () => {
+    const answer = { found: true, box: { x: 100, y: 200, width: 80, height: 30 }, x: 400, y: 10, confidence: 0.93, reason: "The Submit button below the form" };
+    const { client, requests } = fakeClient([{ content: [text(JSON.stringify(answer))] }]);
+    const ai = new ZamAI({ client, model: "claude-opus-5" });
+    const result = await ai.lookAtScreen({ task: "locate", target: "the Submit button", image, mediaType: "image/jpeg", width: 1280, height: 720 });
+    // The point was outside its own box: the box's center is used.
+    expect(result).toMatchObject({ found: true, x: 140, y: 215, confidence: 0.93, box: { x: 100, y: 200, width: 80, height: 30 } });
+    const req = requests[0] as { system: string; messages: Array<{ content: Array<{ type: string; source?: { data: string } }> }> };
+    expect(req.system).toContain("1280 x 720");
+    expect(req.messages[0]!.content[0]).toMatchObject({ type: "image", source: { data: image.toString("base64") } });
+  });
+
+  it("reads values and checks screens; nothing is made up when it is not there", async () => {
+    const { client } = fakeClient([
+      { content: [text(JSON.stringify({ found: true, value: "1,180.00", confidence: 0.97, reason: "Total at the bottom" }))] },
+      { content: [text(JSON.stringify({ found: false, value: "ignored", confidence: 0.9, reason: "No total on this screen" }))] },
+      { content: [text(JSON.stringify({ found: false, confidence: 0.8, reason: "The login page is shown" }))] },
+    ]);
+    const ai = new ZamAI({ client, model: "claude-opus-5" });
+    const base = { image, mediaType: "image/jpeg" as const, width: 800, height: 600 };
+    expect(await ai.lookAtScreen({ ...base, task: "read", target: "the total" })).toMatchObject({ found: true, value: "1,180.00" });
+    expect(await ai.lookAtScreen({ ...base, task: "read", target: "the total" })).toMatchObject({ found: false, value: "" });
+    expect(await ai.lookAtScreen({ ...base, task: "check", target: "the Welcome page" })).toMatchObject({ found: false, reason: "The login page is shown" });
+  });
+});

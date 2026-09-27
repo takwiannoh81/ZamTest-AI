@@ -1164,12 +1164,15 @@ function Invoke-Op([string]$op, $a) {
       $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
       $g.Dispose()
       $maxWidth = if ($a.maxWidth) { [int]$a.maxWidth } else { 1600 }
-      if ($bmp.Width -gt $maxWidth) {
-        $height = [int]($bmp.Height * $maxWidth / $bmp.Width)
-        $small = New-Object System.Drawing.Bitmap($maxWidth, $height)
+      $maxHeight = if ($a.maxHeight) { [int]$a.maxHeight } else { 100000 }
+      $scale = [Math]::Min(1.0, [Math]::Min($maxWidth / $bmp.Width, $maxHeight / $bmp.Height))
+      if ($scale -lt 1.0) {
+        $width = [Math]::Max(1, [int]($bmp.Width * $scale))
+        $height = [Math]::Max(1, [int]($bmp.Height * $scale))
+        $small = New-Object System.Drawing.Bitmap($width, $height)
         $gs = [System.Drawing.Graphics]::FromImage($small)
         $gs.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-        $gs.DrawImage($bmp, 0, 0, $maxWidth, $height)
+        $gs.DrawImage($bmp, 0, 0, $width, $height)
         $gs.Dispose(); $bmp.Dispose(); $bmp = $small
       }
       $codec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
@@ -1178,10 +1181,25 @@ function Invoke-Op([string]$op, $a) {
       $params.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, $quality)
       $ms = New-Object System.IO.MemoryStream
       $bmp.Save($ms, $codec, $params)
+      $imageWidth = $bmp.Width; $imageHeight = $bmp.Height
       $bmp.Dispose()
       $data = [Convert]::ToBase64String($ms.ToArray())
       $ms.Dispose()
-      return @{ data = $data }
+      # Where the image is on the screen, for positions read from it (AI Vision).
+      return @{ data = $data; width = $imageWidth; height = $imageHeight; left = $bounds.X; top = $bounds.Y; screenWidth = $bounds.Width; screenHeight = $bounds.Height }
+    }
+    'clickAt' {
+      # A click at a screen position (AI Vision), not on an element.
+      [ZtNative]::Click([int]$a.x, [int]$a.y, ($a.button -eq 'right'), [bool]$a.double)
+      return @{ ok = $true }
+    }
+    'typeText' {
+      # Types into whatever has the keyboard focus (after clickAt).
+      Start-Sleep -Milliseconds 150
+      if ($a.clear -ne $false) { [System.Windows.Forms.SendKeys]::SendWait('^a{DEL}') }
+      [System.Windows.Forms.SendKeys]::SendWait((ConvertTo-SendKeysText ([string]$a.text)))
+      if ($a.pressEnter) { [System.Windows.Forms.SendKeys]::SendWait('{ENTER}') }
+      return @{ ok = $true }
     }
     'indicateWindow' {
       Initialize-Indicate
