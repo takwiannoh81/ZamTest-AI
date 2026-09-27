@@ -30,7 +30,7 @@ interface JobPayload {
   source?: string;
 }
 
-const VERSION = "0.3.9";
+const VERSION = "0.4.0";
 /** How often watched folders are looked at (a file is reported after two equal looks). */
 const WATCH_MS = 5_000;
 
@@ -253,16 +253,29 @@ export class AgentConnection {
     keepBrowsersOpen(tryOut);
 
     let buffer: EngineEvent[] = [];
-    const flush = async () => {
-      if (!buffer.length) return;
+    // Paused from the Designer or the Portal: the run waits before its next step.
+    let paused = false;
+    let lastContact = 0;
+    const flush = async (ask = false) => {
+      // With nothing to send, still ask every second whether to pause, resume or stop.
+      if (!buffer.length && !ask && Date.now() - lastContact < 900) return;
       const events = buffer;
       buffer = [];
       try {
-        const res = await this.call<{ cancel: boolean }>("POST", `/api/agent/jobs/${job.id}/events`, { agentId: this.agentId, events });
+        const res = await this.call<{ cancel: boolean; pause?: boolean }>("POST", `/api/agent/jobs/${job.id}/events`, { agentId: this.agentId, events });
+        lastContact = Date.now();
         if (res?.cancel) controller.abort();
+        const pause = Boolean(res?.pause);
+        if (pause !== paused) this.log(pause ? `Job ${job.id} paused` : `Job ${job.id} resumed`);
+        paused = pause;
       } catch (err) {
         this.log(`Failed to upload events: ${err instanceof Error ? err.message : err}`);
       }
+    };
+    // Before each step, a fresh answer (at most half a second old) on whether to pause.
+    const beforeStep = async () => {
+      if (Date.now() - lastContact >= 500) await flush(true);
+      while (paused && !controller.signal.aborted) await delay(250);
     };
     const flusher = setInterval(() => void flush(), 1000);
 
@@ -297,6 +310,7 @@ export class AgentConnection {
           if (buffer.length >= 200) void flush();
         },
         afterStep,
+        beforeStep,
         getAsset: async (name) => (await this.call<{ value: unknown }>("GET", `/api/agent/assets/${encodeURIComponent(name)}`))?.value,
         // Documents are read by AI on the server, which keeps their reviews.
         documents: {

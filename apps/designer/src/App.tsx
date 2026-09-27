@@ -15,8 +15,8 @@ import { TemplatesModal } from "./components/Templates";
 import { Canvas } from "./components/Canvas";
 import { Palette } from "./components/Palette";
 import { Properties, WorkflowSettings } from "./components/Properties";
-import { RunPanel } from "./components/RunPanel";
-import type { RunState } from "./components/RunPanel";
+import { controlRun, isFinalJob, RunPanel } from "./components/RunPanel";
+import type { RunControl, RunState } from "./components/RunPanel";
 import { cloneWithNewIds, createStep, findStep, insertStep, locate, mapStep, moveStep, removeStep } from "./tree";
 import type { Location } from "./tree";
 import { validate } from "./validate";
@@ -25,6 +25,7 @@ import { fileSlug, isProjectFile, saveJson } from "./files";
 import { atLeast, signOut, useMe } from "./components/session";
 import { useEditLock } from "./components/editLock";
 import type { MessageKey } from "@zamtest/i18n";
+
 
 function UserMenu() {
   const { t } = useI18n();
@@ -267,6 +268,9 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
     api<{ enabled: boolean }>("/api/environments").then((e) => setEnvsOn(e.enabled)).catch(() => undefined);
   }, []);
   const [run, setRun] = useState<RunState>();
+  /** The run's job as last polled: the toolbar shows Pause and Stop while it runs. */
+  const [runJob, setRunJob] = useState<Job>();
+  const runGoing = Boolean(run) && (runJob?.id !== run?.jobId || !isFinalJob(runJob));
   const [runStatus, setRunStatus] = useState<Record<string, "running" | "ok" | "error">>({});
   const [showIssues, setShowIssues] = useState(false);
   /** The version on the server this window's copy is based on (a save of an older one is refused). */
@@ -460,6 +464,16 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
     }
   };
 
+  /** Pause, Resume or Stop the run. */
+  const controlTheRun = async (action: RunControl) => {
+    if (!run) return;
+    try {
+      setRunJob(await controlRun(run.jobId, action));
+    } catch (e) {
+      setStatus((e as Error).message);
+    }
+  };
+
   /** Saves and runs the workflow (or the given version of it); the run's job id. */
   const testRun = async (override?: Workflow): Promise<string | undefined> => {
     if (!readOnly) await save(override);
@@ -628,9 +642,19 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
         <button className="btn-ghost" disabled={readOnly} onClick={() => void save()}>
           {t("common.save")}
         </button>
-        <button className="btn-ghost" onClick={() => void testRun()}>
+        <button className="btn-ghost" disabled={runGoing} title={runGoing ? t("toolbar.runGoing") : ""} onClick={() => void testRun()}>
           {t("toolbar.run")}
         </button>
+        {runGoing && runJob?.id === run?.jobId && runJob?.status === "running" && (
+          <button className="btn-ghost" onClick={() => void controlTheRun(runJob.paused ? "resume" : "pause")}>
+            {t(runJob.paused ? "toolbar.resume" : "toolbar.pause")}
+          </button>
+        )}
+        {runGoing && (
+          <button className="btn-ghost danger" onClick={() => void controlTheRun("cancel")}>
+            {t("toolbar.stop")}
+          </button>
+        )}
         {gitConnected && !isTest && (
           <>
             <button className="btn-ghost" onClick={() => setModal("history")}>
@@ -733,8 +757,11 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
               run={run}
               onClose={() => {
                 setRun(undefined);
+                setRunJob(undefined);
                 setRunStatus({});
               }}
+              onJob={setRunJob}
+              onControl={(action) => void controlTheRun(action)}
               onStepStatus={setRunStatus}
               onSelectStep={setSelectedId}
               onFixWithAi={aiEnabled ? fixRunWithAi : undefined}

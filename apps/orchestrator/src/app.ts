@@ -59,11 +59,11 @@ import { BugReportFiles, registerBugReports } from "./bugreports.js";
  * account existed before it came out. A new release gets a new id (and new texts in
  * @zamtest/help's WhatsNew).
  */
-export const WHATS_NEW = { id: "2026-09-26c", since: "2026-09-26T00:00:00.000Z" };
+export const WHATS_NEW = { id: "2026-09-26d", since: "2026-09-26T00:00:00.000Z" };
 import { registerHelp } from "./help.js";
 import { registerOutreach } from "./outreach.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
-import { createJob, finishJob, HttpError, isFinal, jobWaiting, sweep } from "./jobs.js";
+import { canPause, createJob, finishJob, HttpError, isFinal, jobWaiting, sweep } from "./jobs.js";
 import { Alerts, registerAlerts } from "./alerts.js";
 import { recordAudit, registerAudit } from "./audit.js";
 import { registerReports } from "./reports.js";
@@ -1060,8 +1060,37 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
     if (job.status === "pending") finishJob(store, job, "cancelled", "Cancelled before start");
     else {
       job.status = "cancelling";
+      job.paused = undefined;
       store.appendLogs(job.id, [{ time: nowIso(), level: "warn", message: "Cancellation requested" }]);
     }
+    store.save();
+    return jobSummary(job);
+  });
+
+  // Pause: the bot finishes the step it is on and waits before the next one, until resumed (or stopped).
+  app.post<{ Params: { id: string } }>("/api/jobs/:id/pause", async (req) => {
+    const job = own(store.data.jobs, req.params.id, "Job", req);
+    if (job.status !== "running") throw new HttpError(409, job.status === "pending" ? "The job has not started yet" : `Job is ${job.status}`);
+    if (job.paused) return jobSummary(job);
+    const agent = job.agentId ? store.data.agents[job.agentId] : undefined;
+    if (agent && !canPause(agent.version)) {
+      throw new HttpError(409, `Update the ZamTech AI agent on ${agent.name} to 0.4.0 or newer to pause runs (it has version ${agent.version || "unknown"}). You can stop the run.`);
+    }
+    const who = me(req);
+    job.paused = true;
+    job.pausedAt = nowIso();
+    job.pausedBy = who.email || who.name;
+    store.appendLogs(job.id, [{ time: job.pausedAt, level: "warn", message: `Paused by ${job.pausedBy}: the run waits before its next step` }]);
+    store.save();
+    return jobSummary(job);
+  });
+
+  app.post<{ Params: { id: string } }>("/api/jobs/:id/resume", async (req) => {
+    const job = own(store.data.jobs, req.params.id, "Job", req);
+    if (!job.paused) throw new HttpError(409, "The job is not paused");
+    const who = me(req);
+    job.paused = undefined;
+    store.appendLogs(job.id, [{ time: nowIso(), level: "info", message: `Resumed by ${who.email || who.name}` }]);
     store.save();
     return jobSummary(job);
   });
@@ -1383,8 +1412,9 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
       }
     }
     if (logs.length) store.appendLogs(job.id, logs);
-    store.save();
-    return { cancel: job.status === "cancelling" };
+    // The bot also calls with no events while paused, to hear when it is resumed.
+    if (events.length) store.save();
+    return { cancel: job.status === "cancelling", pause: Boolean(job.paused) };
   });
 
   // The PC sends the screen after a step as a JPEG body; the step's name comes from the job.

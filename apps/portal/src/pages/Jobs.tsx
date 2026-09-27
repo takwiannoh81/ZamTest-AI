@@ -55,7 +55,7 @@ export function Jobs() {
                   {j.packageVersion ? <span className="muted"> v{j.packageVersion}</span> : null}
                 </td>
                 <td>
-                  <Badge status={j.status} />
+                  <Badge status={j.paused ? "paused" : j.status} />
                 </td>
                 <td>{t(`source.${j.source}` as MessageKey)}</td>
                 <td>{timeAgo(j.createdAt)}</td>
@@ -103,9 +103,9 @@ export function JobDetail({ id }: { id: string }) {
     };
   }, [id, final]);
 
-  const cancel = async () => {
+  const control = async (action: "cancel" | "pause" | "resume") => {
     try {
-      await api(`/api/jobs/${id}/cancel`, { method: "POST" });
+      await api(`/api/jobs/${id}/${action}`, { method: "POST" });
       job.reload();
     } catch (e) {
       alert((e as Error).message);
@@ -123,8 +123,13 @@ export function JobDetail({ id }: { id: string }) {
             <a className="btn-ghost" href="#/jobs">
               {t("jobs.backToAll")}
             </a>
+            {j?.status === "running" && (
+              <button className="btn-ghost" onClick={() => void control(j.paused ? "resume" : "pause")}>
+                {t(j.paused ? "jobs.resume" : "jobs.pause")}
+              </button>
+            )}
             {j && !final && (
-              <button className="btn danger" onClick={() => void cancel()}>
+              <button className="btn danger" onClick={() => void control("cancel")}>
                 {t("jobs.cancel")}
               </button>
             )}
@@ -136,7 +141,7 @@ export function JobDetail({ id }: { id: string }) {
         <section className="detail-grid">
           <div>
             <span className="muted">{t("common.status")}</span>
-            <Badge status={j.status} />
+            <Badge status={j.paused ? "paused" : j.status} />
           </div>
           <div>
             <span className="muted">{t("common.source")}</span>

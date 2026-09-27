@@ -56,6 +56,11 @@ export interface RunOptions {
    * the run's resources close: e.g. to take a screenshot. Errors are ignored.
    */
   afterStep?: (info: AfterStepInfo) => unknown | Promise<unknown>;
+  /**
+   * Called before each step starts: a paused run waits here (it is still cancelled by `signal`).
+   * Errors fail the step.
+   */
+  beforeStep?: (step: Step) => unknown | Promise<unknown>;
   /** Internal: a workflow run by a "Call Workflow" step shares its caller's resources (open browser...). */
   shared?: SharedRun;
 }
@@ -239,6 +244,10 @@ export async function runWorkflow(workflow: Workflow, options: RunOptions): Prom
   const runStep = async (step: Step): Promise<void> => {
     if (step.disabled) return;
     if (signal.aborted) throw new CancelledError();
+    if (options.beforeStep) {
+      await options.beforeStep(step);
+      if (signal.aborted) throw new CancelledError();
+    }
 
     const t0 = Date.now();
     emit({ type: "stepStart", time: now(), stepId: step.id, stepType: step.type, label: step.label });

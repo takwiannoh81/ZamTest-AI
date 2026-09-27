@@ -30,6 +30,8 @@ const ACTIONS: Record<string, string> = {
   "POST /api/jobs": "job.run",
   "POST /api/jobs/:id/cancel": "job.cancel",
   "POST /api/jobs/:id/rerun": "job.rerun",
+  "POST /api/jobs/:id/pause": "job.pause",
+  "POST /api/jobs/:id/resume": "job.resume",
   "DELETE /api/jobs/:id": "job.delete",
   "POST /api/schedules": "schedule.create",
   "PUT /api/schedules/:id": "schedule.change",

@@ -83,8 +83,23 @@ export function isFinal(job: Job): boolean {
   return FINAL_JOB_STATUSES.includes(job.status);
 }
 
+/** Whether an agent of this version is at least `since` (e.g. [0, 4, 0]). */
+export function agentAtLeast(version: string | undefined, since: number[]): boolean {
+  const parts = (version ?? "").split(".").map(Number);
+  for (let i = 0; i < since.length; i++) {
+    const have = parts[i] ?? 0;
+    if (Number.isNaN(have)) return false;
+    if (have !== since[i]) return have > since[i]!;
+  }
+  return true;
+}
+
+/** Agents that pause a running job when asked. */
+export const canPause = (version: string | undefined) => agentAtLeast(version, [0, 4, 0]);
+
 export function finishJob(store: Store, job: Job, status: Job["status"], error?: string, outputs?: Record<string, unknown>) {
   job.status = status;
+  job.paused = undefined;
   job.error = error;
   job.outputs = outputs;
   job.finishedAt = nowIso();

@@ -58,7 +58,7 @@ export function Dashboard() {
               <tr key={j.id} className="clickable" onClick={() => (window.location.hash = `/jobs/${j.id}`)}>
                 <td>{j.name}</td>
                 <td>
-                  <Badge status={j.status} />
+                  <Badge status={j.paused ? "paused" : j.status} />
                 </td>
                 <td>{t(`source.${j.source}` as "source.manual")}</td>
                 <td>{timeAgo(j.createdAt)}</td>

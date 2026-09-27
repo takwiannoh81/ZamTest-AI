@@ -196,3 +196,33 @@ describe("Call Workflow", () => {
     expect((await call({})).error).toMatch(/not available/);
   });
 });
+
+describe("before each step (pause)", () => {
+  it("waits before a step while paused, goes on when resumed, and can still be cancelled while paused", async () => {
+    const seen: string[] = [];
+    let resume!: () => void;
+    const paused = new Promise<void>((r) => (resume = r));
+    const second = step("core.log", { message: "two" });
+    const run = runWorkflow(wf([step("core.log", { message: "one" }), second]), {
+      handlers: { ...handlers, "core.log": (p) => void seen.push(String(p.message)) },
+      beforeStep: (s) => (s.id === second.id ? paused : undefined),
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(seen).toEqual(["one"]);
+    resume();
+    expect((await run).status).toBe("succeeded");
+    expect(seen).toEqual(["one", "two"]);
+
+    // Stopped while paused: the next step never runs.
+    const controller = new AbortController();
+    const never: string[] = [];
+    const stopped = runWorkflow(wf([step("core.log", { message: "never" })]), {
+      handlers: { ...handlers, "core.log": (p) => void never.push(String(p.message)) },
+      signal: controller.signal,
+      beforeStep: () => new Promise<void>((r) => controller.signal.addEventListener("abort", () => r())),
+    });
+    controller.abort();
+    expect((await stopped).status).toBe("cancelled");
+    expect(never).toEqual([]);
+  });
+});

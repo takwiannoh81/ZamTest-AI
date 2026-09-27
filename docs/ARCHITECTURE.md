@@ -28,6 +28,7 @@
 
 A workflow is JSON, validated with zod (`WorkflowSchema`):
 
+
 ```jsonc
 {
   "schemaVersion": 1,
@@ -59,7 +60,7 @@ A workflow is JSON, validated with zod (`WorkflowSchema`):
   - Executes control flow itself: sequence, if, forEach, while, tryCatch and break.
   - Delegates every leaf action to handlers.
   - Emits `stepStart`, `stepEnd`, `log` and `custom` events.
-  - Honours an `AbortSignal` for cancellation.
+  - Honours an `AbortSignal` for cancellation, and calls `beforeStep` before each step (a paused run waits there).
   - Runs registered disposers at the end, for example to close a browser.
 
 ## Actions (`packages/actions`)
@@ -120,7 +121,7 @@ A manual agent loop in `packages/ai/src/agent.ts` runs tool calls one at a time,
 | Workflow (draft) | Edited by the Designer. Records `updatedBy` |
 | Edit lock | In memory (`editing.ts`), per workflow or test case. One Designer window holds it and renews it every 30 s; it expires after 90 s. Saves and deletes by anyone else get 409 `locked` |
 | Package ("process") | Immutable, versioned snapshot created by **Publish** |
-| Job | Status: `pending → running → succeeded / failed / cancelled` (with `cancelling` in between). Stores inputs, outputs, logs and healed selectors |
+| Job | Status: `pending → running → succeeded / failed / cancelled` (with `cancelling` in between). A running job can be `paused` (it waits before its next step). Stores inputs, outputs, logs and healed selectors |
 | Agent | `online / busy / offline`, derived from heartbeats. Jobs on an agent that stays silent for 2 minutes are failed |
 | Schedule | Cron (croner) with an optional IANA time zone, inputs and a target agent |
 | Asset | text / number / boolean / credential. Credentials are masked for the Portal and only returned in full to agents |
@@ -144,7 +145,7 @@ Every orchestrator process holds the data in memory, so there is one orchestrato
 | `POST /api/agent/register` | Returns an `agentId`. Re-registration fails jobs that were running on the agent before it restarted |
 | `POST /api/agent/heartbeat` | Every 10 s. The response lists jobs to cancel |
 | `POST /api/agent/jobs/next` | Pull model, FIFO. Respects `targetAgentId`. Returns 204 when there is no work |
-| `POST /api/agent/jobs/:id/events` | Batched engine events (about 1 s). The response can request cancellation |
+| `POST /api/agent/jobs/:id/events` | Batched engine events (about 1 s, also with none, and before a step when the last answer is older than 0.5 s). The response can request cancellation or a pause |
 | `POST /api/agent/jobs/:id/complete` | Final status and outputs |
 | `GET /api/agent/assets/:name` | Used by the Get Asset action |
 | `POST /api/agent/queues/:name/items` | Add Queue Item |

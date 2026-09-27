@@ -134,7 +134,7 @@ tr.clickable:hover td { background: var(--surface-2); }
 .badge-succeeded, .badge-online { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
 .badge-failed { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
 .badge-running, .badge-busy { background: color-mix(in srgb, var(--info) 15%, transparent); color: var(--info); }
-.badge-pending, .badge-cancelling { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.badge-pending, .badge-cancelling, .badge-paused { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
 
 .empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--muted); }
 .empty pre { text-align: left; display: inline-block; }

@@ -286,6 +286,10 @@ export interface Job {
   inputs: Record<string, unknown>;
   outputs?: Record<string, unknown>;
   status: JobStatus;
+  /** Paused while running: the bot waits before the next step until it is resumed. */
+  paused?: boolean;
+  pausedAt?: string;
+  pausedBy?: string;
   source: "manual" | "schedule" | "designer" | "api" | "test" | "trigger";
   scheduleId?: string;
   /** The test run it is part of. */

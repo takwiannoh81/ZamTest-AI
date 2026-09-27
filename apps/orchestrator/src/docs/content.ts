@@ -181,7 +181,7 @@ Steps with retries or continue on error show a tag such as \`retry×2\` on the c
 - **● Record** records steps (see **Recording**).
 - **✨ Build with AI** builds or changes the workflow from a description.
 - **Save** (Ctrl+S) saves to ZamTech AI.
-- **▶ Run** saves and runs the workflow on a PC.
+- **▶ Run** saves and runs the workflow on a PC. While it runs, **⏸ Pause** (or **▶ Resume**) and **■ Stop** appear next to it (see **Running and the Run panel**).
 - **Publish** releases a new version as a process in the Portal.
 - 🗑 **Delete this workflow**. Published versions are kept.
 
@@ -210,7 +210,9 @@ Click **▶ Run**. The Designer saves the workflow and sends it to an available 
 - The status: queued, pending, running, succeeded, failed or cancelled.
 - While the run waits, a message says why and what to do (see **Troubleshooting**).
 - The log, line by line. Click a line to select its step. Failed steps are marked on the canvas.
-- **Stop** ends the run.
+- **⏸ Pause** pauses the run: the bot finishes the step it is on, then waits before the next one. The status shows **paused**. Look at the PC, check the log, then click **▶ Resume** to go on from the next step.
+- **Stop** ends the run, also while it is paused. The step that is running is stopped, and the run is **cancelled**.
+- The same **⏸ Pause**, **▶ Resume** and **■ Stop** buttons are in the toolbar, next to **▶ Run**, while a run is going. **▶ Run** is turned off until the run ends.
 - **✨ Self-healed** rows show selectors that AI repaired during the run. Click **Apply fix** to put the new selector in the step, then save.
 - **Outputs:** the values of the workflow's out arguments.
 - When a run fails, **✨ Fix with AI** finds the cause and suggests fixes.`,
@@ -762,7 +764,7 @@ Values are never recorded: no passwords, secrets or asset values, only which rec
 
 ## Run from the Designer
 
-Click **▶ Run**. The Designer saves the workflow and sends it to an available PC. The **Test run** panel shows the status, the log and the outputs. Click **Stop** to end it.
+Click **▶ Run**. The Designer saves the workflow and sends it to an available PC. The **Test run** panel shows the status, the log and the outputs. Click **⏸ Pause** to pause it before its next step and **▶ Resume** to go on, or **Stop** to end it. These buttons are in the toolbar too.
 
 ## Start from the Portal
 
@@ -792,9 +794,11 @@ Click a job to open it. You see:
 
 **Cancel job** stops a job that is pending or running.
 
+**Pause** pauses a running job: the bot finishes the step it is on and waits before the next one, and the status shows **paused**. **Resume** goes on from the next step. A step that is itself waiting (for example for a document review, or a **Delay**) finishes its wait first. While paused, the PC stays busy with the job and takes no other jobs. Pausing needs the ZamTech AI Agent **0.4.0** or newer on the PC.
+
 ## Who can do what
 
-Viewers can see jobs. Operators can start, run again and cancel jobs of published processes. Running again a Designer test run, and deleting jobs, needs a Developer or Admin.
+Viewers can see jobs. Operators can start, run again, pause, resume and cancel jobs of published processes. Running again a Designer test run, and deleting jobs, needs a Developer or Admin.
 
 ## Why a run waits
 
@@ -1484,6 +1488,10 @@ Open **Triggers** in the Portal and look at the trigger:
 ## "The document was not reviewed within ... minutes"
 
 No one approved or rejected the document in time. It is still in **Reviews** in the Portal: review it there. Run the workflow again afterwards, or use **Or hand over to process** so that the workflow does not wait (see **Documents and reviews**).
+
+## "Update the ZamTech AI agent on ... to 0.4.0 or newer to pause runs"
+
+The bot PC running the job has an older agent, which cannot pause. You can still **Stop** the run. To pause runs on that PC, update its agent from **Bot Agents** (**⬇ Download for Windows**).
 
 ## "Update the agent"
 

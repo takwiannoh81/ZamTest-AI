@@ -20,8 +20,8 @@ ZamTech AI is a low-code, AI-native automation (RPA) platform, in the same space
 - **AI at run time**:
   - *Self-healing selectors*: when a browser selector breaks, the bot sends a condensed DOM to Claude and tries each suggested replacement against the live page. It continues with the first one that matches exactly one element. The Portal and Designer show every healed selector, and the Designer can apply the fix with one click.
   - *AI actions*: **AI Prompt**, **AI Extract Data** (structured output validated against a JSON Schema) and **AI Agent**. The agent is given a goal and decides which platform actions to call (browser, HTTP, files) until the goal is met.
-- **Portal**: dashboard, processes (start with inputs, target a specific agent), jobs (live logs, cancel, outputs, healed selectors), cron schedules with time zones, bot agent health, and assets/credentials (credentials are masked in the UI).
-- **Bot Agent**: registers with the orchestrator, sends heartbeats, pulls jobs, streams logs, supports cancellation and reads assets. `run` mode executes a workflow file locally.
+- **Portal**: dashboard, processes (start with inputs, target a specific agent), jobs (live logs, pause, resume, cancel, outputs, healed selectors), cron schedules with time zones, bot agent health, and assets/credentials (credentials are masked in the UI).
+- **Bot Agent**: registers with the orchestrator, sends heartbeats, pulls jobs, streams logs, supports pausing and cancellation, and reads assets. `run` mode executes a workflow file locally.
 - **Actions**:
   - **Control flow and basics:** control flow, log, assign, delay, JavaScript, get asset, HTTP, JSON and files.
   - **Browser:** automation through Playwright: open, navigate, click, type, select option, get text, wait, screenshot, close.

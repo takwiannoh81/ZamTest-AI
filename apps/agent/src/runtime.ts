@@ -2,7 +2,7 @@ import { builtinHandlers } from "@zamtest/actions";
 import type { DocumentService, QueueService } from "@zamtest/actions";
 import { AiClient, ZamAI } from "@zamtest/ai";
 import { BUILTIN_ACTIONS, runWorkflow } from "@zamtest/core";
-import type { AfterStepInfo, EngineEvent, EngineServices, RunResult, Workflow } from "@zamtest/core";
+import type { AfterStepInfo, EngineEvent, EngineServices, RunResult, Step, Workflow } from "@zamtest/core";
 
 export interface ExecuteOptions {
   inputs?: Record<string, unknown>;
@@ -13,6 +13,8 @@ export interface ExecuteOptions {
   documents?: DocumentService;
   /** After each action step (see RunOptions.afterStep), e.g. to take a screenshot. */
   afterStep?: (info: AfterStepInfo) => unknown | Promise<unknown>;
+  /** Before each step (see RunOptions.beforeStep): a paused run waits here. */
+  beforeStep?: (step: Step) => unknown | Promise<unknown>;
 }
 
 let ai: ZamAI | null | undefined;
@@ -34,6 +36,7 @@ export function execute(workflow: Workflow, options: ExecuteOptions = {}): Promi
     services,
     onEvent: options.onEvent,
     afterStep: options.afterStep,
+    beforeStep: options.beforeStep,
   });
 }
 

@@ -8,6 +8,13 @@ export interface RunState {
   jobId: string;
 }
 
+export type RunControl = "pause" | "resume" | "cancel";
+
+/** Pauses, resumes or stops a run; throws with the server's reason (e.g. the bot is too old to pause). */
+export const controlRun = (jobId: string, action: RunControl) => api<Job>(`/api/jobs/${jobId}/${action}`, { method: "POST" });
+
+export const isFinalJob = (job?: Job) => Boolean(job && ["succeeded", "failed", "cancelled"].includes(job.status));
+
 /** Streams the log of a designer test run and surfaces AI-healed selectors. */
 export function RunPanel({
   run,
@@ -16,8 +23,14 @@ export function RunPanel({
   onApplyHealed,
   onSelectStep,
   onFixWithAi,
+  onJob,
+  onControl,
 }: {
   run: RunState;
+  /** The run's job, each time it is polled (for the toolbar's Pause and Stop). */
+  onJob?: (job: Job) => void;
+  /** Pause, Resume and Stop, handled by the caller. */
+  onControl: (action: RunControl) => void;
   onClose: () => void;
   onStepStatus: (s: Record<string, "running" | "ok" | "error">) => void;
   onApplyHealed: (stepId: string, selector: string) => void;
@@ -30,7 +43,7 @@ export function RunPanel({
   const [logs, setLogs] = useState<JobLog[]>([]);
   const last = useRef(0);
   const box = useRef<HTMLDivElement>(null);
-  const final = job && ["succeeded", "failed", "cancelled"].includes(job.status);
+  const final = isFinalJob(job);
 
   useEffect(() => {
     last.current = 0;
@@ -48,7 +61,10 @@ export function RunPanel({
         api<JobLog[]>(`/api/jobs/${run.jobId}/logs?after=${last.current}`).catch(() => [] as JobLog[]),
       ]);
       if (!alive) return;
-      if (j) setJob(j);
+      if (j) {
+        setJob(j);
+        onJob?.(j);
+      }
       if (fresh.length) {
         last.current = fresh.at(-1)!.seq;
         setLogs((l) => [...l, ...fresh]);
@@ -87,13 +103,16 @@ export function RunPanel({
     }
   };
 
-  const cancel = () => void api(`/api/jobs/${run.jobId}/cancel`, { method: "POST" }).catch(() => undefined);
-
   return (
     <section className="run-panel">
       <div className="run-head">
         <strong>{t("run.title")}</strong>
-        <span className={`badge badge-${job?.status ?? "pending"}`}>{t(job ? (`status.${job.status}` as MessageKey) : "status.queued")}</span>
+        {job?.paused ? (
+          <span className="badge badge-paused">{t("status.paused")}</span>
+        ) : (
+          <span className={`badge badge-${job?.status ?? "pending"}`}>{t(job ? (`status.${job.status}` as MessageKey) : "status.queued")}</span>
+        )}
+        {job?.paused && <span className="tiny run-waiting">{t("run.pausedHint")}</span>}
         {job?.status === "pending" && (
           <span className={`tiny ${job.waiting && job.waiting.reason !== "starting" && job.waiting.reason !== "busy" ? "run-waiting" : "muted"}`}>
             {waitingText(job)}
@@ -108,8 +127,13 @@ export function RunPanel({
             {t("fix.withAi")}
           </button>
         )}
+        {job?.status === "running" && (
+          <button className="btn-ghost small" onClick={() => onControl(job.paused ? "resume" : "pause")}>
+            {t(job.paused ? "toolbar.resume" : "toolbar.pause")}
+          </button>
+        )}
         {!final && (
-          <button className="btn-ghost small danger" onClick={cancel}>
+          <button className="btn-ghost small danger" onClick={() => onControl("cancel")}>
             {t("run.stop")}
           </button>
         )}

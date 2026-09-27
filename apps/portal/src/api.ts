@@ -221,6 +221,8 @@ export interface Job {
   packageId?: string;
   packageVersion?: number;
   status: JobStatus;
+  /** Paused while running: the bot waits before the next step. */
+  paused?: boolean;
   source: string;
   agentId?: string;
   targetAgentId?: string;

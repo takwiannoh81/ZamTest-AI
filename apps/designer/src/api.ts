@@ -100,6 +100,8 @@ export interface WorkflowDraft {
 export interface Job {
   id: string;
   status: "pending" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
+  /** Paused while running: the bot waits before the next step. */
+  paused?: boolean;
   error?: string;
   outputs?: Record<string, unknown>;
   healedSelectors: Array<{ stepId?: string; oldSelector: string; newSelector: string; reason?: string }>;
