@@ -329,6 +329,10 @@ Bot PCs take a screenshot after every browser and desktop step, and whenever a s
 - To turn them off on a PC, set the environment variable `ZAMTEST_SCREENSHOTS=off` for its agent. Consider this for PCs whose screens show confidential data.
 - Bot PCs need the agent version with this feature: the cloud bot updates with `install.sh`, and Windows PCs with the next agent installer release.
 
+## 6b2. Documents for review
+
+Documents sent by the **Process Document with AI** action are kept in the data volume under `documents/`, not in the database, so the reviewers can see them. Each file is deleted 30 days after its document was reviewed (or needed no review); the fields read from it stay in the database. To keep files longer or shorter, set `ZAMTEST_DOCUMENT_DAYS` with `set-env.sh`. Documents are read with the server's `ANTHROPIC_API_KEY`, and each counts as one AI request of the customer's plan.
+
 ## 6c. Data and Postgres
 
 The platform's data (workspaces, users, workflows, processes, jobs and their logs, schedules, queues, assets, test cases, the audit log) is kept in **Postgres**, in the `postgres` service of `docker-compose.yml`. Only the orchestrator can reach it; it is not exposed to the internet.

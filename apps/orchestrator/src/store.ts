@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join } from "node:path";
 import { PostgresPersistence, pgSql } from "./db.js";
 import type { Sql } from "./db.js";
-import type { Agent, Announcement, ApiToken, Asset, AuditEvent, BugReport, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, TestCase, TestFolder, TestRun, Trigger, User, WorkflowDraft, Workspace } from "./types.js";
+import type { Agent, Announcement, ApiToken, Asset, AuditEvent, BugReport, EmailToken, Enrollment, InstallKey, MfaChallenge, SsoState, Job, JobLog, Package, Promotion, Queue, QueueItem, Schedule, Session, TestCase, TestFolder, TestRun, Trigger, DocumentTask, User, WorkflowDraft, Workspace } from "./types.js";
 import { DEFAULT_WORKSPACE } from "./types.js";
 
 export interface Data {
@@ -15,6 +15,8 @@ export interface Data {
   schedules: Record<string, Schedule>;
   /** Event triggers: web requests, emails, files. */
   triggers: Record<string, Trigger>;
+  /** Documents read by AI, and their reviews. */
+  documents: Record<string, DocumentTask>;
   assets: Record<string, Asset>;
   users: Record<string, User>;
   sessions: Record<string, Session>;
@@ -59,6 +61,7 @@ export const emptyData = (): Data => ({
   jobLogs: {},
   schedules: {},
   triggers: {},
+  documents: {},
   assets: {},
   users: {},
   sessions: {},

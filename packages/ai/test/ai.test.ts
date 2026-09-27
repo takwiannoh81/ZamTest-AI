@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
-import { AiRefusalError, extractJson, ZamAI } from "../src/index.js";
+import { AiRefusalError, extractJson, parseFieldList, ZamAI } from "../src/index.js";
 import type { BetaMessage } from "../src/index.js";
 
 type Block = BetaMessage["content"][number];
@@ -138,5 +138,51 @@ describe("generateTests", () => {
     expect(changing).toContain("This is a test environment");
     expect(safe).toContain("Never do anything that changes or deletes real data");
     expect(safe).not.toContain("Write tests of these kinds");
+  });
+});
+
+describe("readDocument", () => {
+  const answer = (fields: Record<string, { value: unknown; confidence: number; evidence: string }>) =>
+    text(JSON.stringify({ documentType: "invoice", summary: "An invoice", fields }));
+
+  it("sends a PDF as a document (an image as an image), and checks what comes back", async () => {
+    const { client, requests } = fakeClient([
+      {
+        content: [
+          answer({
+            supplier: { value: "ACME", confidence: 0.99, evidence: "ACME Ltd" },
+            invoiceDate: { value: "1 Sept 2026", confidence: 0.95, evidence: "1 Sept 2026" },
+            total: { value: "1,180.00", confidence: 1.4, evidence: "Total 1,180.00" },
+            dueDate: { value: null, confidence: 0.9, evidence: "" },
+          }),
+        ],
+      },
+      { content: [answer({ total: { value: 5, confidence: 0.97, evidence: "5.00" } })] },
+    ]);
+    const ai = new ZamAI({ client });
+    const fields = parseFieldList("supplier, invoiceDate:date, total:number, dueDate:date");
+    const read = await ai.readDocument({ data: Buffer.from("%PDF"), mediaType: "application/pdf", fields });
+    expect(read.fields).toEqual({ supplier: "ACME", invoiceDate: "1 Sept 2026", total: 1180, dueDate: null });
+    // A date or number in the wrong form is kept to be fixed, but not trusted; confidence stays within 0..1.
+    expect(read.confidence).toEqual({ supplier: 0.99, invoiceDate: 0.3, total: 0.3, dueDate: 0.9 });
+    const sent = requests[0] as { messages: Array<{ content: Array<{ type: string; source?: { media_type: string } }> }> };
+    expect(sent.messages[0]!.content[0]).toMatchObject({ type: "document", source: { media_type: "application/pdf" } });
+
+    await ai.readDocument({ data: Buffer.from("png"), mediaType: "image/png", fields: parseFieldList("total:number") });
+    expect((requests[1] as typeof sent).messages[0]!.content[0]).toMatchObject({ type: "image", source: { media_type: "image/png" } });
+    await expect(ai.readDocument({ data: Buffer.from("x"), mediaType: "image/tiff", fields })).rejects.toThrow("must be PDF, PNG, JPEG, GIF or WebP");
+  });
+
+  it("reads field lists as people write them", () => {
+    expect(parseFieldList("supplier, total:number, invoiceDate: date - the date printed at the top")).toEqual([
+      { name: "supplier", type: "text" },
+      { name: "total", type: "number" },
+      { name: "invoiceDate", type: "date", description: "the date printed at the top" },
+    ]);
+    expect(parseFieldList("iban:string - the account, with spaces\npaid:boolean")).toEqual([
+      { name: "iban", type: "text", description: "the account, with spaces" },
+      { name: "paid", type: "boolean" },
+    ]);
+    expect(() => parseFieldList("total amount")).toThrow('Cannot read the field "total amount"');
   });
 });

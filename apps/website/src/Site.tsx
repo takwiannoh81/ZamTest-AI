@@ -22,6 +22,7 @@ const FEATURES: Card[] = [
 
 /** The latest features, first on the page. */
 const NEW: Card[] = [
+  { icon: "🧾", title: "site.new.documents.title", text: "site.new.documents.text" },
   { icon: "⚡", title: "site.new.triggers.title", text: "site.new.triggers.text" },
   { icon: "📚", title: "site.new.templates.title", text: "site.new.templates.text" },
   { icon: "👥", title: "site.new.teamEditing.title", text: "site.new.teamEditing.text" },

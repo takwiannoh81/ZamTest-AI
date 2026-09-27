@@ -10,6 +10,8 @@ import { answerHelp, translateDoc } from "./help.js";
 import type { DocText, HelpChatInput } from "./help.js";
 import type { GenerateWorkflowInput } from "./workflow-gen.js";
 import { generateTests } from "./test-gen.js";
+import { readDocument } from "./documents.js";
+import type { ReadDocumentInput } from "./documents.js";
 import type { GenerateTestsInput } from "./test-gen.js";
 
 export * from "./client.js";
@@ -21,6 +23,8 @@ export type { DocText, HelpChatInput } from "./help.js";
 export type { GenerateTestsInput, GenerateTestsResult, GeneratedTest, SitePage, TestKind } from "./test-gen.js";
 export { TEST_KINDS } from "./test-gen.js";
 export { checkTests } from "./test-gen.js";
+export { DOCUMENT_MEDIA_TYPES, DOCUMENT_PRESETS, parseFieldList } from "./documents.js";
+export type { DocumentField, DocumentFieldType, ReadDocumentInput, ReadDocumentResult } from "./documents.js";
 
 /** Facade over every AI capability of the platform. */
 export class ZamAI {
@@ -63,6 +67,11 @@ export class ZamAI {
   /** A docs section in another language. */
   translateDoc(input: DocText & { language: string }) {
     return translateDoc(this.client, input);
+  }
+
+  /** Reads the fields of a document (PDF or image), with how sure it is of each. */
+  readDocument(input: ReadDocumentInput) {
+    return readDocument(this.client, input);
   }
 
   /** The help assistant's answer, from the docs. */

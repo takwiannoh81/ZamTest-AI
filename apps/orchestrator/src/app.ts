@@ -46,6 +46,7 @@ import { GitRepos } from "./git.js";
 import { recordTestResult, registerTestCases } from "./testcases.js";
 import { registerEditing } from "./editing.js";
 import { EMAIL_POLL_MS, registerTriggers } from "./triggers.js";
+import { DocumentFiles, registerDocuments } from "./documents.js";
 import type { Mailbox } from "./triggers.js";
 import { registerRecordings } from "./recordings.js";
 import type { Recordings } from "./recordings.js";
@@ -58,7 +59,7 @@ import { BugReportFiles, registerBugReports } from "./bugreports.js";
  * account existed before it came out. A new release gets a new id (and new texts in
  * @zamtest/help's WhatsNew).
  */
-export const WHATS_NEW = { id: "2026-09-26b", since: "2026-09-26T00:00:00.000Z" };
+export const WHATS_NEW = { id: "2026-09-26c", since: "2026-09-26T00:00:00.000Z" };
 import { registerHelp } from "./help.js";
 import { registerOutreach } from "./outreach.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";
@@ -85,6 +86,8 @@ declare module "fastify" {
 export interface AppOptions {
   config: OrchestratorConfig;
   store?: Store;
+  /** Where document files are kept (tests keep them in memory). */
+  documentFiles?: DocumentFiles;
   /** Reads the mailboxes of email triggers (tests use a fake); IMAP by default. */
   mailbox?: Mailbox;
   /** Inject an AI facade (tests); defaults to a real client when an API key is configured. */
@@ -1987,6 +1990,24 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   // Mailboxes of email triggers, every minute.
   const mailChecks = setInterval(() => void triggers.checkMailboxes(), EMAIL_POLL_MS);
   mailChecks.unref();
+  // Documents read by AI, and their reviews in the Portal.
+  const documents = registerDocuments(app, {
+    store,
+    files: options.documentFiles ?? new DocumentFiles(config.dataDir),
+    getAi,
+    mailer: options.mailer,
+    portalUrl: config.portalUrl,
+    keepDays: config.documentDays,
+    me,
+    own,
+    mine,
+    agentFor,
+    who,
+    log: (m) => app.log.info(m),
+  });
+  const documentSweep = setInterval(() => documents.sweep(), 3_600_000);
+  documentSweep.unref();
+  app.decorate("documentsSweep", () => documents.sweep());
   // For tests: check the mailboxes now.
   app.decorate("triggersCheck", () => triggers.checkMailboxes());
   registerReports(app, { store, screenshots, me, own });
@@ -2111,6 +2132,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   app.addHook("onClose", async () => {
     clearInterval(sweeper);
     clearInterval(mailChecks);
+    clearInterval(documentSweep);
     scheduler.stop();
     options.backup?.stop();
     await store.close();

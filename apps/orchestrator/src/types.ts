@@ -332,6 +332,53 @@ export interface Schedule {
   createdAt: string;
 }
 
+/** A document read by AI, and (when asked) checked by a person: see documents.ts. */
+export interface DocumentTask {
+  /** Also the file's id. */
+  id: string;
+  workspaceId: string;
+  /** The job whose step sent it, and its process's name. */
+  jobId?: string;
+  processName?: string;
+  /** The file's name. */
+  name: string;
+  mediaType: string;
+  size: number;
+  /** What reviewers see as its title (from the step). */
+  title?: string;
+  fields: Array<{ name: string; type: "text" | "number" | "date" | "boolean"; description?: string }>;
+  /** What AI read. */
+  result: {
+    documentType: string;
+    summary: string;
+    fields: Record<string, string | number | boolean | null>;
+    confidence: Record<string, number>;
+    evidence: Record<string, string>;
+  };
+  review: "when unsure" | "always" | "never";
+  threshold: number;
+  /** Fields AI was not sure of (below the threshold, or missing). */
+  unsure: string[];
+  /** auto: no review was needed. */
+  status: "pending" | "approved" | "rejected" | "auto";
+  /** The fields after the review. */
+  final?: Record<string, string | number | boolean | null>;
+  /** Fields the reviewer changed. */
+  corrected?: string[];
+  reviewedBy?: string;
+  reviewedAt?: string;
+  comment?: string;
+  /** Emails told when it waits for review. */
+  notify?: string[];
+  /** A process started with the result when it is done (instead of the workflow waiting). */
+  thenProcess?: string;
+  thenJobId?: string;
+  thenError?: string;
+  createdAt: string;
+  doneAt?: string;
+  fileDeletedAt?: string;
+}
+
 /** Starts a process (or test cases) when something happens: see triggers.ts. */
 export interface Trigger {
   id: string;

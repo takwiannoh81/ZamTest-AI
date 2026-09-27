@@ -634,6 +634,37 @@ export const BUILTIN_ACTIONS: ActionMeta[] = [
     ],
   },
   {
+    type: "doc.process",
+    displayName: "Process Document with AI",
+    category: "AI",
+    description:
+      "Reads a PDF, scan or photo with AI (an invoice, receipt, order or your own fields) and, when needed, has a person check it in the Portal (Reviews). Result: { status, fields, confidence, unsure, reviewedBy, comment }.",
+    icon: "fileCheck",
+    props: [
+      { name: "path", label: "Document file", type: "string", required: true, description: "A PDF, PNG or JPEG file, e.g. {{ attachment.path }} or {{ trigger.path }}." },
+      { name: "documentType", label: "Document type", type: "enum", options: ["invoice", "receipt", "purchase order", "custom"], default: "invoice" },
+      {
+        name: "fields",
+        label: "Fields",
+        type: "text",
+        description: "For Custom, or instead of the document type's fields: one per line, as name:type - description. Types: text, number, date, boolean. E.g. total:number - the amount to pay.",
+      },
+      { name: "instructions", label: "Instructions for AI", type: "text" },
+      { name: "review", label: "Human review", type: "enum", options: ["when unsure", "always", "never"], default: "when unsure" },
+      { name: "threshold", label: "Sure enough from", type: "number", default: 0.9, description: "0 to 1. A field AI is less sure of than this is checked by a person." },
+      { name: "title", label: "Title for the reviewer", type: "string", description: "E.g. Invoice from {{ trigger.from }}. Empty = the file name." },
+      { name: "notify", label: "Email the reviewers", type: "string", description: "Addresses told when a document waits for review, separated by commas." },
+      { name: "waitMinutes", label: "Wait for the review (minutes)", type: "number", default: 60 },
+      {
+        name: "thenProcess",
+        label: "Or hand over to process",
+        type: "string",
+        description: "Name of a published process that starts with the result (its in-argument document) once it is reviewed. The workflow then goes on without waiting.",
+      },
+      output("Save result to"),
+    ],
+  },
+  {
     type: "ai.extract",
     displayName: "AI Extract Data",
     category: "AI",

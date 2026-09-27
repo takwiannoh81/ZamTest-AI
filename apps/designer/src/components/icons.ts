@@ -2,7 +2,7 @@ const ICONS: Record<string, string> = {
   list: "☰", split: "⑂", repeat: "↻", loop: "⟳", shield: "⛨", stop: "⏹", alert: "⚠", message: "✉",
   equals: "=", clock: "⏱", note: "✎", key: "🔑", code: "{}", globe: "🌐", braces: "{ }", file: "📄",
   save: "💾", browser: "🧭", arrow: "➜", pointer: "👆", keyboard: "⌨", text: "T", hourglass: "⌛",
-  camera: "📷", close: "✕", sparkles: "✨", table: "▦", robot: "🤖", window: "🗔", rocket: "🚀",
+  camera: "📷", close: "✕", sparkles: "✨", fileCheck: "🧾", table: "▦", robot: "🤖", window: "🗔", rocket: "🚀",
 };
 
 export function iconFor(name?: string): string {

@@ -258,6 +258,42 @@ export interface Schedule {
   nextRunAt?: string;
 }
 
+/** A document read by AI, waiting for (or done with) a person's review. */
+export interface DocumentTaskSummary {
+  id: string;
+  name: string;
+  title?: string;
+  processName?: string;
+  documentType: string;
+  summary: string;
+  unsure: string[];
+  status: "pending" | "approved" | "rejected" | "auto";
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  doneAt?: string;
+}
+
+export interface DocumentTask extends Omit<DocumentTaskSummary, "documentType" | "summary"> {
+  mediaType: string;
+  size: number;
+  fields: Array<{ name: string; type: "text" | "number" | "date" | "boolean"; description?: string }>;
+  result: {
+    documentType: string;
+    summary: string;
+    fields: Record<string, string | number | boolean | null>;
+    confidence: Record<string, number>;
+    evidence: Record<string, string>;
+  };
+  threshold: number;
+  final?: Record<string, string | number | boolean | null>;
+  corrected?: string[];
+  comment?: string;
+  thenJobId?: string;
+  thenError?: string;
+  hasFile: boolean;
+}
+
 export type TriggerKind = "webhook" | "email" | "file";
 
 /** Starts a process (or test cases) when a web request, an email or a file arrives. */

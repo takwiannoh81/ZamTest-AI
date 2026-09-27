@@ -4,6 +4,7 @@ import { aiHandlers } from "./ai.js";
 import { browserHandlers } from "./browser.js";
 import { dataHandlers } from "./data.js";
 import { desktopHandlers } from "./desktop/index.js";
+import { documentHandlers } from "./documents.js";
 import { emailHandlers } from "./email.js";
 import { officeHandlers } from "./office.js";
 import { pdfHandlers } from "./pdf.js";
@@ -14,6 +15,7 @@ import { verifyHandlers } from "./verify.js";
 export { actionTools, getAi } from "./ai.js";
 export { closeLingeringBrowsers, keepBrowsersOpen, lingeringBrowsers, snapshotDom, takeLingeringBrowser } from "./browser.js";
 export { captureStep } from "./screenshots.js";
+export type { DocumentResult, DocumentService } from "./documents.js";
 export type { StepScreenshot } from "./screenshots.js";
 export * as desktop from "./desktop/index.js";
 export type { QueueItem, QueueItemStatus, QueueService } from "./queue.js";
@@ -39,6 +41,7 @@ export const builtinHandlers: Record<string, ActionHandler> = {
   ...browserHandlers,
   ...desktopHandlers,
   ...aiHandlers,
+  ...documentHandlers,
   ...verifyHandlers,
 };
 

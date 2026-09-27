@@ -33,6 +33,7 @@ ZamTech AI is a low-code, AI-native automation (RPA) platform, in the same space
   - **Email:** send over SMTP and read over IMAP, with attachments. The password comes from a credential asset.
   - **PDF:** read text, which pairs well with **AI Extract Data**, and merge files.
   - **Work queues:** add, take and complete items.
+- **Documents with human review**: the **Process Document with AI** action reads PDFs, scans and photos (invoice, receipt and purchase-order presets, or your own fields) on the server with Claude. It gives a confidence and the source text for each field. When AI is unsure (or always), a person checks the document in the Portal's **Reviews** page, with the document next to its fields, and approves or rejects it. The workflow waits for the decision, or hands over to another process.
 - **Templates**: a gallery in the Designer (📚 **Templates**) with ten ready-made workflows and test cases: invoices from email to Excel, an email digest with AI, Excel rows into a web form, a web table into Excel with AI, a web request into a CRM API, a work queue, a document register with AI, a page watcher, a website smoke test and a sign-in test. Each opens with a note that says what to change.
 - **Triggers**: start a process (or test cases) by itself when something happens. The Portal's **Triggers** page manages them.
   - **Web request:** another system calls a secret address (`POST /api/hooks/<id>/<secret>`). Its JSON becomes the process's input.

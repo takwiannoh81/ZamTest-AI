@@ -247,6 +247,7 @@ export function requiredRole(method: string, path: string): Role {
   if (method === "POST" && /^\/api\/schedules\/[^/]+\/run$/.test(path)) return "operator";
   if (method === "POST" && /^\/api\/queues\/[^/]+\/items$/.test(path)) return "operator";
   if (method === "POST" && /^\/api\/queue-items\/[^/]+\/retry$/.test(path)) return "operator";
+  if (method === "POST" && /^\/api\/documents\/[^/]+\/(approve|reject)$/.test(path)) return "operator"; // reviewing documents
   return "developer";
 }
 

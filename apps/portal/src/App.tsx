@@ -15,6 +15,8 @@ import { Processes } from "./pages/Processes";
 import { QueueDetail, Queues } from "./pages/Queues";
 import { Schedules } from "./pages/Schedules";
 import { Triggers } from "./pages/Triggers";
+import { ReviewDetail, Reviews } from "./pages/Reviews";
+import { usePoll } from "./hooks";
 import { Security } from "./pages/Security";
 import { SourceControl } from "./pages/SourceControl";
 import { Settings } from "./pages/Settings";
@@ -35,6 +37,7 @@ const NAV: Array<{ path: string; label: MessageKey; icon: string; admin?: boolea
   { path: "/jobs", label: "nav.jobs", icon: "▶" },
   { path: "/schedules", label: "nav.schedules", icon: "◷" },
   { path: "/triggers", label: "nav.triggers", icon: "⚡" },
+  { path: "/reviews", label: "nav.reviews", icon: "🧾" },
   { path: "/queues", label: "nav.queues", icon: "☷" },
   { path: "/test-reports", label: "nav.testReports", icon: "📊" },
   { path: "/agents", label: "nav.agents", icon: "⚙" },
@@ -57,6 +60,8 @@ export function App() {
   const [fullRoute] = useHashRoute();
   // e.g. "/connect?code=ABCD-EFGH&next=designer"
   const [route = "/", query = ""] = fullRoute.split("?");
+  // Documents waiting for a person, shown next to Reviews.
+  const toReview = usePoll<{ pending: number }>(me && !me.restriction ? "/api/documents/summary" : null, 30_000).data?.pending ?? 0;
   const active = NAV.filter((n) => (n.path === "/" ? route === "/" : route.startsWith(n.path))).at(-1)?.path;
 
   if (me?.restriction) return <Restricted me={me} />;
@@ -83,6 +88,8 @@ export function App() {
   else if (route === "/jobs") page = <Jobs />;
   else if (route === "/schedules") page = <Schedules />;
   else if (route === "/triggers") page = <Triggers />;
+  else if (route.startsWith("/reviews/")) page = <ReviewDetail id={route.slice("/reviews/".length)} />;
+  else if (route === "/reviews") page = <Reviews />;
   else if (route === "/agents") page = <Agents />;
   else if (route === "/assets") page = <Assets />;
   else if (route === "/settings") page = <Settings />;
@@ -107,6 +114,7 @@ export function App() {
             <a key={n.path} href={`#${n.path}`} className={active === n.path ? "active" : ""}>
               <span className="nav-icon">{n.icon}</span>
               {t(n.label)}
+              {n.path === "/reviews" && toReview > 0 && <span className="nav-count">{toReview}</span>}
             </a>
           ))}
         </nav>

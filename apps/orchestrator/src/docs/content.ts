@@ -417,8 +417,9 @@ The **AI** group in the palette has:
 - **AI Prompt**: sends a prompt to Claude and saves the answer.
 - **AI Extract Data**: pulls structured data (matching a JSON Schema) out of text such as an email or invoice.
 - **AI Agent**: give it a **Goal** and it decides which actions to run (browser, HTTP, files) until the goal is met. **Allowed actions** limits what it may use, and **Max steps** (default 20) limits how long it runs.
+- **Process Document with AI**: reads an invoice, receipt, order or your own fields from a PDF, scan or photo, and has a person check it in the Portal when AI is unsure (see **Documents and reviews**).
 
-These actions, and AI self-healing, run on the bot PC. They need AI to be set up for the agent on that PC; ask your administrator.
+AI Prompt, AI Extract Data, AI Agent and AI self-healing run on the bot PC. They need AI to be set up for the agent on that PC; ask your administrator. **Process Document with AI** runs on the ZamTech AI server and needs nothing on the PC.
 
 ## What AI sees, and never sees
 
@@ -956,6 +957,68 @@ The PC looks at the folder every few seconds and starts the process once a file 
 
   /* ------------------------------------------------------------------ */
   {
+    id: "documents",
+    title: "Documents and reviews",
+    summary: "AI reads invoices, receipts and other documents, and a person checks what AI is unsure of",
+    body: `The **Process Document with AI** action (category **AI**) reads a document and fills in the fields you want: an invoice's supplier, number, date and total, for example. It reads typed PDFs, scanned PDFs and photos (PNG, JPEG, GIF, WebP), up to 20 MB. For each field AI also says how sure it is. When it is not sure, a person checks the document in the Portal under **Reviews** before the workflow goes on.
+
+The document is read on the ZamTech AI server, so the bot PC needs no AI set up. Each document counts as one AI request of your plan.
+
+## Set up the step
+
+- **Document file**: the file's path, for example \`{{ attachment.path }}\` (from **Read Email** with **Save attachments to**) or \`{{ trigger.path }}\` (from a file trigger).
+- **Document type**: **invoice**, **receipt** or **purchase order** read the usual fields of that document. Choose **custom** to list your own.
+- **Fields**: your own fields (for **custom**, or instead of the document type's). One per line, as \`name:type - description\`. Types are \`text\` (the default), \`number\`, \`date\` and \`boolean\`. The description helps AI find the right value. For example:
+  - \`iban - the supplier's bank account\`
+  - \`total:number - the amount to pay, with tax\`
+  - \`signed:boolean - whether the document is signed\`
+- **Instructions for AI** (optional): anything else AI should know, for example "Amounts are in euros".
+- **Human review**:
+  - **when unsure** (the default): a person checks the document only when AI is not sure of a field, or did not find it.
+  - **always**: a person checks every document.
+  - **never**: no one checks; the workflow gets what AI read.
+- **Sure enough from** (0.9 by default): a field AI is less sure of than this is checked by a person. Lower it to review less, raise it to review more.
+- **Title for the reviewer** (optional): for example \`Invoice from {{ trigger.from }}\`.
+- **Email the reviewers** (optional): addresses that get an email with a link when a document waits for review.
+- **Save result to**: a variable for the result.
+
+## Wait, or hand over
+
+By default the workflow waits until the document is reviewed, up to **Wait for the review (minutes)** (60). If nobody reviews it in time, the step fails, and the document stays in **Reviews**.
+
+For reviews that can take hours, put the name of a published process in **Or hand over to process**. The workflow then goes on at once. Once the document is reviewed (or needs no review), that process starts with the result in its in-argument \`document\`; add \`document\` (direction **in**, type **object**) to it in the Designer.
+
+## The result
+
+The variable you chose gets:
+- \`status\`: \`auto\` (no review was needed), \`approved\`, \`rejected\` or, when handed over, \`pending\`.
+- \`fields\`: the values, as corrected by the reviewer, for example \`{{ invoice.fields.total }}\`.
+- \`confidence\`: how sure AI was of each field (0 to 1), and \`unsure\`: the fields a person was asked to check.
+- \`documentType\` and \`summary\`: what AI says the document is.
+- \`reviewedBy\` and \`comment\`: who reviewed it, and their comment (the reason, when rejected).
+
+Check \`status\` before using the fields, for example with an **If**: \`invoice.status !== "rejected"\`.
+
+## Reviewing documents
+
+Open **Reviews** in the Portal. The number next to it is how many documents wait. **To review** lists them, oldest first, with the fields to check.
+
+1. Click a document. It opens on the left, and its fields on the right.
+2. Each field shows how sure AI was: green when sure, **orange** when it should be checked, red when it was **not found**. Under a field, **On the document** shows the text AI read it from.
+3. Correct what is wrong. Numbers can be typed as \`1,180.00\`, \`1.180,00\` or \`1180\`; dates with the date picker.
+4. Click **✓ Approve** (or press Enter). To refuse the document, write why under **Comment** and click **Reject**.
+
+After a decision, the next document waiting opens. **Done** lists the documents already processed, with who reviewed them and which fields they corrected. Operators, Developers and Admins can review; Viewers can only look. Every approval and rejection is in the **Audit log**.
+
+The files are kept for 30 days after a document is done, then deleted; the fields stay. (Server administrators can change this with \`ZAMTEST_DOCUMENT_DAYS\`.)
+
+## Example: invoices from email
+
+The template **Invoices from email to Excel** does it all: an email trigger starts it for each email, **Read Email** saves the attachments, **Process Document with AI** reads each invoice (a person checks it when AI is unsure), and approved invoices are added to an Excel register. See **Designer basics**, **Templates**.`,
+  },
+
+  /* ------------------------------------------------------------------ */
+  {
     id: "queues",
     title: "Work queues",
     summary: "Share items of work between bots, with automatic retries",
@@ -1417,6 +1480,10 @@ Open **Triggers** in the Portal and look at the trigger:
 - Emails and files from before the trigger was set up (or turned on again) do not start it.
 - A file trigger needs agent 0.3.9 or newer on its PC, and the PC must be online.
 - Click **Try it** to start it with an example event, then open the job in **Jobs**.
+
+## "The document was not reviewed within ... minutes"
+
+No one approved or rejected the document in time. It is still in **Reviews** in the Portal: review it there. Run the workflow again afterwards, or use **Or hand over to process** so that the workflow does not wait (see **Documents and reviews**).
 
 ## "Update the agent"
 

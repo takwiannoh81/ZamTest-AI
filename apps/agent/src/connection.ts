@@ -1,7 +1,7 @@
 import { hostname, platform, release } from "node:os";
 import { parseWorkflow, sleep } from "@zamtest/core";
 import { captureStep, closeLingeringBrowsers, keepBrowsersOpen, lingeringBrowsers } from "@zamtest/actions";
-import type { QueueItem } from "@zamtest/actions";
+import type { DocumentResult, QueueItem } from "@zamtest/actions";
 import type { AfterStepInfo, EngineEvent } from "@zamtest/core";
 import { execute } from "./runtime.js";
 import { runRemoteRecording } from "./remote-recording.js";
@@ -74,17 +74,19 @@ export class AgentConnection {
     return data;
   }
 
-  /** Sends a JPEG (step screenshot). */
-  private async upload(path: string, data: Buffer): Promise<void> {
+  /** Sends a file (a step screenshot is a JPEG); the server's answer. */
+  private async upload<T = unknown>(path: string, data: Buffer, contentType = "image/jpeg"): Promise<T> {
     const res = await fetch(new URL(path, this.options.server), {
       method: "POST",
       headers: {
-        "content-type": "image/jpeg",
+        "content-type": contentType,
         ...(this.options.token ? { "x-agent-token": this.options.token } : { "x-agent-key": this.options.key ?? "" }),
       },
       body: new Uint8Array(data),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const answer = (await res.json().catch(() => ({}))) as T & { error?: string };
+    if (!res.ok) throw new Error(answer.error ?? `HTTP ${res.status}`);
+    return answer;
   }
 
   async register(): Promise<void> {
@@ -274,7 +276,7 @@ export class AgentConnection {
       if (!shot) return;
       const query = new URLSearchParams({ stepId: step.id, status, source: shot.source, agentId: this.agentId ?? "" });
       uploads = uploads.then(() =>
-        this.upload(`/api/agent/jobs/${job.id}/screenshots?${query}`, shot.data).catch((err: Error) => {
+        this.upload<void>(`/api/agent/jobs/${job.id}/screenshots?${query}`, shot.data).catch((err: Error) => {
           uploadFailures++;
           this.log(`Failed to upload a screenshot: ${err.message}`);
         }),
@@ -296,6 +298,14 @@ export class AgentConnection {
         },
         afterStep,
         getAsset: async (name) => (await this.call<{ value: unknown }>("GET", `/api/agent/assets/${encodeURIComponent(name)}`))?.value,
+        // Documents are read by AI on the server, which keeps their reviews.
+        documents: {
+          process: async ({ data, mediaType, ...rest }) => {
+            const { fileId } = await this.upload<{ fileId: string }>(`/api/agent/documents/file?agentId=${encodeURIComponent(this.agentId ?? "")}`, data, mediaType);
+            return (await this.call<DocumentResult>("POST", "/api/agent/documents", { agentId: this.agentId, jobId: job.id, fileId, ...rest }))!;
+          },
+          get: async (id) => (await this.call<DocumentResult>("GET", `/api/agent/documents/${encodeURIComponent(id)}?agentId=${encodeURIComponent(this.agentId ?? "")}`))!,
+        },
         queues: {
           add: async (queue, data, reference) =>
             (await this.call<{ id: string }>("POST", `/api/agent/queues/${encodeURIComponent(queue)}/items`, {

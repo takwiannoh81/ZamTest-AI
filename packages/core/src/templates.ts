@@ -40,19 +40,6 @@ const v = (name: string, type: VariableDef["type"], direction: VariableDef["dire
   ...extra,
 });
 
-const INVOICE_SCHEMA = {
-  type: "object",
-  properties: {
-    supplier: { type: "string" },
-    invoiceNumber: { type: "string" },
-    invoiceDate: { type: "string", description: "YYYY-MM-DD" },
-    total: { type: "number" },
-    currency: { type: "string" },
-  },
-  required: ["supplier", "invoiceNumber", "invoiceDate", "total", "currency"],
-  additionalProperties: false,
-};
-
 export const TEMPLATES: Template[] = [
   {
     id: "invoice-email-to-excel",
@@ -65,7 +52,6 @@ export const TEMPLATES: Template[] = [
       v("trigger", "object", "in", { description: "The email, from an email trigger" }),
       v("mails", "array"),
       v("attachment", "object"),
-      v("text", "string"),
       v("invoice", "object"),
       v("saved", "number", "out", { default: 0 }),
     ],
@@ -79,22 +65,29 @@ export const TEMPLATES: Template[] = [
       }),
       s("core.forEach", "For each attachment", { items: "mails.length ? mails[0].attachments : []", itemVariable: "attachment" }, {
         body: [
-          s("core.if", "Only PDF files", { condition: 'attachment.filename.toLowerCase().endsWith(".pdf") && Boolean(attachment.path)' }, {
+          s("core.if", "Only PDFs and scans", { condition: '/\\.(pdf|png|jpe?g)$/i.test(attachment.filename) && Boolean(attachment.path)' }, {
             then: [
-              s("pdf.readText", "Read the PDF", { path: "{{ attachment.path }}", output: "text" }),
-              s("ai.extract", "Find the invoice details", {
-                input: "{{ text }}",
-                instructions: "An invoice. Dates as YYYY-MM-DD; the total including tax, as a number.",
-                schema: INVOICE_SCHEMA,
+              // Read on the server; a person checks it in the Portal (Reviews) when AI is unsure of a field.
+              s("doc.process", "Read the invoice (a person checks it when AI is unsure)", {
+                path: "{{ attachment.path }}",
+                documentType: "invoice",
+                review: "when unsure",
+                title: "Invoice from {{ trigger.from }}",
+                waitMinutes: 240,
                 output: "invoice",
               }),
-              s("excel.write", "Add a row to the invoice register", {
-                path: "C:\\ZamTech\\invoices.xlsx",
-                sheet: "Invoices",
-                rows: "[{ ...invoice, file: attachment.filename, from: trigger.from }]",
-                append: true,
+              s("core.if", "Unless the reviewer rejected it", { condition: 'invoice.status !== "rejected"' }, {
+                then: [
+                  s("excel.write", "Add a row to the invoice register", {
+                    path: "C:\\ZamTech\\invoices.xlsx",
+                    sheet: "Invoices",
+                    rows: "[{ ...invoice.fields, checkedBy: invoice.reviewedBy ?? 'AI', file: attachment.filename, from: trigger.from }]",
+                    append: true,
+                  }),
+                  s("core.assign", "Count it", { variable: "saved", value: "saved + 1" }),
+                ],
+                else: [s("core.log", "Note the rejection", { message: "{{ attachment.filename }} was rejected: {{ invoice.comment }}", level: "warn" })],
               }),
-              s("core.assign", "Count it", { variable: "saved", value: "saved + 1" }),
             ],
             else: [],
           }),
@@ -293,31 +286,21 @@ export const TEMPLATES: Template[] = [
     kind: "workflow",
     startsWith: "file",
     ai: true,
-    variables: [v("trigger", "object", "in", { description: "The file, from a file trigger" }), v("text", "string"), v("info", "object")],
+    variables: [v("trigger", "object", "in", { description: "The file, from a file trigger" }), v("info", "object")],
     steps: [
-      s("pdf.readText", "Read the document", { path: "{{ trigger.path }}", output: "text" }),
-      s("ai.extract", "Find out what it is", {
-        input: "{{ text.slice(0, 20000) }}",
-        instructions: "Classify the document and summarize it in one sentence.",
-        schema: {
-          type: "object",
-          properties: {
-            kind: { type: "string", enum: ["invoice", "contract", "order", "letter", "other"] },
-            from: { type: "string", description: "Who sent or wrote it" },
-            date: { type: "string", description: "YYYY-MM-DD, or empty" },
-            summary: { type: "string" },
-          },
-          required: ["kind", "from", "date", "summary"],
-          additionalProperties: false,
-        },
+      s("doc.process", "Find out what it is", {
+        path: "{{ trigger.path }}",
+        documentType: "custom",
+        fields: "kind - invoice, contract, order, letter or other\nfrom - who sent or wrote it\ndate:date - the date on the document\nsubject - what it is about, in a few words",
+        review: "never",
         output: "info",
       }),
       s("csv.write", "Add it to the register", {
         path: "C:\\ZamTech\\document-register.csv",
-        rows: "[{ file: trigger.name, kind: info.kind, from: info.from, date: info.date, summary: info.summary, added: new Date().toISOString() }]",
+        rows: "[{ file: trigger.name, kind: info.fields.kind, from: info.fields.from, date: info.fields.date, subject: info.fields.subject, summary: info.summary, added: new Date().toISOString() }]",
         append: true,
       }),
-      s("core.log", "Done", { message: "{{ trigger.name }}: {{ info.kind }} from {{ info.from }}" }),
+      s("core.log", "Done", { message: "{{ trigger.name }}: {{ info.fields.kind }} from {{ info.fields.from }}" }),
     ],
   },
   {
