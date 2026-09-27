@@ -25,11 +25,16 @@ export const fileSlug = (name: string) => name.replace(/[^\w-]+/g, "-").replace(
  * `kind` describes the file in the dialog ("ZamTech AI workflow").
  */
 export async function saveJson(suggestedName: string, data: unknown, kind: string): Promise<boolean> {
-  const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], { type: "application/json" });
+  return saveText(suggestedName, `${JSON.stringify(data, null, 2)}\n`, kind, "application/json", ".json");
+}
+
+/** Saves a text file on the PC (e.g. a Playwright test). Returns false when the person cancelled the dialog. */
+export async function saveText(suggestedName: string, text: string, kind: string, type: string, extension: string): Promise<boolean> {
+  const blob = new Blob([text], { type });
   const picker = (window as PickerWindow).showSaveFilePicker;
   if (picker) {
     try {
-      const handle = await picker({ suggestedName, types: [{ description: kind, accept: { "application/json": [".json"] } }] });
+      const handle = await picker({ suggestedName, types: [{ description: kind, accept: { [type]: [extension] } }] });
       const file = await handle.createWritable();
       await file.write(blob);
       await file.close();

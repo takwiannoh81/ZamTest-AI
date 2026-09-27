@@ -10,11 +10,20 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/lint": "^6.9.7",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@lezer/highlight": "^1.2.4",
     "@zamtest/core": "workspace:*",
     "@zamtest/help": "workspace:*",
+    "@zamtest/i18n": "workspace:*",
+    "codemirror": "^6.0.2",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@zamtest/i18n": "workspace:*"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

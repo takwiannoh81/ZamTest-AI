@@ -177,6 +177,7 @@ Steps with retries or continue on error show a tag such as \`retry×2\` on the c
 - **↶ Undo** (Ctrl+Z) and **↷ Redo** (Ctrl+Shift+Z or Ctrl+Y).
 - **✓ Valid** or **⚠ N issues**. Click it to see the problems. Click a problem to jump to the step and the field to fill in, or use **✨ Fix with AI**.
 - **{ } JSON** shows the workflow as JSON. You can copy it, or edit it and apply.
+- Above the canvas, **▦ Steps** and **</> Code** switch between the steps and the same steps as code (see **Code view and Playwright export**).
 - **Save to PC** saves the workflow as a file on your computer.
 - **● Record** records steps (see **Recording**).
 - **✨ Build with AI** builds or changes the workflow from a description.
@@ -216,6 +217,58 @@ Click **▶ Run**. The Designer saves the workflow and sends it to an available 
 - **✨ Self-healed** rows show selectors that AI repaired during the run. Click **Apply fix** to put the new selector in the step, then save.
 - **Outputs:** the values of the workflow's out arguments.
 - When a run fails, **✨ Fix with AI** finds the cause and suggests fixes.`,
+  },
+
+  /* ------------------------------------------------------------------ */
+  {
+    id: "code-view",
+    title: "Code view and Playwright export",
+    summary: "See and edit a workflow or test as code; export a test as a Playwright test",
+    body: `Every workflow and test case can also be seen as code. Above the canvas, switch between **▦ Steps** and **</> Code**. They are the same steps: record or drag steps in, and the code changes; edit the code, and the steps change. It runs the same either way. The Designer remembers which one you used last.
+
+## What the code looks like
+
+\`\`\`
+input("user", "string", "anna@example.com") // Who signs in
+
+// Sign in first
+browser.open("https://shop.example.com/login") // Open the login page
+browser.type("#email", user)
+browser.type("#password", password, { pressEnter: true })
+title = browser.getText("h1")
+if (title.includes("Welcome")) {
+  log("Signed in")
+} else {
+  throw new Error("Could not sign in")
+}
+\`\`\`
+
+- **Variables and arguments** come first: \`variable("name", "type", value)\`, \`input(...)\` for in-arguments, \`output(...)\` for out-arguments and \`inout(...)\`. The type is string, number, boolean, object, array or any. A comment at the end of the line is its description.
+- **An action** is its name and its settings: \`browser.click("#login")\`. Actions of the Control flow and System groups have no group name: \`log("Hello")\`, \`delay(2000)\`, \`getAsset("CRM/ApiKey")\`. The required settings come first, in order; the others go in \`{ }\` at the end: \`browser.type("#q", "shoes", { pressEnter: true })\`.
+- **A result**: \`title = browser.getText("h1")\` saves the action's result in \`title\`.
+- **Values**: text in quotes is text, and \`{{ }}\` works in it as everywhere: \`"Hello {{ name }}"\`. A name or an expression without quotes is its value: \`browser.type("#email", user)\` is the same as \`"{{ user }}"\`.
+- **Assign**: \`total = total + price\`. \`count++\` and \`count += 2\` work too.
+- **Control flow**: \`if (...) { } else { }\`, \`for (const row of rows) { }\` (For Each; with a position: \`for (const [i, row] of (rows).entries())\`), \`while (...) { }\`, \`try { } catch (error) { } finally { }\`, \`break\` and \`throw new Error("...")\`. A \`{ }\` on its own is a Sequence.
+- **Labels**: a comment at the end of a step's line is its label (on the \`{\` line for If, For Each and others). A comment on a line of its own is a **Comment** step.
+- **Step settings**: \`// @step { continueOnError: true, retry: { count: 2 }, timeoutMs: 10000, disabled: true }\` on the line just above a step. Other settings of If, While and others also go there, for example \`// @step { maxIterations: 50 }\` above a \`while\`.
+
+## Writing code
+
+- As you type, a list suggests actions (type \`browser.\` to see the browser actions), their settings (inside \`{ }\`), your variables, and \`if\`, \`for\`, \`while\` and \`try\`. Press Enter or Tab to choose; the required settings are filled in for you to replace.
+- A moment after you stop typing, the code becomes steps. At the top, **✓ In sync with the steps** means they match. When the code has a mistake, the line is marked in red with what is wrong ("Unknown action browser.clik (did you mean browser.click?)"), and the steps do not change until it is fixed.
+- Only what the steps can hold is allowed. Your own functions, \`let\`, classes and other JavaScript are not: for your own code, use a **Run JavaScript** step: \`runScript("...")\`.
+- Undo in the toolbar works for code changes too. Ctrl+Z inside the code undoes typing.
+- In a read-only copy (someone else is editing), the code can be read and copied but not changed.
+
+## Export as Playwright test
+
+In the code view, **⬇ Playwright test** saves the workflow or test as a Playwright test file (\`name.spec.ts\`). Developers can run it with \`npx playwright test\` in their own tools and CI.
+
+- Browser steps, checks (**Verify Text**, **Verify Visible**, **Verify Title**, **Verify URL**, **Verify Condition**), control flow, variables, **Log** and **Delay** are translated.
+- Steps that only run on ZamTech AI bots (Excel, email, PDF, desktop applications, AI, queues, documents...) become \`// TODO\` comments with their settings. The Designer says how many.
+- An asset from **Get Asset** is read from an environment variable with the asset's name (\`CRM/ApiKey\` becomes \`CRM_APIKEY\`).
+- In-arguments get their default values. With test data, the file tests with the defaults.
+- It only goes one way: a Playwright file cannot be brought back into ZamTech AI.`,
   },
 
   /* ------------------------------------------------------------------ */
@@ -1484,6 +1537,10 @@ Open **Triggers** in the Portal and look at the trigger:
 - Emails and files from before the trigger was set up (or turned on again) do not start it.
 - A file trigger needs agent 0.3.9 or newer on its PC, and the PC must be online.
 - Click **Try it** to start it with an example event, then open the job in **Jobs**.
+
+## The code view says "Problems" and the steps do not change
+
+The code has a mistake; the line is marked in red. Point at the mark to read what is wrong, and fix it. Until then, the steps keep what they were. Switching to **▦ Steps** leaves the mistake behind: the code is written again from the steps. See **Code view and Playwright export**.
 
 ## "The document was not reviewed within ... minutes"
 

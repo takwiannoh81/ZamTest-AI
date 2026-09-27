@@ -28,6 +28,7 @@
 
 A workflow is JSON, validated with zod (`WorkflowSchema`):
 
+The Designer's code view (`code.ts`) writes the same workflow as restricted JavaScript and reads it back with acorn: actions as calls (`browser.click("#go")`), results as `x = action(...)`, Assign as `x = expr`, and if / for...of / while / try / break / throw as statements. Labels are end-of-line comments, `// @step { ... }` holds step settings, and unchanged steps keep their ids. The code is never executed. `playwright.ts` exports a workflow as a one-way Playwright Test file.
 
 ```jsonc
 {

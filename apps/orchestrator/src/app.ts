@@ -59,7 +59,7 @@ import { BugReportFiles, registerBugReports } from "./bugreports.js";
  * account existed before it came out. A new release gets a new id (and new texts in
  * @zamtest/help's WhatsNew).
  */
-export const WHATS_NEW = { id: "2026-09-26d", since: "2026-09-26T00:00:00.000Z" };
+export const WHATS_NEW = { id: "2026-09-26e", since: "2026-09-26T00:00:00.000Z" };
 import { registerHelp } from "./help.js";
 import { registerOutreach } from "./outreach.js";
 import { MAX_SCREENSHOT_BYTES, ScreenshotStore } from "./screenshots.js";

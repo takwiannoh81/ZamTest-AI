@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActionMeta, Step, VariableDef, Workflow } from "@zamtest/core";
 import { targetListOf } from "@zamtest/core";
 import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
@@ -26,6 +26,8 @@ import { atLeast, signOut, useMe } from "./components/session";
 import { useEditLock } from "./components/editLock";
 import type { MessageKey } from "@zamtest/i18n";
 
+/** The code editor loads when the code view is first opened. */
+const CodeView = lazy(() => import("./components/CodeView").then((m) => ({ default: m.CodeView })));
 
 function UserMenu() {
   const { t } = useI18n();
@@ -268,6 +270,22 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
     api<{ enabled: boolean }>("/api/environments").then((e) => setEnvsOn(e.enabled)).catch(() => undefined);
   }, []);
   const [run, setRun] = useState<RunState>();
+  /** Steps on the canvas, or the same steps as code (remembered on this PC). */
+  const [view, setView] = useState<"steps" | "code">(() => {
+    try {
+      return localStorage.getItem("zamtech.designer.view") === "code" ? "code" : "steps";
+    } catch {
+      return "steps";
+    }
+  });
+  const showView = (next: "steps" | "code") => {
+    setView(next);
+    try {
+      localStorage.setItem("zamtech.designer.view", next);
+    } catch {
+      /* not remembered */
+    }
+  };
   /** The run's job as last polled: the toolbar shows Pause and Stop while it runs. */
   const [runJob, setRunJob] = useState<Job>();
   const runGoing = Boolean(run) && (runJob?.id !== run?.jobId || !isFinalJob(runJob));
@@ -727,6 +745,19 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
       <div className="workspace">
         <Palette catalog={catalog} onAdd={(m) => addStep(m)} />
         <main className="center">
+          <div className="view-switch" role="tablist">
+            <button role="tab" aria-selected={view === "steps"} className={view === "steps" ? "active" : ""} onClick={() => showView("steps")}>
+              {t("view.steps")}
+            </button>
+            <button role="tab" aria-selected={view === "code"} className={view === "code" ? "active" : ""} onClick={() => showView("code")}>
+              {t("view.code")}
+            </button>
+          </div>
+          {view === "code" ? (
+            <Suspense fallback={<div className="code-view" />}>
+              <CodeView workflow={workflow} catalog={catalog} readOnly={readOnly} onChange={update} onStatus={setStatus} />
+            </Suspense>
+          ) : (
           <Canvas
             root={root}
             metas={metas}
@@ -752,6 +783,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
               setSelectedId(copy.id);
             }}
           />
+          )}
           {run && (
             <RunPanel
               run={run}

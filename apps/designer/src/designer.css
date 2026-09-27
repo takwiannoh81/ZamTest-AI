@@ -299,3 +299,18 @@ fieldset.plain { border: none; margin: 0; padding: 0; min-width: 0; }
 .tpl-tag { font-size: 11.5px; border-radius: 999px; padding: 2px 8px; background: var(--surface-2); color: var(--muted); }
 .tpl-tag.ai { color: #db2777; background: color-mix(in srgb, #db2777 10%, transparent); }
 .start-template { margin-top: 12px; }
+
+/* Steps / Code */
+.view-switch { display: flex; gap: 2px; padding: 6px 10px 0; border-bottom: 1px solid var(--border); background: var(--surface); }
+.view-switch button { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 6px 12px; font-weight: 600; font-size: 13px; cursor: pointer; margin-bottom: -1px; }
+.view-switch button:hover { color: var(--text); }
+.view-switch button.active { color: var(--accent); border-bottom-color: var(--accent); }
+.code-view { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
+.code-head { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.code-state { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.code-state.ok { color: var(--ok); }
+.code-state.bad { color: var(--danger); }
+.code-hint { min-width: 0; }
+.code-editor { flex: 1; min-height: 0; overflow: hidden; }
+.code-editor .cm-editor { height: 100%; }
+.code-editor .cm-editor.cm-focused { outline: none; }
