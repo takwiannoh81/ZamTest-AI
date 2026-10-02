@@ -66,6 +66,16 @@ describe("accounts and roles", () => {
     expect(out.statusCode).toBe(401);
     expect(out.json().code).toBe("signed_out_idle");
 
+    // 1 minute: 50 seconds without activity is fine, 70 seconds signs out.
+    await app.inject({ method: "PUT", url: "/api/workspace/security", headers: admin, payload: { idleTimeoutMinutes: 1 } });
+    const quick = await createUser("viewer", "quick@example.com");
+    const quickSession = () => Object.values(store.data.sessions).find((x) => store.data.users[x.userId]?.email === "quick@example.com")!;
+    const meQuick = (idle: number) => app.inject({ method: "GET", url: "/api/auth/me", headers: { ...quick, "x-zamtech-idle": String(idle) } });
+    quickSession().lastActiveAt = new Date(Date.now() - 50_000).toISOString();
+    expect((await meQuick(50)).statusCode).toBe(200);
+    quickSession().lastActiveAt = new Date(Date.now() - 70_000).toISOString();
+    expect((await meQuick(70)).json().code).toBe("signed_out_idle");
+
     // "Never" (0) keeps people signed in.
     await app.inject({ method: "PUT", url: "/api/workspace/security", headers: admin, payload: { idleTimeoutMinutes: 0 } });
     const again = await createUser("operator", "late@example.com");

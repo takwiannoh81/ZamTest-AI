@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActionMeta, Step, VariableDef, Workflow } from "@zamtest/core";
 import { targetListOf } from "@zamtest/core";
+import { onIdleSignOut } from "@zamtest/help";
 import { LanguageSelect, ThemeSelect, useI18n } from "@zamtest/i18n/react";
 import { api, ApiError } from "./api";
 import type { EditLock, Job, WorkflowDraft, WorkflowSummary } from "./api";
@@ -367,6 +368,11 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
       return false;
     }
   }, [id, workflow, t, i18n, readOnly, edit.headers, edit.lost]);
+
+  // Signed out for inactivity: unsaved changes are saved first.
+  const saveLater = useRef({ dirty, save });
+  saveLater.current = { dirty, save };
+  useEffect(() => onIdleSignOut(() => (saveLater.current.dirty ? saveLater.current.save() : undefined)), []);
 
   /** After a conflict: save this window's version over theirs. */
   const overwrite = async () => {

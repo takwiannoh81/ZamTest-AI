@@ -6,7 +6,7 @@ import { Markdown } from "./markdown";
 import "./help.css";
 
 export { Markdown } from "./markdown";
-export { IdleGuard, idleSeconds } from "./idle";
+export { IdleGuard, idleSeconds, onIdleSignOut } from "./idle";
 export { WhatsNew } from "./whats-new";
 export { ReportProblem } from "./report";
 export { noteProblem, recentProblems } from "./problems";

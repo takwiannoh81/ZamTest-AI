@@ -1380,6 +1380,16 @@ On the Users page you can also **Edit** a person, **Disable** or **Enable** them
 
 An account can be signed in on one browser or PC at a time. Signing in elsewhere signs the other browser out, with a message saying why. Do not share accounts: create one for each person.
 
+## Sign out after inactivity
+
+People are signed out when they have not used the mouse or keyboard in the Portal or the Designer for a while, and see the sign-in page with the reason. Admins choose how long in the Portal under **Security**, **Sign out after inactivity**: 1, 2, 5, 10, 15 or 30 minutes, 1, 2, 4 or 8 hours, or **Never**. The default is 1 hour.
+
+- Before signing out, a message counts down: "You will be signed out in ... s". Click **Stay signed in** to go on. It comes a minute before, or a quarter of the time when that is short (15 seconds of 1 minute).
+- Work in any tab counts: someone busy in the Designer is not signed out of the Portal in another tab.
+- Changes not yet saved in the Designer are saved just before signing out.
+- Only the mouse, keyboard, scrolling and touch count. Watching a run, a job's log or a document without touching anything does not, so very short times (1 or 2 minutes) can sign people out while they watch. Most companies use 5 to 15 minutes.
+- Bots, API tokens and schedules are not affected.
+
 ## Email confirmation
 
 When you create a workspace, we email you a link to confirm your address. Open it to start using ZamTech AI. You can ask for **Send the link again**. Links expire; if one has, ask for a new one.

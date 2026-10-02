@@ -20,8 +20,18 @@ if (typeof window !== "undefined") {
 /** Seconds since the person last used this tab (sent with every request). */
 export const idleSeconds = () => Math.max(0, Math.floor((Date.now() - lastInput) / 1000));
 
-/** The warning comes this long before signing out. */
-const WARN_SECONDS = 60;
+/** The warning comes a minute before signing out; with short limits, a quarter of the limit (15 s of 1 minute). */
+const warnSeconds = (limit: number) => Math.min(60, Math.max(10, Math.floor(limit / 4)));
+/** Unsaved work is saved this long before signing out (the session must still be valid). */
+const SAVE_SECONDS = 4;
+
+/** What to do just before signing out for inactivity, e.g. save the workflow being edited. */
+const beforeSignOut = new Set<() => unknown>();
+/** Registers something to do just before signing out for inactivity; returns how to unregister it. */
+export function onIdleSignOut(fn: () => unknown): () => void {
+  beforeSignOut.add(fn);
+  return () => beforeSignOut.delete(fn);
+}
 
 /**
  * Warns before signing out for inactivity and, when the time is up, asks the
@@ -33,14 +43,17 @@ export function IdleGuard({ minutes, check }: { minutes?: number; check: () => P
   const { t } = useI18n();
   const [left, setLeft] = useState<number>();
   const asking = useRef(false);
+  const saved = useRef(false);
 
   useEffect(() => {
     if (!minutes) return;
     const limit = minutes * 60;
+    const warn = warnSeconds(limit);
     const tick = async () => {
       const idle = idleSeconds();
-      if (idle < limit - WARN_SECONDS) {
+      if (idle < limit - warn) {
         setLeft(undefined);
+        saved.current = false;
         return;
       }
       if (asking.current) return;
@@ -48,14 +61,26 @@ export function IdleGuard({ minutes, check }: { minutes?: number; check: () => P
       try {
         // Used meanwhile in another tab? Then that counts here too.
         const me = await check().catch(() => undefined);
-        if (me?.idleSeconds !== undefined && me.idleSeconds < idle) lastInput = Date.now() - me.idleSeconds * 1000;
+        // Seconds are rounded on both sides: only a clear difference is activity elsewhere (else the
+        // countdown would creep forward with every check).
+        if (me?.idleSeconds !== undefined && me.idleSeconds + 2 < idle) lastInput = Date.now() - me.idleSeconds * 1000;
       } finally {
         asking.current = false;
       }
       const remaining = limit - idleSeconds();
-      setLeft(remaining > WARN_SECONDS ? undefined : Math.max(0, remaining));
+      setLeft(remaining > warn ? undefined : Math.max(0, remaining));
+      if (remaining <= SAVE_SECONDS && !saved.current) {
+        saved.current = true;
+        for (const fn of beforeSignOut) {
+          try {
+            await fn();
+          } catch {
+            /* signing out goes ahead */
+          }
+        }
+      }
     };
-    const timer = setInterval(() => void tick(), 5000);
+    const timer = setInterval(() => void tick(), 1000);
     return () => clearInterval(timer);
   }, [minutes, check]);
 
@@ -68,6 +93,7 @@ export function IdleGuard({ minutes, check }: { minutes?: number; check: () => P
         onClick={() => {
           mark();
           setLeft(undefined);
+          saved.current = false;
           void check();
         }}
       >

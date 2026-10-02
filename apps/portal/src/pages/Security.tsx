@@ -316,7 +316,7 @@ function SsoCard() {
 }
 
 /** Admins: how long people may be inactive (no mouse or keyboard) before they are signed out. */
-const IDLE_CHOICES = [15, 30, 60, 120, 240, 480, 0];
+const IDLE_CHOICES = [1, 2, 5, 10, 15, 30, 60, 120, 240, 480, 0];
 
 function IdleTimeoutCard() {
   const { t } = useI18n();
@@ -333,7 +333,7 @@ function IdleTimeoutCard() {
       setError((e as Error).message);
     }
   };
-  const label = (m: number) => (m === 0 ? t("idle.never") : m < 60 ? t("idle.minutes", { count: m }) : m === 60 ? t("idle.oneHour") : t("idle.hours", { count: m / 60 }));
+  const label = (m: number) => (m === 0 ? t("idle.never") : m === 1 ? t("idle.oneMinute") : m < 60 ? t("idle.minutes", { count: m }) : m === 60 ? t("idle.oneHour") : t("idle.hours", { count: m / 60 }));
   return (
     <div className="card">
       <h2>{t("idle.title")}</h2>
