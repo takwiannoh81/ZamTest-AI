@@ -104,7 +104,7 @@ export function createStep(meta: ActionMeta): Step {
 /** One-line summary shown on the step card. */
 export function summarize(step: Step): string {
   const p = step.props ?? {};
-  const pick = ["message", "condition", "items", "selector", "url", "goal", "prompt", "name", "path", "text", "code"];
+  const pick = ["message", "condition", "items", "target", "expectation", "selector", "url", "goal", "prompt", "name", "path", "text", "code"];
   for (const key of pick) {
     const v = p[key];
     if (typeof v === "string" && v) return v.length > 90 ? `${v.slice(0, 90)}...` : v;

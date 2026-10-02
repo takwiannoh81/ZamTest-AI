@@ -10,6 +10,8 @@
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
+import type { ZamAI } from "@zamtest/ai";
+import { languageName } from "@zamtest/i18n";
 import { StepSchema, VariableDefSchema, WorkflowSchema } from "@zamtest/core";
 import type { Step, VariableDef, Workflow } from "@zamtest/core";
 import { HttpError, parse } from "./errors.js";
@@ -48,6 +50,12 @@ export interface Recording {
   };
   /** Pick: an element (default), or something inside the items of a list (items). */
   mode?: "element" | "inside";
+  /** Pick for an AI Vision step: AI describes the spot the person clicks (for a step that clicks, types or reads). */
+  vision?: "click" | "type" | "read";
+  /** Pick for AI Vision: the language to describe it in (English name). */
+  language?: string;
+  /** Pick for AI Vision: what is at the spot, in words, and whether AI Vision finds it again from the words. */
+  described?: { found: boolean; description: string; check: "same" | "elsewhere" | "notFound"; reason: string };
   items?: string;
   /** Pick: the workflow's steps before the step, run first on the PC (open the page, log in). Explore: the sign-in steps. */
   prefix?: Workflow;
@@ -60,7 +68,7 @@ export interface Recording {
   /** Pick: the banner's texts in the person's language. */
   texts?: Record<string, string>;
   /** Pick: running the steps before, or waiting for the click. Explore: waiting for the person, or visiting pages. */
-  stage?: "prefix" | "picking" | "waiting" | "exploring";
+  stage?: "prefix" | "picking" | "waiting" | "exploring" | "describing";
   /** Pick: why the steps before did not all run. */
   note?: string;
   status: "pending" | "recording" | "stopping" | "done" | "failed" | "cancelled";
@@ -124,6 +132,8 @@ export const canPickAfterSteps = (version: string | undefined) => atLeast(versio
 export const canPickLists = (version: string | undefined) => atLeast(version, [0, 3, 7]);
 /** Exploring a website for AI to write its tests. */
 export const canExplore = (version: string | undefined) => atLeast(version, [0, 3, 8]);
+/** Indicating for an AI Vision step: a spot and the screen, described by AI. */
+export const canPickVision = (version: string | undefined) => atLeast(version, [0, 4, 1]);
 
 /** What the Designer sees while it waits: not the screen image (the server gives that to AI). */
 const view = (r: Recording) => ({
@@ -135,6 +145,9 @@ const view = (r: Recording) => ({
 
 export interface RecordingContext {
   store: Store;
+  /** AI, for indicating for AI Vision (throws when AI is not set up). */
+  getAi?(): ZamAI;
+  useAi?(workspaceId: string): void;
   me(req: FastifyRequest): Principal;
   own<T extends { workspaceId: string }>(collection: Record<string, T>, id: string, what: string, req: FastifyRequest): T;
   who(p: Principal): string;
@@ -189,6 +202,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         canPickAfterSteps: canPickAfterSteps(a.version),
         canPickLists: canPickLists(a.version),
         canExplore: canExplore(a.version),
+        canPickVision: canPickVision(a.version),
         version: a.version,
       }));
   });
@@ -208,6 +222,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         texts: z.record(z.string().max(300)).optional(),
         mode: z.enum(["element", "inside"]).optional(),
         items: z.string().max(4000).optional(),
+        vision: z.enum(["click", "type", "read"]).optional(),
         waitForPerson: z.boolean().optional(),
         maxPages: z.number().int().min(1).max(20).optional(),
       }),
@@ -223,6 +238,9 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
     }
     if (body.kind === "pick" && !canPick(agent.version)) {
       throw new HttpError(409, `Update the ZamTech AI agent on ${agent.name} to indicate elements (it has version ${agent.version || "unknown"})`);
+    }
+    if (body.kind === "pick" && body.vision && !canPickVision(agent.version)) {
+      throw new HttpError(409, `Update the ZamTech AI agent on ${agent.name} to 0.4.1 or newer to indicate for AI Vision (it has version ${agent.version || "unknown"})`);
     }
     if (body.kind === "explore") {
       if (!canExplore(agent.version)) throw new HttpError(409, `Update the ZamTech AI agent on ${agent.name} to 0.3.8 or newer to explore websites (it has version ${agent.version || "unknown"})`);
@@ -253,6 +271,8 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       maxPages: body.kind === "explore" ? (body.maxPages ?? 8) : undefined,
       mode: body.kind === "pick" ? body.mode : undefined,
       items: body.kind === "pick" ? body.items : undefined,
+      vision: body.kind === "pick" ? body.vision : undefined,
+      language: body.kind === "pick" && body.vision ? languageName(String(req.headers["x-zamtech-language"] ?? "en")) : undefined,
       program: body.kind === "desktop" ? body.program || undefined : undefined,
       attach: body.kind === "desktop" && body.program ? body.attach || undefined : undefined,
       hint: body.kind === "indicate" || body.kind === "pick" ? body.hint || undefined : undefined,
@@ -310,6 +330,7 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       texts: next.texts,
       mode: next.mode,
       items: next.items,
+      vision: Boolean(next.vision) || undefined,
       waitForPerson: next.waitForPerson,
       maxPages: next.maxPages,
     };
@@ -344,6 +365,16 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
         stage: z.enum(["prefix", "picking", "waiting", "exploring"]).optional(),
         note: z.string().max(2000).optional(),
         explored: z.object({ pages: z.array(ExploredPageSchema).max(25) }).optional(),
+        seen: z
+          .object({
+            image: z.string().max(8_000_000),
+            marked: z.string().max(8_000_000),
+            width: z.number().int().positive().max(10_000),
+            height: z.number().int().positive().max(10_000),
+            x: z.number(),
+            y: z.number(),
+          })
+          .optional(),
       }),
       req.body,
     );
@@ -359,11 +390,44 @@ export function registerRecordings(app: FastifyInstance, ctx: RecordingContext):
       if (body.error) {
         r.status = "failed";
         r.error = body.error;
+      } else if (body.done && body.seen && r.vision) {
+        // AI says what is at the spot; the Designer waits (the screenshots are not kept).
+        r.stage = "describing";
+        void describe(r, body.seen);
       } else if (body.done) r.status = "done";
       r.updatedAt = nowIso();
     }
     return { stop: r.status === "stopping" || r.status === "cancelled" };
   });
+
+  /** Indicate for AI Vision: the spot, in words, checked by looking for the words on the same screen. */
+  async function describe(r: Recording, seen: { image: string; marked: string; width: number; height: number; x: number; y: number }) {
+    try {
+      if (!ctx.getAi) throw new Error("AI is not set up on this server");
+      const ai = ctx.getAi();
+      // Describing and checking: two AI requests.
+      ctx.useAi?.(r.workspaceId);
+      ctx.useAi?.(r.workspaceId);
+      r.described = await ai.describeSpot({
+        image: Buffer.from(seen.image, "base64"),
+        marked: Buffer.from(seen.marked, "base64"),
+        mediaType: "image/jpeg",
+        width: seen.width,
+        height: seen.height,
+        x: seen.x,
+        y: seen.y,
+        purpose: r.vision,
+        language: r.language,
+      });
+      if (r.status !== "cancelled") r.status = "done";
+    } catch (err) {
+      if (r.status !== "cancelled") {
+        r.status = "failed";
+        r.error = err instanceof Error ? err.message : String(err);
+      }
+    }
+    r.updatedAt = nowIso();
+  }
 
   return {
     get: (id, workspaceId) => {

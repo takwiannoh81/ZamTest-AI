@@ -143,7 +143,7 @@ export function Properties({ step, meta, variables, aiEnabled, onChange, onSelec
         <Field key={def.name} label={`${propLabel(step.type, def)}${def.required ? " *" : ""}`} hint={propDescription(step.type, def)}>
           <div className="prop-row" data-prop={def.name}>
             <PropInput def={def} value={step.props[def.name]} variables={variables} onChange={(v) => setProp(def.name, v)} />
-            {def.type === "selector" && onIndicate && (
+            {(def.type === "selector" || (def.name === "target" && step.type.startsWith("vision."))) && onIndicate && (
               <button className="btn-ghost indicate-btn" title={t("indicate.hint")} aria-label={t("record.indicate")} onClick={() => onIndicate(def.name)}>
                 ◎
               </button>

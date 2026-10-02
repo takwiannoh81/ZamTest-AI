@@ -13,8 +13,8 @@ import { generateTests } from "./test-gen.js";
 import { readDocument } from "./documents.js";
 import type { ReadDocumentInput } from "./documents.js";
 import type { GenerateTestsInput } from "./test-gen.js";
-import { lookAtScreen } from "./vision.js";
-import type { VisionInput } from "./vision.js";
+import { describeSpot, lookAtScreen } from "./vision.js";
+import type { DescribeSpotInput, VisionInput } from "./vision.js";
 
 export * from "./client.js";
 export type { AgentTool, RunAgentInput, RunAgentResult } from "./agent.js";
@@ -27,7 +27,7 @@ export { TEST_KINDS } from "./test-gen.js";
 export { checkTests } from "./test-gen.js";
 export { DOCUMENT_MEDIA_TYPES, DOCUMENT_PRESETS, parseFieldList } from "./documents.js";
 export type { DocumentField, DocumentFieldType, ReadDocumentInput, ReadDocumentResult } from "./documents.js";
-export type { VisionInput, VisionResult, VisionTask } from "./vision.js";
+export type { DescribeSpotInput, DescribeSpotResult, VisionInput, VisionResult, VisionTask } from "./vision.js";
 
 /** Facade over every AI capability of the platform. */
 export class ZamAI {
@@ -80,6 +80,11 @@ export class ZamAI {
   /** AI Vision: finds, reads or checks something on a screenshot. */
   lookAtScreen(input: VisionInput) {
     return lookAtScreen(this.client, input);
+  }
+
+  /** Indicate for AI Vision: what is at the spot the person clicked, in words, checked against the screen. */
+  describeSpot(input: DescribeSpotInput) {
+    return describeSpot(this.client, input);
   }
 
   /** The help assistant's answer, from the docs. */

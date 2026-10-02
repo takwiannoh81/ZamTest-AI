@@ -2063,7 +2063,7 @@ export async function buildApp(options: AppOptions): Promise<{ app: FastifyInsta
   });
 
   /* ------------------------ recording from the Designer -------------- */
-  recordings = registerRecordings(app, { store, me, own, who, agentFor });
+  recordings = registerRecordings(app, { store, me, own, who, agentFor, getAi, useAi: (workspaceId) => useAi(store, workspaceId) });
   registerAiFix(app, { store, screenshots, getAi, useAi: (workspaceId) => useAi(store, workspaceId), me, own, recordings });
   registerAiTests(app, { store, getAi, useAi: (workspaceId) => useAi(store, workspaceId), me, own, recordings });
   registerHelp(app, {

@@ -510,6 +510,16 @@ They are in the **AI Vision** group of the palette.
 
 In the code view they read: \`vision.click("the blue Submit button")\`, \`vision.type("the Amount field", total)\`, \`total = vision.read("the invoice total")\`, \`vision.verify("an order confirmation")\` and \`vision.waitFor("the Welcome page")\`.
 
+## ◎ Indicate: let AI write the description
+
+On a **Click**, **Type** or **Read from Screen (AI Vision)** step, click **◎ Indicate** (on the step, or next to the field in the properties):
+
+1. Choose the bot PC. With **Run the steps before first**, the PC first runs the steps before this one (open the page, sign in).
+2. The PC shows the web page (**Look at** page, or auto with a browser step before) or the whole screen (**Look at** screen, also a remote desktop or Citrix window). Click what the step should work on. Need to sign in or open a menu first? Click **Pause** (on a web page) or press **F2** (on the screen), then indicate.
+3. AI looks at the screen and writes the step's description, for example "the blue Sign up button at the top right", in your language. Then it checks that AI Vision finds the same place from these words.
+
+If AI Vision would find something else that looks like it (two Save buttons), the Designer says so: add a detail, such as where it is. You can always change the description. Indicating uses two AI requests, and needs the ZamTech AI Agent **0.4.1** or newer on the PC. The screenshots are not kept.
+
 ## Describing well
 
 - Say what it looks like and where: "the green Save button at the bottom right", "the second row's Edit link", "the search box at the top".
@@ -526,7 +536,7 @@ A **Click** or **Type Text** step (web or desktop) whose selector does not work,
 - A look takes a few seconds. Use selectors where they work, and AI Vision where they do not.
 - The screenshot is sent to ZamTech AI's AI to be read, and is not kept. The step's screenshot in the job (web pages) shows a red circle where AI Vision clicked; the log has the position and what AI saw.
 - The screen must be visible: the bot PC needs a signed-in desktop that is not locked, and for **screen**, the application must be in front.
-- AI Vision needs the ZamTech AI Agent **0.4.0** or newer on the bot PC, and AI set up on the ZamTech AI server (it is on zamtechai.com).`,
+- AI Vision needs the ZamTech AI Agent **0.4.0** or newer on the bot PC (**◎ Indicate** for AI Vision: 0.4.1), and AI set up on the ZamTech AI server (it is on zamtechai.com).`,
   },
 
   /* ------------------------------------------------------------------ */

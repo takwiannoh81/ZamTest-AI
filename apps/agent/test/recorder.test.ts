@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { builtinHandlers, keepBrowsersOpen, takeLingeringBrowser } from "@zamtest/actions";
+import { builtinHandlers, keepBrowsersOpen, spotOnPage, takeLingeringBrowser } from "@zamtest/actions";
+import type { IndicatedSpot } from "@zamtest/actions";
 import { parseWorkflow, runWorkflow } from "@zamtest/core";
 import { eventsToWorkflow, startRecording } from "../src/recorder.js";
 import { PICK_SCRIPT, pickWebElement } from "../src/picker.js";
@@ -78,7 +79,7 @@ describe.skipIf(!canRun)("indicating an element on a web page", () => {
         void p.getByRole("button", { name: "Sign in" }).click();
       },
     });
-    expect(picked).toEqual({ selector: 'css=[data-testid="sign-in"]', description: "The Sign in button" });
+    expect(picked).toEqual({ selector: 'css=[data-testid="sign-in"]', description: "The Sign in button", point: { x: expect.any(Number), y: expect.any(Number) } });
     expect(navigated).toBe(false);
     const cancelled = await pickWebElement(page, "x", () => false, { headless: true, timeoutMs: 20_000, onPage: (p) => void p.keyboard.press("Escape") });
     expect(cancelled).toBeNull();
@@ -182,3 +183,38 @@ describe.skipIf(!canRun)("indicating an item of a list", () => {
   });
 });
 
+
+describe.skipIf(!canRun)("indicating for AI Vision on a web page", () => {
+  it("sends the page without the picker's banner, the same with a circle, and where the person clicked", async () => {
+    let seen: IndicatedSpot | undefined;
+    let center: { x: number; y: number } | undefined;
+    let banner = true;
+    const picked = await pickWebElement(page, "Click it", () => false, {
+      headless: true,
+      timeoutMs: 20_000,
+      onPage: (p) => {
+        void (async () => {
+          const button = p.getByRole("button", { name: "Sign in" });
+          const box = (await button.boundingBox())!;
+          center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+          await button.click();
+        })();
+      },
+      capture: async (p, pick) => {
+        seen = await spotOnPage(p, pick.point!);
+        banner = await p.evaluate(() => Array.from(document.querySelectorAll("div")).some((d) => d.textContent === "Click it" || d.textContent?.startsWith("Click it")));
+      },
+    });
+    expect(picked?.description).toBe("The Sign in button");
+    expect(banner).toBe(false);
+    expect(seen).toBeDefined();
+    const { image, marked, width, height, x, y } = seen!;
+    expect(Buffer.from(image, "base64")[0]).toBe(0xff);
+    expect(marked).not.toBe(image);
+    // The window is small enough that the image is the page as it is.
+    expect(width).toBeGreaterThan(0);
+    expect(height).toBeGreaterThan(0);
+    expect(Math.abs(x - center!.x)).toBeLessThan(3);
+    expect(Math.abs(y - center!.y)).toBeLessThan(3);
+  }, 60_000);
+});

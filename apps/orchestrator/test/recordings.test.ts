@@ -100,3 +100,38 @@ describe("recording from the Designer", () => {
     expect((await call("POST", "/api/agent/recordings/next", { agentId }, agent)).json()).toEqual({ id: app2.id, kind: "pick", target: "desktop" });
   });
 });
+
+describe("indicating for AI Vision", () => {
+  it("has AI describe the spot the person clicked, and needs agent 0.4.1", async () => {
+    const seenByAi: Array<Record<string, unknown>> = [];
+    const ai = {
+      model: "test",
+      describeSpot: async (input: Record<string, unknown>) => {
+        seenByAi.push(input);
+        return { found: true, description: "le bouton bleu S'inscrire", check: "same", reason: "Un bouton" };
+      },
+    } as unknown as import("@zamtest/ai").ZamAI;
+    ({ app } = await buildApp({ config: { ...loadConfig({ ZAMTEST_AGENT_KEY: "k" }), dataDir: null }, ai }));
+    const old = (await call("POST", "/api/agent/register", { name: "old-pc", version: "0.4.0" }, agent)).json();
+    const pc = (await call("POST", "/api/agent/register", { name: "pc", version: "0.4.1" }, agent)).json();
+    const ask = (agentId: string) =>
+      app.inject({ method: "POST", url: "/api/recordings", headers: { "x-zamtech-language": "fr" }, payload: { agentId, kind: "pick", target: "web", url: "https://zamtechai.com", vision: "click" } });
+    expect((await ask(old.agentId)).json().error).toContain("0.4.1");
+    expect((await call("GET", "/api/recordings/agents")).json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: pc.agentId, canPickVision: true }), expect.objectContaining({ id: old.agentId, canPickVision: false })]));
+
+    const rec = (await ask(pc.agentId)).json();
+    expect((await call("POST", "/api/agent/recordings/next", { agentId: pc.agentId }, agent)).json()).toMatchObject({ id: rec.id, kind: "pick", vision: true });
+    const seen = { image: Buffer.from("plain").toString("base64"), marked: Buffer.from("marked").toString("base64"), width: 1280, height: 720, x: 1100, y: 40 };
+    await call("POST", `/api/agent/recordings/${rec.id}/progress`, { agentId: pc.agentId, steps: [], done: true, seen }, agent);
+    let r = (await call("GET", `/api/recordings/${rec.id}`)).json();
+    for (let i = 0; i < 20 && r.status !== "done"; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      r = (await call("GET", `/api/recordings/${rec.id}`)).json();
+    }
+    expect(r).toMatchObject({ status: "done", described: { found: true, description: "le bouton bleu S'inscrire", check: "same" } });
+    expect(seenByAi[0]).toMatchObject({ width: 1280, height: 720, x: 1100, y: 40, purpose: "click", language: "French" });
+    expect(String((seenByAi[0]!.marked as Buffer).toString())).toBe("marked");
+    // The screenshots are not kept.
+    expect(JSON.stringify(r)).not.toContain(seen.image);
+  });
+});

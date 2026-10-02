@@ -261,3 +261,46 @@ export function withVisionFallback(type: "browser.click" | "browser.type" | "des
     }
   };
 }
+
+/** What the person indicated for an AI Vision step: the screen, the same with a circle where they clicked, and where. */
+export interface IndicatedSpot {
+  /** JPEG, base64. */
+  image: string;
+  marked: string;
+  width: number;
+  height: number;
+  /** In pixels of the images. */
+  x: number;
+  y: number;
+}
+
+/** Indicate on a web page: `point` in pixels of the browser window. */
+export async function spotOnPage(page: Page, point: { x: number; y: number }): Promise<IndicatedSpot> {
+  const plain = await pageShot(page);
+  const scale = plain.width / (await page.evaluate(() => window.innerWidth));
+  const x = Math.round(point.x * scale);
+  const y = Math.round(point.y * scale);
+  await plain.mark(x, y);
+  const marked = await pageShot(page);
+  return { image: plain.image.toString("base64"), marked: marked.image.toString("base64"), width: plain.width, height: plain.height, x, y };
+}
+
+/** Indicate on the Windows screen: `point` in screen pixels (from the driver's indicatePoint). */
+export async function spotOnScreen(driver: DesktopDriverLike, point: { x: number; y: number }): Promise<IndicatedSpot> {
+  type Snap = { data: string; width: number; height: number; left: number; top: number; screenWidth: number; screenHeight: number };
+  const options = { maxWidth: MAX_WIDTH, maxHeight: MAX_HEIGHT, quality: 80 };
+  const plain = await driver.call<Snap>("snapshot", options);
+  const marked = await driver.call<Snap>("snapshot", { ...options, markX: point.x, markY: point.y });
+  return {
+    image: plain.data,
+    marked: marked.data,
+    width: plain.width,
+    height: plain.height,
+    x: Math.round(((point.x - plain.left) * plain.width) / plain.screenWidth),
+    y: Math.round(((point.y - plain.top) * plain.height) / plain.screenHeight),
+  };
+}
+
+interface DesktopDriverLike {
+  call<T>(op: string, args?: Record<string, unknown>): Promise<T>;
+}

@@ -12,6 +12,8 @@ interface PickPc {
   canPickAfterSteps?: boolean;
   /** "Any item like this one" (agent 0.3.7). */
   canPickLists?: boolean;
+  /** Indicating for AI Vision (agent 0.4.1). */
+  canPickVision?: boolean;
   version?: string;
 }
 
@@ -25,8 +27,10 @@ interface Pick {
     similar?: { items: string; count: number; inner?: string };
     inside?: { matches: number; total: number };
   };
-  /** Running the steps before, or waiting for the click. */
-  stage?: "prefix" | "picking";
+  /** Running the steps before, waiting for the click, or AI describing it (AI Vision). */
+  stage?: "prefix" | "picking" | "describing";
+  /** AI Vision: what is at the spot, in words, and whether AI Vision finds it again from them. */
+  described?: { found: boolean; description: string; check: "same" | "elsewhere" | "notFound"; reason: string };
   /** Why the steps before did not all run. */
   note?: string;
 }
@@ -59,14 +63,21 @@ export function IndicateModal({
   onPicked,
   onClose,
   inside,
+  vision,
 }: {
   target: "web" | "desktop";
+  /** For an AI Vision step: AI describes what the person points at (the step's description). */
+  vision?: "click" | "type" | "read";
   /** Web: where the browser opens (the workflow's page before this step). */
   url?: string;
   /** The steps before this one (open the page, log in): run first on the PC when chosen. */
   prefix?: Workflow;
   /** The element; with `list` when the person chose "any item like this one"; with `inside` in inside mode. */
-  onPicked: (selector: string, description: string, extra?: { list?: { items: string; count: number; inner?: string }; inside?: { matches: number; total: number } }) => void;
+  onPicked: (
+    selector: string,
+    description: string,
+    extra?: { list?: { items: string; count: number; inner?: string }; inside?: { matches: number; total: number }; check?: "same" | "elsewhere" | "notFound" },
+  ) => void;
   /** Inside: pick something within the items of this list (e.g. the offline icon, to skip those items). */
   inside?: string;
   onClose: () => void;
@@ -111,6 +122,7 @@ export function IndicateModal({
             prefix: before.current && newer.current ? prefix : undefined,
             mode: inside ? "inside" : undefined,
             items: inside,
+            vision,
           },
         }),
       );
@@ -123,10 +135,11 @@ export function IndicateModal({
     api<PickPc[]>("/api/recordings/agents")
       .then((list) => {
         setPcs(list);
-        const chosen = list.find((p) => p.id === remembered() && p.canPick) ?? list.find((p) => p.canPick) ?? list[0];
+        const usable = (p: PickPc) => Boolean(p.canPick && (!vision || p.canPickVision));
+        const chosen = list.find((p) => p.id === remembered() && usable(p)) ?? list.find(usable) ?? list[0];
         setPcId(chosen?.id ?? "");
         // Straight to the PC when it is clear which one.
-        if (!prefix && chosen?.canPick && !started.current && (list.filter((p) => p.canPick).length === 1 || chosen.id === remembered())) {
+        if (!prefix && chosen && usable(chosen) && !started.current && (list.filter(usable).length === 1 || chosen.id === remembered())) {
           started.current = true;
           void start(chosen.id);
         }
@@ -141,7 +154,11 @@ export function IndicateModal({
       api<Pick>(`/api/recordings/${pick.id}`)
         .then((r) => {
           setPick(r);
-          if (r.status === "done") {
+          if (r.status === "done" && vision) {
+            const d = r.described;
+            if (d?.found && d.description) onPicked("", d.description, { check: d.check });
+            else setMessage(d ? t("indicate.visionNothing") : t("indicate.nothing"));
+          } else if (r.status === "done") {
             const el = r.element;
             if (el?.inside) onPicked(el.selector, el.description, { inside: el.inside });
             else if (el?.similar && el.similar.count >= 2) setChoice(el);
@@ -196,7 +213,7 @@ export function IndicateModal({
             {t("common.cancel")}
           </button>
           {!active && (
-            <button className="btn" disabled={!pc?.canPick} onClick={() => void start(pcId)}>
+            <button className="btn" disabled={!pc?.canPick || (vision && !pc.canPickVision)} onClick={() => void start(pcId)}>
               ◎ {t("record.indicate")}
             </button>
           )}
@@ -210,6 +227,8 @@ export function IndicateModal({
             <span className="spinner" />
             {pick.stage === "prefix"
               ? t("indicate.runningBefore", { pc: pc?.name ?? "" })
+              : pick.stage === "describing"
+                ? t("indicate.describing")
               : target === "web"
                 ? t("indicate.waitingWeb", { pc: pc?.name ?? "" })
                 : t("indicate.waitingDesktop", { pc: pc?.name ?? "" })}
@@ -238,11 +257,12 @@ export function IndicateModal({
           )}
           {pc?.canPick && pc.canPickAfterSteps === false && <p className="warn-text tiny">{t("indicate.updateForPause", { version: pc.version || "?" })}</p>}
           {pc && !pc.canPick && <p className="muted tiny">{t("indicate.tooOld")}</p>}
+          {pc?.canPick && vision && !pc.canPickVision && <p className="warn-text tiny">{t("indicate.visionTooOld", { version: pc.version || "?" })}</p>}
           {pcs && !pcs.length && <p className="muted tiny">{t("record.noPcHelp")}</p>}
           {message && <p className="muted">{message}</p>}
         </>
       )}
-      <p className="muted tiny">{target === "desktop" ? t("indicate.helpDesktop") : url ? t("indicate.helpWeb", { url }) : t("indicate.helpWebBlank")}</p>
+      <p className="muted tiny">{vision ? t("indicate.helpVision") : target === "desktop" ? t("indicate.helpDesktop") : url ? t("indicate.helpWeb", { url }) : t("indicate.helpWebBlank")}</p>
     </Modal>
   );
 }

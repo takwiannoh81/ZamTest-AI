@@ -214,3 +214,36 @@ describe("lookAtScreen (AI Vision)", () => {
     expect(await ai.lookAtScreen({ ...base, task: "check", target: "the Welcome page" })).toMatchObject({ found: false, reason: "The login page is shown" });
   });
 });
+
+describe("describeSpot (Indicate for AI Vision)", () => {
+  const spot = { image: Buffer.from("plain"), marked: Buffer.from("marked"), mediaType: "image/jpeg" as const, width: 1000, height: 600, x: 500, y: 300 };
+  it("describes the spot in words and checks that AI Vision finds it again there", async () => {
+    const { client, requests } = fakeClient([
+      { content: [text(JSON.stringify({ found: true, description: "the blue Sign up button at the top right", reason: "A button" }))] },
+      { content: [text(JSON.stringify({ found: true, box: { x: 470, y: 285, width: 70, height: 30 }, x: 505, y: 300, confidence: 0.95, reason: "Sign up" }))] },
+    ]);
+    const ai = new ZamAI({ client, model: "claude-opus-5" });
+    expect(await ai.describeSpot({ ...spot, purpose: "click", language: "French" })).toEqual({
+      found: true,
+      description: "the blue Sign up button at the top right",
+      check: "same",
+      reason: "Sign up",
+    });
+    const first = requests[0] as { system: string; messages: Array<{ content: Array<{ type: string; source?: { data: string } }> }> };
+    expect(first.system).toContain("x 500, y 300 of 1000 x 600");
+    expect(first.system).toContain("in French");
+    // Both screens: as it is, and with the circle.
+    expect(first.messages[0]!.content.slice(0, 2).map((c) => c.source?.data)).toEqual([spot.image.toString("base64"), spot.marked.toString("base64")]);
+  });
+
+  it("says when the words lead somewhere else, or when nothing is there", async () => {
+    const { client } = fakeClient([
+      { content: [text(JSON.stringify({ found: true, description: "the Save button", reason: "" }))] },
+      { content: [text(JSON.stringify({ found: true, box: { x: 100, y: 100, width: 60, height: 30 }, x: 130, y: 115, confidence: 0.9, reason: "Another Save button" }))] },
+      { content: [text(JSON.stringify({ found: false, description: "", reason: "Empty space" }))] },
+    ]);
+    const ai = new ZamAI({ client, model: "claude-opus-5" });
+    expect(await ai.describeSpot(spot)).toMatchObject({ found: true, check: "elsewhere" });
+    expect(await ai.describeSpot(spot)).toMatchObject({ found: false, check: "notFound" });
+  });
+});

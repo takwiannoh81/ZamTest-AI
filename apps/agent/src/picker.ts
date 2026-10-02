@@ -14,6 +14,8 @@ export interface PickedElement {
   similar?: { items: string; count: number; inner?: string };
   /** Picked inside a list's item: how many of the items contain it (e.g. the offline icon: 13 of 17). */
   inside?: { matches: number; total: number };
+  /** Where the person clicked, in pixels of the browser window (AI Vision). */
+  point?: { x: number; y: number };
 }
 
 /** What is picked: an element (and the list it belongs to), or something inside the items of a list. */
@@ -124,6 +126,8 @@ export const PICK_SCRIPT = (texts: PickTexts, pickMode: PickMode = {}) => String
   cancel.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); window.__zamtechPick(null); });
   show();
   const mount = () => { if (document.body && !box.isConnected) { document.body.append(box, banner); } };
+  // Before a screenshot of what was picked (AI Vision): without the outline and the banner.
+  window.__zamtechPickHide = () => { box.remove(); banner.remove(); };
   document.addEventListener("DOMContentLoaded", mount);
   mount();
   const onBanner = (el) => el && banner.contains(el);
@@ -149,6 +153,7 @@ export const PICK_SCRIPT = (texts: PickTexts, pickMode: PickMode = {}) => String
   document.addEventListener("click", (ev) => {
     if (paused || onBanner(ev.target)) return;
     swallow(ev);
+    const point = { x: ev.clientX, y: ev.clientY };
     if (MODE === "inside") {
       // Something inside one item (e.g. the offline icon): how many of the items contain it.
       const el = ev.target;
@@ -157,12 +162,12 @@ export const PICK_SCRIPT = (texts: PickTexts, pickMode: PickMode = {}) => String
       const rel = relative(item, el);
       const all = [...document.querySelectorAll(ITEMS)];
       const having = all.filter((it) => { try { return Boolean(it.querySelector(rel)); } catch { return false; } });
-      flash(having, () => window.__zamtechPick({ selector: "css=" + rel, description: describe(el), inside: { matches: having.length, total: all.length } }));
+      flash(having, () => window.__zamtechPick({ selector: "css=" + rel, description: describe(el), inside: { matches: having.length, total: all.length }, point }));
       return;
     }
     const el = pickTarget(ev.target);
     const similar = similarOf(el);
-    const picked = { selector: selectorFor(el), description: describe(el) };
+    const picked = { selector: selectorFor(el), description: describe(el), point };
     if (!similar) { window.__zamtechPick(picked); return; }
     flash(similar.nodes, () => window.__zamtechPick({ ...picked, similar: { items: similar.items, count: similar.count, inner: similar.inner } }));
   }, true);
@@ -181,7 +186,14 @@ export async function pickWebElement(
   url: string,
   texts: Partial<PickTexts> | string | undefined,
   stopped: () => boolean,
-  options: { timeoutMs?: number; headless?: boolean; onPage?: (page: Page) => void; attachTo?: Browser } & PickMode = {},
+  options: {
+    timeoutMs?: number;
+    headless?: boolean;
+    onPage?: (page: Page) => void;
+    attachTo?: Browser;
+    /** After the pick, before the browser closes: e.g. screenshots of the page for AI Vision. */
+    capture?: (page: Page, picked: PickedElement) => Promise<void>;
+  } & PickMode = {},
 ): Promise<PickedElement | null> {
   // Long enough to log in and find the page (paused) before indicating.
   const timeoutMs = options.timeoutMs ?? 15 * 60_000;
@@ -202,8 +214,11 @@ export async function pickWebElement(
   try {
     const context = browser.contexts()[0] ?? (await browser.newContext({ viewport: null }));
     let result: PickedElement | null | undefined;
-    await context.exposeBinding("__zamtechPick", (_source, picked: PickedElement | null) => {
-      if (result === undefined) result = picked;
+    let pickedOn: Page | undefined;
+    await context.exposeBinding("__zamtechPick", (source, picked: PickedElement | null) => {
+      if (result !== undefined) return;
+      result = picked;
+      pickedOn = source.page;
     });
     const script = PICK_SCRIPT(words, { mode: options.mode, items: options.items });
     await context.addInitScript(script);
@@ -221,6 +236,10 @@ export async function pickWebElement(
     const open = () => context.pages().some((p) => !p.isClosed());
     while (result === undefined && open() && !stopped() && Date.now() - started < timeoutMs) {
       await new Promise((r) => setTimeout(r, 250));
+    }
+    if (result && pickedOn && options.capture) {
+      await pickedOn.evaluate(() => (window as unknown as { __zamtechPickHide?: () => void }).__zamtechPickHide?.()).catch(() => undefined);
+      await options.capture(pickedOn, result);
     }
     return result ?? null;
   } finally {

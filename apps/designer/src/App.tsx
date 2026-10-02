@@ -262,7 +262,7 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
   /** Fix with AI of a failed run. */
   const [fixing, setFixing] = useState<{ jobId: string; stepId?: string }>();
   /** Indicate on screen: the step and its selector property. */
-  const [indicating, setIndicating] = useState<{ stepId: string; prop: string; inside?: string }>();
+  const [indicating, setIndicating] = useState<{ stepId: string; prop: string; inside?: string; vision?: "click" | "type" | "read" }>();
   // Source control: whether the workspace has a Git repository, and uses Development/Test/Production.
   const [gitConnected, setGitConnected] = useState(false);
   const [envsOn, setEnvsOn] = useState(false);
@@ -577,8 +577,24 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
   };
   const indicateStep = (stepId: string, prop?: string) => {
     const step = findStep(root, stepId);
+    // AI Vision: the person points at it and AI writes the step's description.
+    const vision = ({ "vision.click": "click", "vision.type": "type", "vision.read": "read" } as const)[step?.type ?? ""];
+    if (step && vision) {
+      setIndicating({ stepId, prop: "target", vision });
+      return;
+    }
     const selectorProp = prop ?? metas.get(step?.type ?? "")?.props.find((p) => p.type === "selector")?.name;
     if (step && selectorProp) setIndicating({ stepId, prop: selectorProp });
+  };
+  /** Where to indicate: a web page or the Windows screen (AI Vision: where the step looks). */
+  const indicateTarget = (stepId: string): "web" | "desktop" => {
+    const step = findStep(root, stepId);
+    if (step?.type.startsWith("desktop.")) return "desktop";
+    if (step?.type.startsWith("vision.")) {
+      const where = String(step.props.where ?? "auto");
+      return where === "screen" || (where === "auto" && !pageBefore(stepId)) ? "desktop" : "web";
+    }
+    return "web";
   };
   /** Indicate, in one item of the step's list, what marks the items to skip (e.g. the offline icon). */
   const indicateSkip = (stepId: string) => {
@@ -588,10 +604,22 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
   const indicated = (
     selector: string,
     description: string,
-    extra?: { list?: { items: string; count: number; inner?: string }; inside?: { matches: number; total: number } },
+    extra?: { list?: { items: string; count: number; inner?: string }; inside?: { matches: number; total: number }; check?: "same" | "elsewhere" | "notFound" },
   ) => {
     if (!indicating) return;
-    const { stepId, prop, inside } = indicating;
+    const { stepId, prop, inside, vision } = indicating;
+    if (vision) {
+      setRoot(mapStep(root, stepId, (s) => ({ ...s, props: { ...s.props, target: description } })));
+      setIndicating(undefined);
+      setStatus(
+        extra?.check === "elsewhere"
+          ? t("indicate.visionElsewhere", { description })
+          : extra?.check === "notFound"
+            ? t("indicate.visionNotFound", { description })
+            : t("indicate.done", { element: description }),
+      );
+      return;
+    }
     if (inside) {
       setRoot(
         mapStep(root, stepId, (s) => {
@@ -844,7 +872,8 @@ function Editor({ id, kind, catalog, aiEnabled, onExit }: { id: string; kind: Op
       )}
       {indicating && (
         <IndicateModal
-          target={findStep(root, indicating.stepId)?.type.startsWith("desktop.") ? "desktop" : "web"}
+          target={indicateTarget(indicating.stepId)}
+          vision={indicating.vision}
           url={pageBefore(indicating.stepId)}
           prefix={stepsBefore(indicating.stepId)}
           inside={indicating.inside}

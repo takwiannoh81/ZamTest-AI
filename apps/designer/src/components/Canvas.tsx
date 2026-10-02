@@ -112,7 +112,8 @@ function ActionPicker({ metas, onPick, onClose }: { metas: Map<string, ActionMet
 
   const items = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return [...metas.values()]
+    return [...metas.values()]
+
       .filter((a) => !q || `${actionName(a)} ${actionDescription(a)} ${a.displayName} ${a.type}`.toLowerCase().includes(q));
   }, [metas, query, actionName, actionDescription]);
 
@@ -178,6 +179,9 @@ function ActionPicker({ metas, onPick, onClose }: { metas: Map<string, ActionMet
   );
 }
 
+/** AI Vision steps whose description can be indicated on screen (AI writes it). */
+const VISION_INDICATE = new Set(["vision.click", "vision.type", "vision.read"]);
+
 function StepCard({ step, ...props }: CanvasProps & { step: Step }) {
   const { t, actionName } = useI18n();
   const meta = props.metas.get(step.type);
@@ -222,7 +226,7 @@ function StepCard({ step, ...props }: CanvasProps & { step: Step }) {
               <span className={collapsed ? "flip-rtl" : undefined}>{collapsed ? "▸" : "▾"}</span>
             </button>
           )}
-          {props.onIndicate && meta?.props.some((p) => p.type === "selector") && (
+          {props.onIndicate && (meta?.props.some((p) => p.type === "selector") || VISION_INDICATE.has(step.type)) && (
             <button className="icon-btn indicate-icon" title={t("indicate.hint")} onClick={(e) => { e.stopPropagation(); props.onSelect(step.id); props.onIndicate!(step.id); }}>
               ◎
             </button>

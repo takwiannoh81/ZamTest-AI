@@ -30,7 +30,7 @@ interface JobPayload {
   source?: string;
 }
 
-const VERSION = "0.4.0";
+const VERSION = "0.4.1";
 /** How often watched folders are looked at (a file is reported after two equal looks). */
 const WATCH_MS = 5_000;
 

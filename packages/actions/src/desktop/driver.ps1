@@ -1162,6 +1162,17 @@ function Invoke-Op([string]$op, $a) {
       $bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
       $g = [System.Drawing.Graphics]::FromImage($bmp)
       $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+      if ($null -ne $a.markX) {
+        # A red circle where the person clicked (AI Vision describes what is there).
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $r = [Math]::Max(18, [int]($bounds.Width / 80))
+        $cx = [int]$a.markX - $bounds.X; $cy = [int]$a.markY - $bounds.Y
+        $white = New-Object System.Drawing.Pen([System.Drawing.Color]::White, [single]($r / 3))
+        $red = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(225, 29, 72), [single]($r / 5))
+        $g.DrawEllipse($white, $cx - $r, $cy - $r, 2 * $r, 2 * $r)
+        $g.DrawEllipse($red, $cx - $r, $cy - $r, 2 * $r, 2 * $r)
+        $white.Dispose(); $red.Dispose()
+      }
       $g.Dispose()
       $maxWidth = if ($a.maxWidth) { [int]$a.maxWidth } else { 1600 }
       $maxHeight = if ($a.maxHeight) { [int]$a.maxHeight } else { 100000 }
@@ -1218,6 +1229,15 @@ function Invoke-Op([string]$op, $a) {
       if ($null -eq $el) { return $null }
       $el = [ZtIndicate]::Smallest($el, $pt)
       return @{ chain = [ZtRecorder]::Chain($el) }
+    }
+    'indicatePoint' {
+      # Where on the screen the person clicks (AI Vision): a point, not an element.
+      Initialize-Indicate
+      $hint = if ($a.hint) { [string]$a.hint } else { 'Click what the step should work on (Esc to cancel, F2 to pause and use the application)' }
+      $pausedHint = if ($a.pausedHint) { [string]$a.pausedHint } else { 'Paused: use the application (log in, open a menu), then press F2 to indicate' }
+      $picked = [ZtIndicate]::PickElement($timeout, $hint, $pausedHint)
+      if ($null -eq $picked) { return $null }
+      return @{ x = [int]$picked.x; y = [int]$picked.y }
     }
     'recordStart' { [ZtRecorder]::Start(); return @{ ok = $true } }
     'recordPoll' { return , ([ZtRecorder]::Drain()) }

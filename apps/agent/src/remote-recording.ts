@@ -17,7 +17,8 @@ import { pickWebElement } from "./picker.js";
 import type { PickedElement, PickTexts } from "./picker.js";
 import { exploreSite } from "./explorer.js";
 import type { ExploredPage, ExploreTexts } from "./explorer.js";
-import { takeLingeringBrowser } from "@zamtest/actions";
+import { spotOnPage, spotOnScreen, takeLingeringBrowser } from "@zamtest/actions";
+import type { IndicatedSpot } from "@zamtest/actions";
 
 export interface RemoteRecordingRequest {
   id: string;
@@ -38,6 +39,8 @@ export interface RemoteRecordingRequest {
   texts?: Partial<PickTexts>;
   /** Pick: an element (default), or something inside the items of a list (items: the list). */
   mode?: "element" | "inside";
+  /** Pick for an AI Vision step: where the person clicks, and the screen, for AI to describe. */
+  vision?: boolean;
   items?: string;
   /** Explore: let the person sign in first (they click Start exploring). */
   waitForPerson?: boolean;
@@ -78,6 +81,8 @@ export interface RecordingProgress {
   note?: string;
   /** Explore: the pages visited. */
   explored?: { pages: ExploredPage[] };
+  /** Pick for AI Vision: the screen and where the person clicked. */
+  seen?: IndicatedSpot;
 }
 
 /** Runs a workflow on this PC (the steps before a step, for picking); its browser stays open. */
@@ -172,6 +177,7 @@ const PICK_DESKTOP_TIMEOUT_MS = 15 * 60_000;
 
 async function pick(request: RemoteRecordingRequest, report: ReportProgress, runPrefix?: RunPrefix) {
   let element: PickedElement | undefined;
+  let seen: IndicatedSpot | undefined;
   let note: string | undefined;
   let attachTo: Awaited<ReturnType<typeof takeLingeringBrowser>>;
   // First the steps before this one (open the page, log in), so picking starts where the step will run.
@@ -189,7 +195,18 @@ async function pick(request: RemoteRecordingRequest, report: ReportProgress, run
     ask();
     const timer = setInterval(ask, 2000);
     try {
-      element = (await pickWebElement(request.url ?? "about:blank", texts, () => stopped, { attachTo, mode: request.mode, items: request.items })) ?? undefined;
+      element =
+        (await pickWebElement(request.url ?? "about:blank", texts, () => stopped, {
+          attachTo,
+          mode: request.mode,
+          items: request.items,
+          // AI Vision: the page as it is, and where the person clicked on it.
+          capture: request.vision
+            ? async (page, picked) => {
+                if (picked.point) seen = await spotOnPage(page, picked.point).catch(() => undefined);
+              }
+            : undefined,
+        })) ?? undefined;
     } finally {
       clearInterval(timer);
     }
@@ -197,6 +214,13 @@ async function pick(request: RemoteRecordingRequest, report: ReportProgress, run
     await report({ steps: [], variables: [], stage: "picking", note }).catch(() => undefined);
     const driver = desktop.DesktopDriver.start();
     try {
+      if (request.vision) {
+        // AI Vision: a point on the screen (also in remote desktops, where there are no elements).
+        const point = await driver.call<{ x: number; y: number } | null>("indicatePoint", { timeoutMs: PICK_DESKTOP_TIMEOUT_MS, hint: texts?.pick, pausedHint: texts?.paused });
+        if (point) seen = await spotOnScreen(driver, point);
+        await report({ steps: [], variables: [], done: true, seen, note });
+        return;
+      }
       const picked = await driver.call<{ chain: string } | null>("indicateElement", {
         timeoutMs: PICK_DESKTOP_TIMEOUT_MS,
         hint: texts?.pick,
@@ -216,7 +240,7 @@ async function pick(request: RemoteRecordingRequest, report: ReportProgress, run
       await driver.close();
     }
   }
-  await report({ steps: [], variables: [], done: true, element, note });
+  await report({ steps: [], variables: [], done: true, element, note, seen });
 }
 
 async function explore(request: RemoteRecordingRequest, report: ReportProgress, runPrefix?: RunPrefix) {

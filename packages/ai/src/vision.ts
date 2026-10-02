@@ -129,3 +129,81 @@ The reason is one short sentence${input.language && input.language !== "English"
   if (input.task === "read") result.value = result.found ? String(raw.value ?? "") : "";
   return result;
 }
+
+export interface DescribeSpotInput {
+  /** The screen as it is, and the same with a red circle where the person clicked. */
+  image: Buffer;
+  marked: Buffer;
+  mediaType: "image/jpeg" | "image/png";
+  width: number;
+  height: number;
+  /** Where the person clicked, in pixels of the images. */
+  x: number;
+  y: number;
+  /** For an AI Vision step that clicks, types into or reads it. */
+  purpose?: "click" | "type" | "read";
+  /** English name of the language to describe it in. */
+  language?: string;
+}
+
+export interface DescribeSpotResult {
+  /** Something is there that a step can work on. */
+  found: boolean;
+  /** In words, for the step: "the blue Sign up button at the top right". */
+  description: string;
+  /** AI Vision looked for the description on the same screen: it found the same place, another place, or nothing. */
+  check: "same" | "elsewhere" | "notFound";
+  reason: string;
+}
+
+/** How far (in pixels of the image) the description's place may be from the click and still be the same thing. */
+const SAME_PLACE = 24;
+
+/**
+ * Indicate for AI Vision: the person clicked a spot; AI says in words what is there (so
+ * AI Vision finds it again when the step runs), then looks for those words on the same
+ * screen to check that they lead back to it.
+ */
+export async function describeSpot(ai: AiClient, input: DescribeSpotInput): Promise<DescribeSpotResult> {
+  const what = input.purpose === "type" ? "the field to type into" : input.purpose === "read" ? "the value to read" : "the thing to click";
+  const message = await ai.create({
+    max_tokens: 1500,
+    system: `You help build a software robot that finds things on the screen from a description in words (AI Vision).
+A person clicked a spot on the screen to show ${what}. The second image is the same screen with a red circle around that spot (at x ${input.x}, y ${input.y} of ${input.width} x ${input.height} pixels).
+Describe what is at the spot so that it can be found again on this screen, and later on screens like it: what it is (button, link, field, menu item, icon, value...), the text or label on it, and, only when needed to tell it apart from similar ones, where it is or what is next to it.
+Write one short phrase, like "the blue Sign up button at the top right" or "the Amount field below Invoice date". For a value to read, say which value, not the value itself ("the invoice total at the bottom"). Do not mention the red circle.
+Write it${input.language && input.language !== "English" ? ` in ${input.language}, keeping the texts shown on the screen as they are` : ""}. If nothing a robot could work on is at the spot (empty space), found is false.`,
+    output_config: {
+      effort: "low",
+      format: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          properties: { found: { type: "boolean" }, description: { type: "string" }, reason: { type: "string" } },
+          required: ["found", "description", "reason"],
+          additionalProperties: false,
+        },
+      },
+    },
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: input.mediaType, data: input.image.toString("base64") } },
+          { type: "image", source: { type: "base64", media_type: input.mediaType, data: input.marked.toString("base64") } },
+          { type: "text", text: `Describe ${what} at the red circle.` },
+        ],
+      },
+    ],
+  });
+  const raw = jsonOf<{ found: boolean; description: string; reason: string }>(message);
+  const description = String(raw.description ?? "").trim().slice(0, 300);
+  if (!raw.found || !description) return { found: false, description, check: "notFound", reason: String(raw.reason ?? "") };
+  // Does the description lead back to the same place?
+  const found = await lookAtScreen(ai, { task: "locate", target: description, image: input.image, mediaType: input.mediaType, width: input.width, height: input.height });
+  if (!found.found || found.x === undefined || found.y === undefined) return { found: true, description, check: "notFound", reason: found.reason };
+  const box = found.box;
+  const inBox = box && input.x >= box.x - 8 && input.x <= box.x + box.width + 8 && input.y >= box.y - 8 && input.y <= box.y + box.height + 8;
+  const near = Math.hypot(found.x - input.x, found.y - input.y) <= SAME_PLACE;
+  return { found: true, description, check: inBox || near ? "same" : "elsewhere", reason: found.reason };
+}
